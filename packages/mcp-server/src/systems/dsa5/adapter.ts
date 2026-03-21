@@ -261,7 +261,7 @@ export class DSA5Adapter implements SystemAdapter {
 
   formatRawCompendiumCreature(
     entity: unknown,
-    mode: 'search' | 'criteria'
+    mode: 'search' | 'criteria' | 'compact' | 'details'
   ): Record<string, unknown> {
     const record = asRecord(entity);
     const system = asRecord(record?.system);
@@ -280,6 +280,7 @@ export class DSA5Adapter implements SystemAdapter {
 
     const lifePointsCurrent = toNumber(getNestedValue(system, ['status', 'wounds', 'value']));
     const lifePointsMax = toNumber(getNestedValue(system, ['status', 'wounds', 'max']));
+    const speed = toNumber(getNestedValue(system, ['status', 'speed', 'value']));
 
     const hasSpellcasting = Boolean(
       getNestedValue(system, ['tradition', 'magical']) ||
@@ -298,6 +299,34 @@ export class DSA5Adapter implements SystemAdapter {
       }
       if (hasSpellcasting) stats.spellcaster = true;
       return Object.keys(stats).length > 0 ? { stats } : {};
+    }
+
+    if (mode === 'compact') {
+      const stats: Record<string, unknown> = {};
+      if (level !== undefined) stats.level = level;
+      if (species) stats.creatureType = species;
+      if (size) stats.size = size;
+      if (experiencePoints !== undefined) stats.experiencePoints = experiencePoints;
+      if (lifePointsMax !== undefined) stats.lifePoints = lifePointsMax;
+      if (speed !== undefined) stats.speed = speed;
+      if (hasSpellcasting) stats.spellcaster = true;
+      return Object.keys(stats).length > 0 ? { stats } : {};
+    }
+
+    if (mode === 'details') {
+      return {
+        creatureDetails: {
+          ...(level !== undefined ? { level } : {}),
+          ...(species ? { creatureType: species } : {}),
+          ...(size ? { size } : {}),
+          ...(experiencePoints !== undefined ? { experiencePoints } : {}),
+          ...(lifePointsCurrent !== undefined || lifePointsMax !== undefined
+            ? { lifePoints: { current: lifePointsCurrent, max: lifePointsMax } }
+            : {}),
+          ...(speed !== undefined ? { speed } : {}),
+          ...(hasSpellcasting ? { spellcaster: true } : {}),
+        },
+      };
     }
 
     return {
@@ -554,6 +583,37 @@ export class DSA5Adapter implements SystemAdapter {
     if (typeof equipped === 'boolean') {
       formatted.equipped = equipped;
     }
+
+    return formatted;
+  }
+
+  formatCharacterItemForDetails(itemData: unknown): Record<string, unknown> {
+    const item = asRecord(itemData);
+    const system = asRecord(item?.system);
+    const formatted = this.formatCharacterItemForList(itemData);
+
+    const description = getNestedValue(system, ['description']);
+    if (typeof description === 'string') {
+      formatted.description = description;
+    } else {
+      const descriptionRecord = asRecord(description);
+      formatted.description = toStringValue(descriptionRecord?.value) ?? '';
+    }
+
+    const actionType = toStringValue(getNestedValue(system, ['actionType', 'value']));
+    if (actionType) {
+      formatted.actionType = actionType;
+    }
+
+    const actions =
+      toNumber(getNestedValue(system, ['actions', 'value'])) ??
+      toNumber(getNestedValue(system, ['actions']));
+    if (actions !== undefined) {
+      formatted.actions = actions;
+    }
+
+    formatted.hasImage = Boolean(item?.img);
+    formatted.system = system ?? {};
 
     return formatted;
   }

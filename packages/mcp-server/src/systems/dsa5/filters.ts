@@ -82,7 +82,7 @@ export const DSA5FiltersSchema = z.object({
       }),
     ])
     .optional(),
-});
+}).strict();
 
 export type DSA5Filters = z.infer<typeof DSA5FiltersSchema>;
 

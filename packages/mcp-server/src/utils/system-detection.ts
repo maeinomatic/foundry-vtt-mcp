@@ -7,12 +7,14 @@
 
 import { FoundryClient } from '../foundry-client.js';
 import { Logger } from '../logger.js';
-import type { SystemId } from '../systems/types.js';
-
 /**
- * Supported game systems
+ * The raw Foundry system id for the active world.
+ *
+ * Known systems will be values like `dnd5e`, `pf2e`, or `dsa5`, but this type
+ * intentionally remains open so adapter routing can support new systems and
+ * aliases without collapsing them to `other` first.
  */
-export type GameSystem = SystemId;
+export type GameSystem = string;
 
 /**
  * Cache for system detection (avoid repeated queries)
@@ -45,13 +47,8 @@ export async function detectGameSystem(
     const systemValue = worldInfoRecord?.system;
     const systemId = typeof systemValue === 'string' ? systemValue.toLowerCase() : '';
 
-    cachedSystemId = systemId;
-
-    if (systemId === 'dnd5e' || systemId === 'pf2e' || systemId === 'dsa5') {
-      cachedSystem = systemId;
-    } else {
-      cachedSystem = 'other';
-    }
+    cachedSystemId = systemId || null;
+    cachedSystem = systemId || 'other';
 
     if (logger) {
       logger.info('Game system detected', { systemId, detectedAs: cachedSystem });

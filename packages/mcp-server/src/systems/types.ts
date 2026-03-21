@@ -119,10 +119,12 @@ export interface SystemAdapter {
    * Format raw compendium creature entity data for MCP responses.
    * `mode=search` is used by search-compendium output.
    * `mode=criteria` is used by list-creatures-by-criteria output.
+   * `mode=compact` is used by get-compendium-item compact actor responses.
+   * `mode=details` is used by get-compendium-item full actor responses.
    */
   formatRawCompendiumCreature(
     entity: unknown,
-    mode: 'search' | 'criteria'
+    mode: 'search' | 'criteria' | 'compact' | 'details'
   ): Record<string, unknown>;
 
   /**
@@ -152,6 +154,12 @@ export interface SystemAdapter {
    * Used by get-character item listings to keep core tools system-agnostic.
    */
   formatCharacterItemForList(item: unknown): Record<string, unknown>;
+
+  /**
+   * Format a character item for detailed entity responses.
+   * Used by get-character-entity to keep system-specific item semantics out of core tools.
+   */
+  formatCharacterItemForDetails(item: unknown): Record<string, unknown>;
 
   /**
    * Format a character action for compact list responses.

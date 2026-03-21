@@ -18,23 +18,6 @@ interface ActorListEntry {
   img?: string;
 }
 
-interface CharacterAbilityData {
-  value?: number;
-  mod?: number;
-  proficient?: boolean;
-}
-
-interface CharacterSkillData {
-  value?: number;
-  proficient?: boolean;
-  ability?: string;
-}
-
-interface CharacterSaveData {
-  value?: number;
-  proficient?: boolean;
-}
-
 type UnknownRecord = Record<string, unknown>;
 
 interface CharacterSystemCore {
@@ -44,27 +27,16 @@ interface CharacterSystemCore {
   };
   details?: {
     level?: { value?: number };
-    class?: string;
-    race?: string;
-    ancestry?: string;
   };
   level?: number;
-  abilities?: Record<string, CharacterAbilityData>;
-  skills?: Record<string, CharacterSkillData>;
-  saves?: Record<string, CharacterSaveData>;
 }
 
 type CharacterSystem = CharacterSystemCore & UnknownRecord;
 
 interface CharacterItemSystemCore {
   description?: { value?: string } | string;
-  traits?: { value?: string[]; rarity?: string };
-  level?: { value?: number } | number;
-  actionType?: { value?: string };
-  actions?: { value?: number };
   quantity?: number;
   equipped?: boolean;
-  attunement?: number | string;
 }
 
 type CharacterItemSystem = CharacterItemSystemCore & UnknownRecord;
@@ -158,15 +130,6 @@ interface SearchCharacterItemsResponse {
   [key: string]: unknown;
 }
 
-const getLeveledValue = (level: CharacterItemSystem['level']): number | undefined => {
-  if (typeof level === 'number') {
-    return level;
-  }
-  return level?.value;
-};
-
-const asUnknown = (value: unknown): unknown => value;
-
 export class CharacterTools {
   private foundryClient: FoundryClient;
   private logger: Logger;
@@ -189,6 +152,33 @@ export class CharacterTools {
     return this.cachedGameSystem;
   }
 
+  private async withSystemAdapter<T>(
+    operation: string,
+    onAdapter: (adapter: SystemAdapter, system: GameSystem) => T,
+    onFallback: () => T
+  ): Promise<T> {
+    if (!this.systemRegistry) {
+      return onFallback();
+    }
+
+    try {
+      const gameSystem = await this.getGameSystem();
+      const adapter = this.systemRegistry.getAdapter(gameSystem);
+      if (adapter) {
+        this.logger.debug(`Using system adapter for ${operation}`, {
+          system: gameSystem,
+        });
+        return onAdapter(adapter, gameSystem);
+      }
+    } catch (error) {
+      this.logger.warn(`Failed to use system adapter for ${operation}, falling back`, {
+        error,
+      });
+    }
+
+    return onFallback();
+  }
+
   /**
    * Tool: get-character
    * Retrieve detailed information about a specific character
@@ -202,7 +192,7 @@ export class CharacterTools {
       {
         name: 'get-character',
         description:
-          'Retrieve character information optimized for minimal token usage. Returns: full stats (abilities, skills, saves, AC, HP), action names, active effects/conditions (name only), and ALL items with minimal metadata (name, type, equipped status) without descriptions. PF2e-specific: includes traits arrays for items/actions, action costs, rarity, and level. D&D 5e-specific: includes attunement status. Perfect for filtering and checking equipment. Use get-character-entity to fetch full details for specific items, actions, spells, or effects.',
+          'Retrieve character information optimized for minimal token usage. Returns compact character stats, action names, active effects/conditions, and all items with minimal metadata but without descriptions. System adapters may include additional system-specific fields such as traits, rarity, levels, action costs, or attunement when supported. Use get-character-entity to fetch full details for specific items, actions, spells, or effects.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -331,7 +321,7 @@ export class CharacterTools {
         characterName: characterData.name,
       });
 
-      return await this.formatCharacterResponse(characterData);
+      return this.formatCharacterResponse(characterData);
     } catch (error) {
       this.logger.error('Failed to get character information', error);
       throw new Error(
@@ -354,35 +344,20 @@ export class CharacterTools {
       const characterData = (await this.foundryClient.query('foundry-mcp-bridge.getCharacterInfo', {
         characterName: characterIdentifier,
       })) as CharacterInfoResponse;
+      const normalizedEntityIdentifier = entityIdentifier.toLowerCase();
 
       const itemEntity = characterData.items?.find(
-        i => i.id === entityIdentifier || i.name.toLowerCase() === entityIdentifier.toLowerCase()
+        i => i.id === entityIdentifier || i.name.toLowerCase() === normalizedEntityIdentifier
       );
       if (itemEntity) {
         return {
           entityType: 'item',
-          id: itemEntity.id,
-          name: itemEntity.name,
-          type: itemEntity.type,
-          description:
-            (typeof itemEntity.system?.description === 'string'
-              ? itemEntity.system.description
-              : itemEntity.system?.description?.value) ?? '',
-          traits: itemEntity.system?.traits?.value ?? [],
-          rarity: itemEntity.system?.traits?.rarity ?? 'common',
-          level: getLeveledValue(itemEntity.system?.level),
-          actionType: itemEntity.system?.actionType?.value,
-          actions: itemEntity.system?.actions?.value,
-          quantity: itemEntity.system?.quantity ?? 1,
-          equipped: itemEntity.system?.equipped,
-          attunement: itemEntity.system?.attunement,
-          hasImage: !!itemEntity.img,
-          system: itemEntity.system,
+          ...(await this.formatCharacterItemDetails(itemEntity)),
         };
       }
 
       const actionEntity = characterData.actions?.find(
-        a => a.name.toLowerCase() === entityIdentifier.toLowerCase()
+        a => a.name.toLowerCase() === normalizedEntityIdentifier
       );
       if (actionEntity) {
         return {
@@ -398,7 +373,7 @@ export class CharacterTools {
       }
 
       const effectEntity = characterData.effects?.find(
-        e => e.name.toLowerCase() === entityIdentifier.toLowerCase()
+        e => e.name.toLowerCase() === normalizedEntityIdentifier
       );
       if (effectEntity) {
         return {
@@ -573,12 +548,12 @@ export class CharacterTools {
     };
 
     // Add actions with minimal data (name, traits, action cost only - no variants)
-    if (characterData.actions && characterData.actions.length > 0) {
+    if (characterData.actions?.length) {
       response.actions = await this.formatActions(characterData.actions);
     }
 
     // Add spellcasting data with spell lists
-    if (characterData.spellcasting && characterData.spellcasting.length > 0) {
+    if (characterData.spellcasting?.length) {
       response.spellcasting = await this.formatSpellcasting(characterData.spellcasting);
     }
 
@@ -588,33 +563,12 @@ export class CharacterTools {
   }
 
   private async formatSpellcasting(spellcastingEntries: SpellcastingEntry[]): Promise<unknown[]> {
-    if (this.systemRegistry) {
-      try {
-        const gameSystem = await this.getGameSystem();
-        const adapter = this.systemRegistry.getAdapter(gameSystem);
-        if (adapter) {
-          return spellcastingEntries.map(entry =>
-            this.formatSpellcastingWithAdapter(adapter, entry)
-          );
-        }
-      } catch (error) {
-        this.logger.warn('Failed to use system adapter for spellcasting formatting, falling back', {
-          error,
-        });
-      }
-    }
-
-    return spellcastingEntries.map(entry => this.formatSpellcastingLegacy(entry));
-  }
-
-  private formatSpellcastingWithAdapter(
-    adapter: SystemAdapter,
-    entry: SpellcastingEntry
-  ): Record<string, unknown> {
-    const formatter = adapter as unknown as {
-      formatSpellcastingEntryForList: (value: unknown) => Record<string, unknown>;
-    };
-    return formatter.formatSpellcastingEntryForList(entry);
+    return this.withSystemAdapter<unknown[]>(
+      'spellcasting formatting',
+      (adapter: SystemAdapter): unknown[] =>
+        spellcastingEntries.map(entry => adapter.formatSpellcastingEntryForList(entry)),
+      () => spellcastingEntries.map(entry => this.formatSpellcastingLegacy(entry))
+    );
   }
 
   private formatSpellcastingLegacy(entry: SpellcastingEntry): Record<string, unknown> {
@@ -686,31 +640,12 @@ export class CharacterTools {
   }
 
   private async formatActions(actions: CharacterAction[]): Promise<unknown[]> {
-    if (this.systemRegistry) {
-      try {
-        const gameSystem = await this.getGameSystem();
-        const adapter = this.systemRegistry.getAdapter(gameSystem);
-        if (adapter) {
-          return actions.map(action => this.formatActionWithAdapter(adapter, action));
-        }
-      } catch (error) {
-        this.logger.warn('Failed to use system adapter for action formatting, falling back', {
-          error,
-        });
-      }
-    }
-
-    return actions.map(action => this.formatActionLegacy(action));
-  }
-
-  private formatActionWithAdapter(
-    adapter: SystemAdapter,
-    action: CharacterAction
-  ): Record<string, unknown> {
-    const formatter = adapter as unknown as {
-      formatCharacterActionForList: (value: unknown) => Record<string, unknown>;
-    };
-    return formatter.formatCharacterActionForList(action);
+    return this.withSystemAdapter<unknown[]>(
+      'action formatting',
+      (adapter: SystemAdapter): unknown[] =>
+        actions.map(action => adapter.formatCharacterActionForList(action)),
+      () => actions.map(action => this.formatActionLegacy(action))
+    );
   }
 
   private formatActionLegacy(action: CharacterAction): Record<string, unknown> {
@@ -735,33 +670,17 @@ export class CharacterTools {
   }
 
   private async extractBasicInfo(characterData: CharacterInfoResponse): Promise<unknown> {
-    if (this.systemRegistry) {
-      try {
-        const gameSystem = await this.getGameSystem();
-        const adapter = this.systemRegistry.getAdapter(gameSystem);
-        if (adapter) {
-          this.logger.debug('Using system adapter for character basic info extraction', {
-            system: gameSystem,
-          });
-          return adapter.formatCharacterBasicInfo(characterData);
-        }
-      } catch (error) {
-        this.logger.warn('Failed to use system adapter for basic info, falling back', {
-          error,
-        });
-      }
-    }
-
-    return this.extractBasicInfoLegacy(characterData);
+    return this.withSystemAdapter<unknown>(
+      'character basic info extraction',
+      (adapter: SystemAdapter): unknown => adapter.formatCharacterBasicInfo(characterData),
+      () => this.extractBasicInfoLegacy(characterData)
+    );
   }
 
   private extractBasicInfoLegacy(characterData: CharacterInfoResponse): unknown {
     const system = characterData.system ?? {};
-
-    // Extract common fields that exist across different game systems
     const basicInfo: Record<string, unknown> = {};
 
-    // D&D 5e / PF2e common fields
     if (system.attributes) {
       if (system.attributes.hp) {
         basicInfo.hitPoints = {
@@ -775,164 +694,74 @@ export class CharacterTools {
       }
     }
 
-    // Level information
     if (system.details?.level?.value) {
       basicInfo.level = system.details.level.value;
-    } else if (system.level) {
+    } else if (system.level !== undefined) {
       basicInfo.level = system.level;
-    }
-
-    // Class information
-    if (system.details?.class) {
-      basicInfo.class = system.details.class;
-    }
-
-    // Race/ancestry information
-    if (system.details?.race) {
-      basicInfo.race = system.details.race;
-    } else if (system.details?.ancestry) {
-      basicInfo.ancestry = system.details.ancestry;
     }
 
     return basicInfo;
   }
 
   private async extractStats(characterData: CharacterInfoResponse): Promise<unknown> {
-    // Try using system adapter if available
-    if (this.systemRegistry) {
-      try {
-        const gameSystem = await this.getGameSystem();
-        const adapter = this.systemRegistry.getAdapter(gameSystem);
-
-        if (adapter) {
-          this.logger.debug('Using system adapter for character stats extraction', {
-            system: gameSystem,
-          });
-          return asUnknown(adapter.extractCharacterStats(characterData));
-        }
-      } catch (error) {
-        this.logger.warn('Failed to use system adapter, falling back to legacy extraction', {
-          error,
-        });
-      }
-    }
-
-    // Legacy extraction (backwards compatibility)
-    const system = characterData.system ?? {};
-    const stats: Record<string, unknown> = {};
-
-    // Ability scores (D&D 5e style)
-    if (system.abilities) {
-      const abilities: Record<string, { score: number; modifier: number }> = {};
-      for (const [key, ability] of Object.entries(system.abilities)) {
-        abilities[key] = {
-          score: ability.value ?? 10,
-          modifier: ability.mod ?? 0,
-        };
-      }
-      stats.abilities = abilities;
-    }
-
-    // Skills
-    if (system.skills) {
-      const skills: Record<string, { value: number; proficient: boolean; ability: string }> = {};
-      for (const [key, skill] of Object.entries(system.skills)) {
-        skills[key] = {
-          value: skill.value ?? 0,
-          proficient: skill.proficient ?? false,
-          ability: skill.ability ?? '',
-        };
-      }
-      stats.skills = skills;
-    }
-
-    // Saves
-    if (system.saves) {
-      const saves: Record<string, { value: number; proficient: boolean }> = {};
-      for (const [key, save] of Object.entries(system.saves)) {
-        saves[key] = {
-          value: save.value ?? 0,
-          proficient: save.proficient ?? false,
-        };
-      }
-      stats.saves = saves;
-    }
-
-    return stats;
+    return this.withSystemAdapter<unknown>(
+      'character stats extraction',
+      (adapter: SystemAdapter): unknown => adapter.extractCharacterStats(characterData),
+      () => this.extractStatsLegacy(characterData)
+    );
   }
 
   private async formatItems(items: CharacterItem[]): Promise<unknown[]> {
-    if (this.systemRegistry) {
-      try {
-        const gameSystem = await this.getGameSystem();
-        const adapter = this.systemRegistry.getAdapter(gameSystem);
-        if (adapter) {
-          return items.map(item => this.formatCharacterItemWithAdapter(adapter, item));
-        }
-      } catch (error) {
-        this.logger.warn('Failed to use system adapter for item formatting, falling back', {
-          error,
-        });
-      }
-    }
-
-    return items.map(item => this.formatCharacterItemLegacy(item));
+    return this.withSystemAdapter<unknown[]>(
+      'item formatting',
+      (adapter: SystemAdapter): unknown[] =>
+        items.map(item => adapter.formatCharacterItemForList(item)),
+      () => items.map(item => this.formatCharacterItemLegacy(item))
+    );
   }
 
-  private formatCharacterItemWithAdapter(
-    adapter: SystemAdapter,
-    item: CharacterItem
-  ): Record<string, unknown> {
-    return adapter.formatCharacterItemForList(item);
+  private async formatCharacterItemDetails(item: CharacterItem): Promise<Record<string, unknown>> {
+    return this.withSystemAdapter<Record<string, unknown>>(
+      'item detail formatting',
+      (adapter: SystemAdapter): Record<string, unknown> =>
+        adapter.formatCharacterItemForDetails(item),
+      () => this.formatCharacterItemDetailsLegacy(item)
+    );
+  }
+
+  private extractStatsLegacy(characterData: CharacterInfoResponse): Record<string, unknown> {
+    void characterData;
+    return {};
   }
 
   private formatCharacterItemLegacy(item: CharacterItem): Record<string, unknown> {
-    // Return ALL items with minimal data
     const formattedItem: Record<string, unknown> = {
       id: item.id,
       name: item.name,
       type: item.type,
     };
 
-    // Include quantity if present
     if (item.system?.quantity !== undefined && item.system.quantity !== 1) {
       formattedItem.quantity = item.system.quantity;
     }
 
-    // Include traits for PF2e items (feats, equipment, spells, etc.)
-    if (item.system?.traits?.value) {
-      formattedItem.traits = Array.isArray(item.system.traits.value)
-        ? item.system.traits.value
-        : [];
-    }
-
-    // Include rarity for PF2e items
-    if (item.system?.traits?.rarity) {
-      formattedItem.rarity = item.system.traits.rarity;
-    }
-
-    // Include level for PF2e items (feats, spells, etc.)
-    const itemLevel = getLeveledValue(item.system?.level);
-    if (itemLevel !== undefined) {
-      formattedItem.level = itemLevel;
-    }
-
-    // Include action cost for PF2e feats/actions
-    if (item.system?.actionType?.value) {
-      formattedItem.actionType = item.system.actionType.value;
-    }
-
-    // Include equipped status for equippable items
     if (item.system?.equipped !== undefined) {
       formattedItem.equipped = item.system.equipped;
     }
 
-    // Include attuned status for D&D 5e magic items
-    if (item.system?.attunement !== undefined) {
-      formattedItem.attunement = item.system.attunement;
-    }
-
     return formattedItem;
+  }
+
+  private formatCharacterItemDetailsLegacy(item: CharacterItem): Record<string, unknown> {
+    return {
+      ...this.formatCharacterItemLegacy(item),
+      description:
+        (typeof item.system?.description === 'string'
+          ? item.system.description
+          : item.system?.description?.value) ?? '',
+      hasImage: !!item.img,
+      system: item.system,
+    };
   }
 
   private formatEffects(effects: CharacterEffect[]): Array<{
@@ -954,12 +783,5 @@ export class CharacterTools {
         : null,
       hasIcon: !!effect.icon,
     }));
-  }
-
-  private truncateText(text: string, maxLength: number): string {
-    if (!text || text.length <= maxLength) {
-      return text;
-    }
-    return `${text.substring(0, maxLength - 3)}...`;
   }
 }

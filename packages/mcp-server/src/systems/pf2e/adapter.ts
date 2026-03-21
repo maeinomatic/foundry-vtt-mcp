@@ -253,7 +253,7 @@ export class PF2eAdapter implements SystemAdapter {
 
   formatRawCompendiumCreature(
     entity: unknown,
-    mode: 'search' | 'criteria'
+    mode: 'search' | 'criteria' | 'compact' | 'details'
   ): Record<string, unknown> {
     const record = asRecord(entity);
     const system = asRecord(record?.system);
@@ -275,9 +275,33 @@ export class PF2eAdapter implements SystemAdapter {
     const hpCurrent = toNumber(getNestedValue(system, ['attributes', 'hp', 'value']));
     const hpMax = toNumber(getNestedValue(system, ['attributes', 'hp', 'max']));
     const armorClass = toNumber(getNestedValue(system, ['attributes', 'ac', 'value']));
+    const movement = asRecord(getNestedValue(system, ['attributes', 'movement']));
 
     const spellcasting = asRecord(getNestedValue(system, ['spellcasting']));
     const hasSpellcasting = Boolean(spellcasting && Object.keys(spellcasting).length > 0);
+
+    const significantAbilities: Record<string, unknown> = {};
+    const abilities = asRecord(getNestedValue(system, ['abilities']));
+    if (abilities) {
+      for (const [key, abilityValue] of Object.entries(abilities)) {
+        const ability = asRecord(abilityValue);
+        const score = toNumber(ability?.value);
+        if (score !== undefined) {
+          const mod = Math.floor((score - 10) / 2);
+          if (Math.abs(mod) >= 2) {
+            significantAbilities[key.toUpperCase()] = { value: score, modifier: mod };
+          }
+        }
+      }
+    }
+
+    const speeds: string[] = [];
+    const walk = toNumber(movement?.walk);
+    const fly = toNumber(movement?.fly);
+    const swim = toNumber(movement?.swim);
+    if (walk !== undefined) speeds.push(`${walk} ft`);
+    if (fly !== undefined) speeds.push(`fly ${fly} ft`);
+    if (swim !== undefined) speeds.push(`swim ${swim} ft`);
 
     if (mode === 'search') {
       const stats: Record<string, unknown> = {};
@@ -292,6 +316,40 @@ export class PF2eAdapter implements SystemAdapter {
       if (armorClass !== undefined) stats.armorClass = armorClass;
       if (hasSpellcasting) stats.spellcaster = true;
       return Object.keys(stats).length > 0 ? { stats } : {};
+    }
+
+    if (mode === 'compact') {
+      const stats: Record<string, unknown> = {};
+      if (level !== undefined) stats.level = level;
+      if (traits.length > 0) stats.traits = traits;
+      if (primaryType) stats.creatureType = primaryType;
+      if (rarity) stats.rarity = rarity;
+      if (size) stats.size = size;
+      if (hpMax !== undefined) stats.hitPoints = hpMax;
+      if (armorClass !== undefined) stats.armorClass = armorClass;
+      if (Object.keys(significantAbilities).length > 0) stats.abilities = significantAbilities;
+      if (speeds.length > 0) stats.speed = speeds.join(', ');
+      if (hasSpellcasting) stats.spellcaster = true;
+      return Object.keys(stats).length > 0 ? { stats } : {};
+    }
+
+    if (mode === 'details') {
+      return {
+        creatureDetails: {
+          ...(level !== undefined ? { level } : {}),
+          ...(traits.length > 0 ? { traits } : {}),
+          ...(primaryType ? { creatureType: primaryType } : {}),
+          ...(size ? { size } : {}),
+          ...(rarity ? { rarity } : {}),
+          ...(hpCurrent !== undefined || hpMax !== undefined
+            ? { hitPoints: { current: hpCurrent, max: hpMax } }
+            : {}),
+          ...(armorClass !== undefined ? { armorClass } : {}),
+          ...(Object.keys(significantAbilities).length > 0 ? { abilities: significantAbilities } : {}),
+          ...(speeds.length > 0 ? { speed: speeds.join(', ') } : {}),
+          ...(hasSpellcasting ? { spellcaster: true } : {}),
+        },
+      };
     }
 
     return {
@@ -537,6 +595,32 @@ export class PF2eAdapter implements SystemAdapter {
     if (typeof equipped === 'boolean') {
       formatted.equipped = equipped;
     }
+
+    return formatted;
+  }
+
+  formatCharacterItemForDetails(itemData: unknown): Record<string, unknown> {
+    const item = asRecord(itemData);
+    const system = asRecord(item?.system);
+    const formatted = this.formatCharacterItemForList(itemData);
+
+    const description = getNestedValue(system, ['description']);
+    if (typeof description === 'string') {
+      formatted.description = description;
+    } else {
+      const descriptionRecord = asRecord(description);
+      formatted.description = toStringValue(descriptionRecord?.value) ?? '';
+    }
+
+    const actions =
+      toNumber(getNestedValue(system, ['actions', 'value'])) ??
+      toNumber(getNestedValue(system, ['actions']));
+    if (actions !== undefined) {
+      formatted.actions = actions;
+    }
+
+    formatted.hasImage = Boolean(item?.img);
+    formatted.system = system ?? {};
 
     return formatted;
   }

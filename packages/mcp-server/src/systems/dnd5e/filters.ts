@@ -52,7 +52,7 @@ export const DnD5eFiltersSchema = z.object({
   alignment: z.string().optional(),
   hasLegendaryActions: z.boolean().optional(),
   spellcaster: z.boolean().optional(),
-});
+}).strict();
 
 export type DnD5eFilters = z.infer<typeof DnD5eFiltersSchema>;
 

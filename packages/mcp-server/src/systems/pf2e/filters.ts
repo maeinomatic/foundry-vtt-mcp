@@ -61,7 +61,7 @@ export const PF2eFiltersSchema = z.object({
   size: z.enum(CreatureSizes).optional(),
   alignment: z.string().optional(),
   hasSpells: z.boolean().optional(), // PF2e uses spellcasting entries
-});
+}).strict();
 
 export type PF2eFilters = z.infer<typeof PF2eFiltersSchema>;
 
