@@ -2,6 +2,50 @@ import { MODULE_ID } from './constants.js';
 import { FoundryDataAccess } from './data-access.js';
 import { ComfyUIManager } from './comfyui-manager.js';
 
+type QueryErrorResult = { error: string; success: false; status?: string };
+
+type FindPlayersRequest = {
+  identifier: string;
+  allowPartialMatch?: boolean;
+  includeCharacterOwners?: boolean;
+};
+
+type FindActorRequest = { identifier: string };
+
+type ListScenesRequest = {
+  filter?: string;
+  include_active_only?: boolean;
+};
+
+type SwitchSceneRequest = {
+  scene_identifier: string;
+  optimize_view?: boolean;
+};
+
+type GenerateMapRequest = {
+  prompt: string;
+  scene_name: string;
+  size?: string;
+  grid_size?: number;
+};
+
+type MapJobRequest = { job_id: string };
+
+type UploadGeneratedMapRequest = {
+  filename: string;
+  imageData: string;
+};
+
+type ComfyMapResponse = {
+  success?: boolean;
+  status?: string;
+  error?: string;
+  message?: string;
+  jobId?: string;
+  estimatedTime?: string;
+  job?: unknown;
+};
+
 export class QueryHandlers {
   public dataAccess: FoundryDataAccess;
   private comfyuiManager: ComfyUIManager;
@@ -20,6 +64,27 @@ export class QueryHandlers {
       return { allowed: false };
     }
     return { allowed: true };
+  }
+
+  private errorMessage(error: unknown, fallback: string): string {
+    return error instanceof Error ? error.message : fallback;
+  }
+
+  private parseComfyResponse(value: unknown): ComfyMapResponse {
+    if (!value || typeof value !== 'object') {
+      return {};
+    }
+
+    const record = value as Record<string, unknown>;
+    return {
+      success: typeof record.success === 'boolean' ? record.success : undefined,
+      status: typeof record.status === 'string' ? record.status : undefined,
+      error: typeof record.error === 'string' ? record.error : undefined,
+      message: typeof record.message === 'string' ? record.message : undefined,
+      jobId: typeof record.jobId === 'string' ? record.jobId : undefined,
+      estimatedTime: typeof record.estimatedTime === 'string' ? record.estimatedTime : undefined,
+      job: record.job,
+    };
   }
 
   /**
@@ -820,7 +885,9 @@ export class QueryHandlers {
   /**
    * Handle find players request
    */
-  async handleFindPlayers(data: any): Promise<any> {
+  async handleFindPlayers(data: FindPlayersRequest): Promise<
+    Array<{ id: string; name: string }> | QueryErrorResult
+  > {
     try {
       // SECURITY: Silent GM validation
       const gmCheck = this.validateGMAccess();
@@ -845,7 +912,7 @@ export class QueryHandlers {
   /**
    * Handle find actor request
    */
-  async handleFindActor(data: any): Promise<any> {
+  async handleFindActor(data: FindActorRequest): Promise<{ id: string; name: string } | null | QueryErrorResult> {
     try {
       // SECURITY: Silent GM validation
       const gmCheck = this.validateGMAccess();
@@ -870,7 +937,9 @@ export class QueryHandlers {
   /**
    * Handle list scenes request
    */
-  private async handleListScenes(data: any): Promise<any> {
+  private async handleListScenes(
+    data: ListScenesRequest = {}
+  ): Promise<unknown[] | QueryErrorResult> {
     try {
       // SECURITY: Silent GM validation
       const gmCheck = this.validateGMAccess();
@@ -879,7 +948,8 @@ export class QueryHandlers {
       }
 
       this.dataAccess.validateFoundryState();
-      return await this.dataAccess.listScenes(data);
+      const scenes = (await this.dataAccess.listScenes(data)) as unknown;
+      return Array.isArray(scenes) ? scenes : [];
     } catch (error) {
       throw new Error(
         `Failed to list scenes: ${error instanceof Error ? error.message : 'Unknown error'}`
@@ -890,7 +960,9 @@ export class QueryHandlers {
   /**
    * Handle switch scene request
    */
-  private async handleSwitchScene(data: any): Promise<any> {
+  private async handleSwitchScene(
+    data: SwitchSceneRequest
+  ): Promise<Record<string, unknown> | QueryErrorResult> {
     try {
       // SECURITY: Silent GM validation
       const gmCheck = this.validateGMAccess();
@@ -904,7 +976,12 @@ export class QueryHandlers {
         throw new Error('scene_identifier is required');
       }
 
-      return await this.dataAccess.switchScene(data);
+      const result = (await this.dataAccess.switchScene(data)) as unknown;
+      if (result && typeof result === 'object') {
+        return result as Record<string, unknown>;
+      }
+
+      return { success: true };
     } catch (error) {
       throw new Error(
         `Failed to switch scene: ${error instanceof Error ? error.message : 'Unknown error'}`
@@ -915,7 +992,9 @@ export class QueryHandlers {
   /**
    * Handle map generation request - uses hybrid architecture
    */
-  private async handleGenerateMap(data: any): Promise<any> {
+  private async handleGenerateMap(
+    data: GenerateMapRequest
+  ): Promise<Record<string, unknown> | QueryErrorResult> {
     try {
       // SECURITY: Silent GM validation
       const gmCheck = this.validateGMAccess();
@@ -932,40 +1011,41 @@ export class QueryHandlers {
       }
 
       // Get quality setting from module settings
-      const quality = game.settings.get(MODULE_ID, 'mapGenQuality') || 'low';
+      const qualitySetting = game.settings.get(MODULE_ID, 'mapGenQuality') as unknown;
+      const quality = typeof qualitySetting === 'string' && qualitySetting.trim() ? qualitySetting : 'low';
 
       const params = {
         prompt: data.prompt.trim(),
         scene_name: data.scene_name.trim(),
-        size: data.size || 'medium',
-        grid_size: data.grid_size || 70,
+        size: data.size ?? 'medium',
+        grid_size: data.grid_size ?? 70,
         quality,
       };
 
       // Use ComfyUIManager to communicate with backend via WebSocket
-      const response = await this.comfyuiManager.generateMap(params);
+      const response = this.parseComfyResponse(await this.comfyuiManager.generateMap(params));
       const isSuccess =
-        typeof response?.success === 'boolean' ? response.success : response?.status === 'success';
+        typeof response.success === 'boolean' ? response.success : response.status === 'success';
 
       if (!isSuccess) {
-        const errorMessage = response?.error || response?.message || 'Map generation failed';
+        const errorMessage = response.error ?? response.message ?? 'Map generation failed';
         return {
           error: errorMessage,
           success: false,
-          status: response?.status ?? 'error',
+          status: response.status ?? 'error',
         };
       }
 
       return {
         success: true,
-        status: response?.status ?? 'success',
+        status: response.status ?? 'success',
         jobId: response.jobId,
-        message: response.message || 'Map generation started',
-        estimatedTime: response.estimatedTime || '30-90 seconds',
+        message: response.message ?? 'Map generation started',
+        estimatedTime: response.estimatedTime ?? '30-90 seconds',
       };
-    } catch (error: any) {
+    } catch (error: unknown) {
       return {
-        error: error.message,
+        error: this.errorMessage(error, 'Map generation failed'),
         success: false,
       };
     }
@@ -974,7 +1054,9 @@ export class QueryHandlers {
   /**
    * Handle map status check request - uses hybrid architecture
    */
-  private async handleCheckMapStatus(data: any): Promise<any> {
+  private async handleCheckMapStatus(
+    data: MapJobRequest
+  ): Promise<Record<string, unknown> | QueryErrorResult> {
     try {
       // SECURITY: Silent GM validation
       const gmCheck = this.validateGMAccess();
@@ -987,27 +1069,27 @@ export class QueryHandlers {
       }
 
       // Use ComfyUIManager to communicate with backend via WebSocket
-      const response = await this.comfyuiManager.checkMapStatus(data);
+      const response = this.parseComfyResponse(await this.comfyuiManager.checkMapStatus(data));
       const isSuccess =
-        typeof response?.success === 'boolean' ? response.success : response?.status === 'success';
+        typeof response.success === 'boolean' ? response.success : response.status === 'success';
 
       if (!isSuccess) {
-        const errorMessage = response?.error || response?.message || 'Status check failed';
+        const errorMessage = response.error ?? response.message ?? 'Status check failed';
         return {
           error: errorMessage,
           success: false,
-          status: response?.status ?? 'error',
+          status: response.status ?? 'error',
         };
       }
 
       return {
         success: true,
-        status: response?.status ?? 'success',
+        status: response.status ?? 'success',
         job: response.job,
       };
-    } catch (error: any) {
+    } catch (error: unknown) {
       return {
-        error: error.message,
+        error: this.errorMessage(error, 'Status check failed'),
         success: false,
       };
     }
@@ -1016,7 +1098,9 @@ export class QueryHandlers {
   /**
    * Handle map job cancellation request - uses hybrid architecture
    */
-  private async handleCancelMapJob(data: any): Promise<any> {
+  private async handleCancelMapJob(
+    data: MapJobRequest
+  ): Promise<Record<string, unknown> | QueryErrorResult> {
     try {
       // SECURITY: Silent GM validation
       const gmCheck = this.validateGMAccess();
@@ -1029,27 +1113,27 @@ export class QueryHandlers {
       }
 
       // Use ComfyUIManager to communicate with backend via WebSocket
-      const response = await this.comfyuiManager.cancelMapJob(data);
+      const response = this.parseComfyResponse(await this.comfyuiManager.cancelMapJob(data));
       const isSuccess =
-        typeof response?.success === 'boolean' ? response.success : response?.status === 'success';
+        typeof response.success === 'boolean' ? response.success : response.status === 'success';
 
       if (!isSuccess) {
-        const errorMessage = response?.error || response?.message || 'Job cancellation failed';
+        const errorMessage = response.error ?? response.message ?? 'Job cancellation failed';
         return {
           error: errorMessage,
           success: false,
-          status: response?.status ?? 'error',
+          status: response.status ?? 'error',
         };
       }
 
       return {
         success: true,
-        status: response?.status ?? 'success',
-        message: response.message || 'Job cancelled successfully',
+        status: response.status ?? 'success',
+        message: response.message ?? 'Job cancelled successfully',
       };
-    } catch (error: any) {
+    } catch (error: unknown) {
       return {
-        error: error.message,
+        error: this.errorMessage(error, 'Job cancellation failed'),
         success: false,
       };
     }
@@ -1059,7 +1143,9 @@ export class QueryHandlers {
    * Handle upload of generated map image (for remote Foundry instances)
    * Receives base64-encoded image data and saves it to generated-maps folder
    */
-  private async handleUploadGeneratedMap(data: any): Promise<any> {
+  private async handleUploadGeneratedMap(
+    data: UploadGeneratedMapRequest
+  ): Promise<Record<string, unknown> | QueryErrorResult> {
     console.log(`[${MODULE_ID}] Upload generated map request received`, {
       hasFilename: !!data.filename,
       hasImageData: !!data.imageData,
@@ -1086,7 +1172,7 @@ export class QueryHandlers {
 
       console.log(`[${MODULE_ID}] Validating filename...`);
       // Validate filename for security (prevent path traversal)
-      const safeFilename = data.filename.replace(/[^a-zA-Z0-9_\-\.]/g, '_');
+      const safeFilename = data.filename.replace(/[^a-zA-Z0-9_.-]/g, '_');
       if (
         !safeFilename.endsWith('.png') &&
         !safeFilename.endsWith('.jpg') &&
@@ -1121,32 +1207,59 @@ export class QueryHandlers {
 
       // Upload to world-specific folder so maps persist even if module is deleted
       // This also keeps maps organized per world
-      const worldId = (game as any).world?.id || 'unknown-world';
+      const worldId = (game as { world?: { id?: string } }).world?.id ?? 'unknown-world';
       const uploadPath = `worlds/${worldId}/ai-generated-maps`;
+
+      type FilePickerAPIType = {
+        createDirectory: (
+          source: string,
+          target: string,
+          options?: { bucket?: string | null }
+        ) => Promise<unknown>;
+        upload: (
+          source: string,
+          target: string,
+          file: File,
+          body?: Record<string, unknown>,
+          options?: { notify?: boolean }
+        ) => Promise<{ path?: string }>;
+      };
+
+      const root = globalThis as {
+        foundry?: {
+          applications?: {
+            apps?: {
+              FilePicker?: {
+                implementation?: FilePickerAPIType;
+              };
+            };
+          };
+        };
+        FilePicker?: FilePickerAPIType;
+      };
+
+      const filePickerAPI =
+        root.foundry?.applications?.apps?.FilePicker?.implementation ?? root.FilePicker;
+
+      if (!filePickerAPI) {
+        throw new Error('Foundry FilePicker API is unavailable');
+      }
+
       try {
         // Use the modern Foundry API (v13+) with fallback for older versions
-        const FilePickerAPI =
-          (globalThis as any).foundry?.applications?.apps?.FilePicker?.implementation ||
-          (globalThis as any).FilePicker;
-
-        await FilePickerAPI.createDirectory('data', uploadPath, { bucket: null });
+        await filePickerAPI.createDirectory('data', uploadPath, { bucket: null });
         console.log(`[${MODULE_ID}] Directory created/verified: ${uploadPath}`);
-      } catch (dirError: any) {
+      } catch (dirError: unknown) {
         // Directory might already exist, that's okay
-        if (
-          !dirError.message?.includes('EEXIST') &&
-          !dirError.message?.includes('already exists')
-        ) {
-          console.warn(`[${MODULE_ID}] Directory creation warning:`, dirError.message);
+        const dirErrorMessage = this.errorMessage(dirError, 'Directory creation failed');
+        if (!dirErrorMessage.includes('EEXIST') && !dirErrorMessage.includes('already exists')) {
+          console.warn(`[${MODULE_ID}] Directory creation warning:`, dirErrorMessage);
         }
       }
 
       console.log(`[${MODULE_ID}] Uploading to FilePicker...`);
       // Upload using Foundry's FilePicker.upload method with modern API
-      const FilePickerAPI =
-        (globalThis as any).foundry?.applications?.apps?.FilePicker?.implementation ||
-        (globalThis as any).FilePicker;
-      const response = await FilePickerAPI.upload('data', uploadPath, file, {}, { notify: false });
+      const response = await filePickerAPI.upload('data', uploadPath, file, {}, { notify: false });
 
       console.log(`[${MODULE_ID}] FilePicker.upload response:`, JSON.stringify(response, null, 2));
       console.log(`[${MODULE_ID}] Response keys:`, Object.keys(response || {}));
@@ -1158,10 +1271,10 @@ export class QueryHandlers {
         filename: safeFilename,
         message: `Map uploaded successfully to ${response.path}`,
       };
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error(`[${MODULE_ID}] Failed to upload generated map:`, error);
       return {
-        error: error.message || 'Failed to upload generated map',
+        error: this.errorMessage(error, 'Failed to upload generated map'),
         success: false,
       };
     }
