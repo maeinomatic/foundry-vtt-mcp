@@ -164,6 +164,8 @@ const getLeveledValue = (level: CharacterItemSystem['level']): number | undefine
   return level?.value;
 };
 
+const asUnknown = (value: unknown): unknown => value;
+
 export class CharacterTools {
   private foundryClient: FoundryClient;
   private logger: Logger;
@@ -744,8 +746,7 @@ export class CharacterTools {
           this.logger.debug('Using system adapter for character stats extraction', {
             system: gameSystem,
           });
-          const adapterStats = adapter.extractCharacterStats(characterData);
-          return adapterStats;
+          return asUnknown(adapter.extractCharacterStats(characterData));
         }
       } catch (error) {
         this.logger.warn('Failed to use system adapter, falling back to legacy extraction', {
