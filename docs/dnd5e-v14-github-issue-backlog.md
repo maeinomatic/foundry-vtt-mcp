@@ -37,6 +37,40 @@ Create in this order to maximize immediate value for DnD workflows:
 5. v14 blocking compatibility tasks
 6. Test + CI + safe dependency tasks
 
+## GitHub Issue Mapping (Created)
+
+Created on 2026-03-21 in planned wave order.
+
+| Plan Issue ID | Title (short) | GitHub Issue |
+|---|---|---|
+| 16 | Convert DSA5 filter test file into real Vitest suite | #1 - https://github.com/maeinomatic/foundry-vtt-mcp/issues/1 |
+| 17 | Add CI quality gates | #2 - https://github.com/maeinomatic/foundry-vtt-mcp/issues/2 |
+| 1 | Add generic `update-actor` MCP tool | #3 - https://github.com/maeinomatic/foundry-vtt-mcp/issues/3 |
+| 3 | Add actor embedded item CRUD MCP tools | #4 - https://github.com/maeinomatic/foundry-vtt-mcp/issues/4 |
+| 19 | Add generic `post-chat-message` MCP tool | #5 - https://github.com/maeinomatic/foundry-vtt-mcp/issues/5 |
+| 2 | Add generic `update-actor-resources` MCP tool | #6 - https://github.com/maeinomatic/foundry-vtt-mcp/issues/6 |
+| 4 | Add `batch-update-actor-items` transactional MCP tool | #7 - https://github.com/maeinomatic/foundry-vtt-mcp/issues/7 |
+| 5 | Add `dnd5e-level-up-character` MCP tool | #8 - https://github.com/maeinomatic/foundry-vtt-mcp/issues/8 |
+| 6 | Add `dnd5e-add-class-levels` MCP tool | #9 - https://github.com/maeinomatic/foundry-vtt-mcp/issues/9 |
+| 7 | Add `dnd5e-apply-advancement` MCP tool | #10 - https://github.com/maeinomatic/foundry-vtt-mcp/issues/10 |
+| 8 | Add DnD5e spell lifecycle MCP tools | #11 - https://github.com/maeinomatic/foundry-vtt-mcp/issues/11 |
+| 9 | Add DnD build safety MCP tools | #12 - https://github.com/maeinomatic/foundry-vtt-mcp/issues/12 |
+| 10 | v14 DataModel operator audit/fix | #13 - https://github.com/maeinomatic/foundry-vtt-mcp/issues/13 |
+| 11 | v14 ActiveEffect transferral validation | #14 - https://github.com/maeinomatic/foundry-vtt-mcp/issues/14 |
+| 13 | v14 `parseHTML` null safety | #15 - https://github.com/maeinomatic/foundry-vtt-mcp/issues/15 |
+| 12 | v14 token detection modes type changes | #16 - https://github.com/maeinomatic/foundry-vtt-mcp/issues/16 |
+| 14 | v14 chat visibility assumptions retest | #17 - https://github.com/maeinomatic/foundry-vtt-mcp/issues/17 |
+| 15 | Execute/publish DnD-focused v14 matrix | #18 - https://github.com/maeinomatic/foundry-vtt-mcp/issues/18 |
+| 18 | Execute safe dependency update batches (A/B/C) | #19 - https://github.com/maeinomatic/foundry-vtt-mcp/issues/19 |
+
+Parent wave trackers:
+
+1. Wave 0 parent: #20 - https://github.com/maeinomatic/foundry-vtt-mcp/issues/20
+2. Wave 1 parent: #21 - https://github.com/maeinomatic/foundry-vtt-mcp/issues/21
+3. Wave 2 parent: #22 - https://github.com/maeinomatic/foundry-vtt-mcp/issues/22
+4. Wave 3 parent: #23 - https://github.com/maeinomatic/foundry-vtt-mcp/issues/23
+5. Wave 4 parent: #24 - https://github.com/maeinomatic/foundry-vtt-mcp/issues/24
+
 ## Recommended Working Order (Execution Waves)
 
 This is the implementation order (not just issue creation order).
@@ -55,10 +89,12 @@ Exit gate:
 1. Issue 1: `update-actor`
 2. Issue 2: `update-actor-resources`
 3. Issue 3: actor item CRUD (`add-item-to-actor`, `update-actor-item`, `remove-item-from-actor`)
-4. Issue 4: `batch-update-actor-items`
+4. Issue 19: `post-chat-message`
+5. Issue 4: `batch-update-actor-items`
 
 Dependencies:
 - Issue 4 depends on Issue 3.
+- Issue 19 is independent and can be implemented in parallel with Issues 1-3.
 
 Exit gate:
 - Core GM edits can be performed without manual Foundry UI edits.
@@ -248,6 +284,23 @@ Sprint 5:
   - Preview returns structured diff.
   - Validation catches at least 3 invalid build patterns.
   - Transaction mode supports rollback on failure.
+
+### 19) Add generic `post-chat-message` MCP tool
+- Priority: `priority:high`
+- Labels: `api`, `dnd5e`, `enhancement`
+- Milestone: `DnD Tooling Baseline`
+- Why:
+  - Current tooling supports only specialized chat creation via `request-player-rolls` and indirect item-use flows.
+  - We need a direct API to post plain chat output for GM automation and narrative/gameplay messaging.
+- Scope:
+  - Add tool definition and handler to create chat messages directly.
+  - Support at least public and GM/private visibility modes.
+  - Allow optional speaker metadata (actor or user context).
+- Acceptance criteria:
+  - Can post a plain public chat message from MCP.
+  - Can post a private/GM-scoped message from MCP.
+  - Returns created message id and visibility mode.
+  - Includes validation tests for visibility and required fields.
 
 ## B. v14 Readiness Issues (DnD-Focused)
 
