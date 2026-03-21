@@ -1,5 +1,130 @@
 # Complete MCP Tool Inventory
 
+## Current Status Audit (2026-03-20)
+
+This file contains useful historical branch comparison notes, but it is not fully up to date for current master.
+
+Current code reality in `packages/mcp-server/src/backend.ts`:
+- The backend currently registers **36 tools** (including token tools and `get-character-entity`).
+- The branch summary below (23/26/32 tools split) is historical and should not be treated as the current runtime truth.
+- Token tool availability in this file is outdated. Token manipulation tools are now implemented and routed.
+
+### DnD5e Relevance Check
+
+For DnD5e gameplay, the current toolset is strong for:
+- read/query (characters, entities, compendium data)
+- scene and token operations
+- creating actors from existing compendium entries
+- using existing items/spells
+
+For DnD5e character progression and inventory management, key write capabilities are still missing.
+
+## DnD5e Missing Endpoint Tracker
+
+This section tracks capabilities needed for practical DnD5e character management.
+
+### Priority A: Core Character Write APIs (system-agnostic)
+
+1. `update-actor`
+- Purpose: General actor updates (name, biography, profile, notes, core system fields).
+- Why needed: Enables character description updates and many basic edits.
+
+2. `update-actor-resources`
+- Purpose: Safe updates for HP, temp HP, hit dice, exhaustion, death saves, currency.
+- Why needed: Frequent gameplay bookkeeping with guarded update semantics.
+
+3. `set-actor-ability-scores`
+- Purpose: Update STR/DEX/CON/INT/WIS/CHA base values.
+- Why needed: Level-up and character rebuild workflows.
+
+4. `set-actor-skill-proficiencies`
+- Purpose: Set skill proficiency/expertise states.
+- Why needed: Background/class progression and retraining support.
+
+### Priority A: Actor Item Management (system-agnostic surface)
+
+1. `add-item-to-actor`
+- Purpose: Add Item to actor from compendium, world item, or raw item payload.
+- Why needed: Give equipment, spells, feats, class features.
+
+2. `update-actor-item`
+- Purpose: Update embedded item fields (quantity, equipped, attunement, uses, preparation mode).
+- Why needed: Inventory and spell management automation.
+
+3. `remove-item-from-actor`
+- Purpose: Remove embedded items by id/name.
+- Why needed: Undo grants, consumed/replaced items, cleanup.
+
+4. `batch-update-actor-items`
+- Purpose: Atomic multi-item update for safe complex changes.
+- Why needed: Level-up steps often touch multiple embedded documents.
+
+### Priority A: DnD5e Leveling and Advancement
+
+1. `dnd5e-level-up-character`
+- Purpose: Increase total level and orchestrate advancement workflow.
+- Why needed: Current tools do not support character leveling.
+
+2. `dnd5e-add-class-levels`
+- Purpose: Add levels to existing class or add a new class for multiclass.
+- Why needed: Multiclass support requires class-item manipulation.
+
+3. `dnd5e-apply-advancement`
+- Purpose: Apply class/race/feat advancement choices (ASI/feat, subclass, options).
+- Why needed: Foundry dnd5e progression depends on advancement steps, not only numeric level changes.
+
+4. `dnd5e-set-proficiencies`
+- Purpose: Manage weapon/armor/tool/language/saving throw proficiencies.
+- Why needed: Required for class gains, feats, and multiclass transitions.
+
+### Priority B: DnD5e Spell Management
+
+1. `dnd5e-learn-spell`
+- Purpose: Add spell to actor from compendium or payload with class/context validation.
+
+2. `dnd5e-manage-prepared-spells`
+- Purpose: Prepare/unprepare, known vs prepared behavior, pact/class slots considerations.
+
+3. `dnd5e-set-spell-slots`
+- Purpose: Update spell slot max/current per level and pact slots where applicable.
+
+### Priority B: Item Authoring and Homebrew
+
+1. `create-world-item`
+- Purpose: Create world item from payload (weapon, spell, feat, armor, consumable, etc.).
+
+2. `update-world-item`
+- Purpose: Modify existing world item/homebrew entries.
+
+3. `create-compendium-item`
+- Purpose: Create item directly in compendium pack.
+
+4. `import-item-to-compendium`
+- Purpose: Promote world/homebrew item into compendium.
+
+### Priority C: Validation and Rule Guardrails
+
+1. `validate-dnd5e-character-build`
+- Purpose: Validate class levels, spell eligibility, proficiency constraints, and advancement completeness.
+
+2. `preview-dnd5e-level-up`
+- Purpose: Dry-run before mutations; returns diff of proposed changes.
+
+3. `apply-character-patch-transaction`
+- Purpose: Transactional patch with rollback for multi-step updates.
+
+## Gap Conclusion (DnD5e)
+
+Not a DnD5e-only problem. The core missing layer is **actor and embedded-item write operations** in general.
+
+DnD5e adds system-specific needs on top:
+- advancement and class-level orchestration
+- multiclass progression logic
+- spell preparation/slot management
+
+If we only add one thing first, add `update-actor` plus `add-item-to-actor`/`update-actor-item`/`remove-item-from-actor`.
+Those unblock most practical edits immediately (including character descriptions), while DnD5e-specific leveling can be layered next.
+
 ## Overview
 
 This document provides a comprehensive inventory of all MCP tools across the three branches.
@@ -486,6 +611,6 @@ This document provides a comprehensive inventory of all MCP tools across the thr
 ---
 
 **See Also:**
-- `MISSING_TOOLS.md` - Detailed analysis of the 7 missing tools
-- `MIGRATION_PLAN.md` - Step-by-step implementation guide
-- `IMPLEMENTATION_ORDER.md` - Recommended migration sequence
+- `docs/archive/MISSING_TOOLS.md` - Historical analysis of the 7-tool migration effort
+- `docs/archive/MIGRATION_PLAN.md` - Historical migration guide
+- `docs/archive/IMPLEMENTATION_ORDER.md` - Historical migration sequence

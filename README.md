@@ -29,7 +29,7 @@ This project was built with the assistance of Claude Code. If you like this proj
 
 [Video guide for Windows Installer](https://youtu.be/Se04A21wrbE)
 
-1. Download the latest `FoundryMCPServer-Setup-vx.x.x.exe` from [Releases](https://github.com/adambdooley/foundry-vtt-mcp/releases)
+1. Download the latest `FoundryMCPServer-Setup-vx.x.x.exe` from [Releases](https://github.com/maeinomatic/foundry-vtt-mcp/releases)
 2. Run the installer - it will:
    - Install the MCP server with bundled Node.js runtime
    - Configure the Claude Desktop MCP server settings
@@ -39,7 +39,7 @@ This project was built with the assistance of Claude Code. If you like this proj
 4. Enable "Foundry MCP Bridge" in your Foundry Module Management
 
 ### Option 2: Mac Installer
-1.  Download the latest `FoundryMCPServer-vx.x.x.dmg` from [Releases](https://github.com/adambdooley/foundry-vtt-mcp/releases)
+1.  Download the latest `FoundryMCPServer-vx.x.x.dmg` from [Releases](https://github.com/maeinomatic/foundry-vtt-mcp/releases)
 2. Run the package installer inside the dmg - it will:
     - Open DMG and double-click the PKG installer
     - Configure the Claude Desktop MCP server settings
@@ -53,14 +53,14 @@ This project was built with the assistance of Claude Code. If you like this proj
 #### Install the Foundry Module
 1. Open Foundry VTT v13
 2. Select install module in the Foundry Add-ons menu
-2. At the bottom of the window, add the Manifest URL as: https://github.com/adambdooley/foundry-vtt-mcp/blob/master/packages/foundry-module/module.json and click install
+2. At the bottom of the window, add the Manifest URL as: https://github.com/maeinomatic/foundry-vtt-mcp/blob/master/packages/foundry-module/module.json and click install
 3. Enable "Foundry MCP Bridge" in Module Management
    - **Do not change the module ID or folder name.** The MCP backend and the Claude integration both expect the module to live in a directory called `foundry-mcp-bridge`. Renaming the ID in `module.json` breaks socket routing and stops Claude from seeing the backend.
 
 #### Install the MCP Server
 ```bash
 # Clone repository
-git clone https://github.com/adambdooley/foundry-vtt-mcp.git
+git clone https://github.com/maeinomatic/foundry-vtt-mcp.git
 cd foundry-vtt-mcp
 
 # Install dependencies and build
@@ -191,7 +191,7 @@ npm run test:mcp:schema
   
 ## Support & Development
 
-- **Issues**: Report bugs on [GitHub Issues](https://github.com/adambdooley/foundry-vtt-mcp/issues)
+- **Issues**: Report bugs on [GitHub Issues](https://github.com/maeinomatic/foundry-vtt-mcp/issues)
 - **YouTube Channel**: [Subscribe for updates and tutorials](https://www.youtube.com/channel/UCVrSC-FzuAk5AgvfboJj0WA)
 - **Documentation**: Built with TypeScript, comprehensive documentation included
 - **License**: MIT License (Additional Third Party licenses are included for bundled components for the installers)
