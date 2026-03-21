@@ -5,9 +5,49 @@
  * Handles creature indexing, filtering, formatting, and data extraction.
  */
 
-import type { SystemAdapter, SystemMetadata, SystemCreatureIndex, DSA5CreatureIndex } from '../types.js';
-import { DSA5FiltersSchema, matchesDSA5Filters, describeDSA5Filters, type DSA5Filters } from './filters.js';
+import type {
+  SystemAdapter,
+  SystemMetadata,
+  SystemCreatureIndex,
+  DSA5CreatureIndex,
+} from '../types.js';
+import { DSA5FiltersSchema, matchesDSA5Filters, describeDSA5Filters } from './filters.js';
 import { FIELD_PATHS, getExperienceLevel, EIGENSCHAFT_NAMES } from './constants.js';
+
+type UnknownRecord = Record<string, unknown>;
+
+function asRecord(value: unknown): UnknownRecord | undefined {
+  return typeof value === 'object' && value !== null ? (value as UnknownRecord) : undefined;
+}
+
+function getNestedValue(source: UnknownRecord | undefined, path: string[]): unknown {
+  let current: unknown = source;
+  for (const segment of path) {
+    const currentRecord = asRecord(current);
+    if (!currentRecord) {
+      return undefined;
+    }
+    current = currentRecord[segment];
+  }
+  return current;
+}
+
+function toNumber(value: unknown): number | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+
+  return undefined;
+}
+
+function toStringValue(value: unknown): string | undefined {
+  return typeof value === 'string' ? value : undefined;
+}
 
 /**
  * DSA5 system adapter
@@ -19,13 +59,14 @@ export class DSA5Adapter implements SystemAdapter {
       name: 'dsa5',
       displayName: 'Das Schwarze Auge 5',
       version: '1.0.0',
-      description: 'Support for DSA5 (Das Schwarze Auge 5. Edition) with Eigenschaften, Talente, Erfahrungsgrade, and LeP/AsP/KaP resources',
+      description:
+        'Support for DSA5 (Das Schwarze Auge 5. Edition) with Eigenschaften, Talente, Erfahrungsgrade, and LeP/AsP/KaP resources',
       supportedFeatures: {
         creatureIndex: true,
         characterStats: true,
         spellcasting: true,
-        powerLevel: true // Uses Experience Level (Erfahrungsgrad 1-7)
-      }
+        powerLevel: true, // Uses Experience Level (Erfahrungsgrad 1-7)
+      },
     };
   }
 
@@ -37,24 +78,27 @@ export class DSA5Adapter implements SystemAdapter {
    * Extract creature data from Foundry document for indexing
    * This is called by the index builder in Foundry's browser context
    */
-  extractCreatureData(doc: any, pack: any): { creature: SystemCreatureIndex; errors: number } | null {
+  extractCreatureData(
+    _doc: unknown,
+    _pack: unknown
+  ): { creature: SystemCreatureIndex; errors: number } | null {
     // Implementation is in index-builder.ts since it runs in browser
     // This method is here for type compliance but delegates to IndexBuilder
     throw new Error('extractCreatureData should be called from DSA5IndexBuilder, not the adapter');
   }
 
-  getFilterSchema() {
+  getFilterSchema(): typeof DSA5FiltersSchema {
     return DSA5FiltersSchema;
   }
 
-  matchesFilters(creature: SystemCreatureIndex, filters: Record<string, any>): boolean {
+  matchesFilters(creature: SystemCreatureIndex, filters: Record<string, unknown>): boolean {
     // Validate filters match DSA5 schema
     const validated = DSA5FiltersSchema.safeParse(filters);
     if (!validated.success) {
       return false;
     }
 
-    return matchesDSA5Filters(creature, validated.data as DSA5Filters);
+    return matchesDSA5Filters(creature, validated.data);
   }
 
   getDataPaths(): Record<string, string | null> {
@@ -106,21 +150,21 @@ export class DSA5Adapter implements SystemAdapter {
     };
   }
 
-  formatCreatureForList(creature: SystemCreatureIndex): any {
+  formatCreatureForList(creature: SystemCreatureIndex): Record<string, unknown> {
     const dsa5Creature = creature as DSA5CreatureIndex;
-    const formatted: any = {
+    const formatted: Record<string, unknown> = {
       id: creature.id,
       name: creature.name,
       type: creature.type,
       pack: {
         id: creature.packName,
-        label: creature.packLabel
-      }
+        label: creature.packLabel,
+      },
     };
 
     // Add DSA5 specific stats
     if (dsa5Creature.systemData) {
-      const stats: any = {};
+      const stats: Record<string, unknown> = {};
 
       if (dsa5Creature.systemData.level !== undefined) {
         stats.level = dsa5Creature.systemData.level;
@@ -166,7 +210,7 @@ export class DSA5Adapter implements SystemAdapter {
     return formatted;
   }
 
-  formatCreatureForDetails(creature: SystemCreatureIndex): any {
+  formatCreatureForDetails(creature: SystemCreatureIndex): Record<string, unknown> {
     const dsa5Creature = creature as DSA5CreatureIndex;
     const formatted = this.formatCreatureForList(creature);
 
@@ -180,7 +224,7 @@ export class DSA5Adapter implements SystemAdapter {
           name: expLevel.name,
           nameEn: expLevel.nameEn,
           level: expLevel.level,
-          apRange: `${expLevel.min}-${expLevel.max === Infinity ? '∞' : expLevel.max}`
+          apRange: `${expLevel.min}-${expLevel.max === Infinity ? '∞' : expLevel.max}`,
         },
         experiencePoints: dsa5Creature.systemData.experiencePoints,
         species: dsa5Creature.systemData.species,
@@ -194,7 +238,7 @@ export class DSA5Adapter implements SystemAdapter {
         hasSpells: dsa5Creature.systemData.hasSpells,
         hasAstralEnergy: dsa5Creature.systemData.hasAstralEnergy,
         hasKarmaEnergy: dsa5Creature.systemData.hasKarmaEnergy,
-        traits: dsa5Creature.systemData.traits || [],
+        traits: dsa5Creature.systemData.traits ?? [],
         rarity: dsa5Creature.systemData.rarity,
       };
     }
@@ -206,13 +250,13 @@ export class DSA5Adapter implements SystemAdapter {
     return formatted;
   }
 
-  describeFilters(filters: Record<string, any>): string {
+  describeFilters(filters: Record<string, unknown>): string {
     const validated = DSA5FiltersSchema.safeParse(filters);
     if (!validated.success) {
       return 'ungültige Filter';
     }
 
-    return describeDSA5Filters(validated.data as DSA5Filters);
+    return describeDSA5Filters(validated.data);
   }
 
   getPowerLevel(creature: SystemCreatureIndex): number | undefined {
@@ -229,17 +273,18 @@ export class DSA5Adapter implements SystemAdapter {
   /**
    * Extract character statistics from actor data
    */
-  extractCharacterStats(actorData: any): any {
-    const system = actorData.system || {};
-    const stats: any = {};
+  extractCharacterStats(actorData: unknown): Record<string, unknown> {
+    const actor = asRecord(actorData);
+    const system = asRecord(actor?.system);
+    const stats: Record<string, unknown> = {};
 
     // Basic info
-    stats.name = actorData.name;
-    stats.type = actorData.type;
+    stats.name = toStringValue(actor?.name);
+    stats.type = toStringValue(actor?.type);
 
     // Experience and Level
-    const totalAP = system.details?.experience?.total ?? 0;
-    const spentAP = system.details?.experience?.spent ?? 0;
+    const totalAP = toNumber(getNestedValue(system, ['details', 'experience', 'total'])) ?? 0;
+    const spentAP = toNumber(getNestedValue(system, ['details', 'experience', 'spent'])) ?? 0;
 
     if (totalAP > 0) {
       const expLevel = getExperienceLevel(totalAP);
@@ -249,88 +294,100 @@ export class DSA5Adapter implements SystemAdapter {
         available: totalAP - spentAP,
         level: expLevel.level,
         levelName: expLevel.name,
-        levelNameEn: expLevel.nameEn
+        levelNameEn: expLevel.nameEn,
       };
     }
 
     // LeP (Lebensenergie) - wounds.current contains actual current LeP
-    const wounds = system.status?.wounds;
+    const wounds = asRecord(getNestedValue(system, ['status', 'wounds']));
     if (wounds) {
       stats.lifePoints = {
-        current: wounds.current ?? 0,
-        max: wounds.max ?? 0,
+        current: toNumber(wounds.current) ?? 0,
+        max: toNumber(wounds.max) ?? 0,
       };
     }
 
     // AsP (Astralenergie)
-    const astral = system.status?.astralenergy;
-    if (astral && astral.max > 0) {
+    const astral = asRecord(getNestedValue(system, ['status', 'astralenergy']));
+    if ((toNumber(astral?.max) ?? 0) > 0) {
       stats.astralEnergy = {
-        current: astral.value ?? 0,
-        max: astral.max ?? 0,
+        current: toNumber(astral?.value) ?? 0,
+        max: toNumber(astral?.max) ?? 0,
       };
     }
 
     // KaP (Karmaenergie)
-    const karma = system.status?.karmaenergy;
-    if (karma && karma.max > 0) {
+    const karma = asRecord(getNestedValue(system, ['status', 'karmaenergy']));
+    if ((toNumber(karma?.max) ?? 0) > 0) {
       stats.karmaEnergy = {
-        current: karma.value ?? 0,
-        max: karma.max ?? 0,
+        current: toNumber(karma?.value) ?? 0,
+        max: toNumber(karma?.max) ?? 0,
       };
     }
 
     // Eigenschaften (Characteristics: MU, KL, IN, CH, FF, GE, KO, KK)
-    if (system.characteristics) {
-      stats.characteristics = {};
-      for (const [key, eigenschaft] of Object.entries(system.characteristics)) {
-        const eigenschaftData = eigenschaft as any;
+    const characteristics = asRecord(getNestedValue(system, ['characteristics']));
+    if (characteristics) {
+      const characteristicStats: Record<string, UnknownRecord> = {};
+      for (const [key, eigenschaft] of Object.entries(characteristics)) {
+        const eigenschaftData = asRecord(eigenschaft);
         const upperKey = key.toUpperCase();
-        stats.characteristics[upperKey] = {
-          value: eigenschaftData.value ?? 8,
-          initial: eigenschaftData.initial ?? 8,
-          name: EIGENSCHAFT_NAMES[upperKey]?.german,
-          nameEn: EIGENSCHAFT_NAMES[upperKey]?.english
+        const eigenschaftNames = EIGENSCHAFT_NAMES[upperKey];
+        characteristicStats[upperKey] = {
+          value: toNumber(eigenschaftData?.value) ?? 8,
+          initial: toNumber(eigenschaftData?.initial) ?? 8,
+          name: eigenschaftNames?.german,
+          nameEn: eigenschaftNames?.english,
         };
       }
+      stats.characteristics = characteristicStats;
     }
 
     // Combat values
-    const initiative = system.status?.initiative?.value ?? system.status?.initiative;
+    const initiative =
+      toNumber(getNestedValue(system, ['status', 'initiative', 'value'])) ??
+      toNumber(getNestedValue(system, ['status', 'initiative']));
     if (initiative !== undefined) {
       stats.initiative = initiative;
     }
 
-    const speed = system.status?.speed?.value ?? system.status?.speed;
+    const speed =
+      toNumber(getNestedValue(system, ['status', 'speed', 'value'])) ??
+      toNumber(getNestedValue(system, ['status', 'speed']));
     if (speed !== undefined) {
       stats.speed = speed;
     }
 
-    const dodge = system.status?.dodge?.value ?? system.status?.dodge;
+    const dodge =
+      toNumber(getNestedValue(system, ['status', 'dodge', 'value'])) ??
+      toNumber(getNestedValue(system, ['status', 'dodge']));
     if (dodge !== undefined) {
       stats.dodge = dodge;
     }
 
-    const armor = system.status?.armour?.value ?? system.status?.armor?.value ?? 0;
+    const armor =
+      toNumber(getNestedValue(system, ['status', 'armour', 'value'])) ??
+      toNumber(getNestedValue(system, ['status', 'armor', 'value'])) ??
+      0;
     if (armor) {
       stats.armor = armor;
     }
 
     // Identity info
-    if (system.details) {
-      const identity: any = {};
+    if (asRecord(getNestedValue(system, ['details']))) {
+      const identity: Record<string, unknown> = {};
 
-      const species = system.details.species?.value;
+      const species = toStringValue(getNestedValue(system, ['details', 'species', 'value']));
       if (species) {
         identity.species = species;
       }
 
-      const culture = system.details.culture?.value;
+      const culture = toStringValue(getNestedValue(system, ['details', 'culture', 'value']));
       if (culture) {
         identity.culture = culture;
       }
 
-      const career = system.details.career?.value;
+      const career = toStringValue(getNestedValue(system, ['details', 'career', 'value']));
       if (career) {
         identity.profession = career;
       }
@@ -341,21 +398,22 @@ export class DSA5Adapter implements SystemAdapter {
     }
 
     // Size
-    const size = system.status?.size?.value;
+    const size = toNumber(getNestedValue(system, ['status', 'size', 'value']));
     if (size) {
       stats.size = size;
     }
 
     // Tradition (magical/clerical)
-    if (system.tradition) {
-      const tradition: any = {};
+    const traditionData = asRecord(getNestedValue(system, ['tradition']));
+    if (traditionData) {
+      const tradition: Record<string, unknown> = {};
 
-      if (system.tradition.magical) {
-        tradition.magical = system.tradition.magical;
+      if (traditionData.magical) {
+        tradition.magical = traditionData.magical;
       }
 
-      if (system.tradition.clerical) {
-        tradition.clerical = system.tradition.clerical;
+      if (traditionData.clerical) {
+        tradition.clerical = traditionData.clerical;
       }
 
       if (Object.keys(tradition).length > 0) {
@@ -364,12 +422,15 @@ export class DSA5Adapter implements SystemAdapter {
     }
 
     // Spellcasting detection
-    const hasSpells = !!(astral?.max || karma?.max || system.tradition);
+    const hasSpells =
+      (toNumber(astral?.max) ?? 0) > 0 ||
+      (toNumber(karma?.max) ?? 0) > 0 ||
+      traditionData !== undefined;
     if (hasSpells) {
       stats.spellcasting = {
         hasSpells: true,
-        hasAstralEnergy: !!(astral?.max),
-        hasKarmaEnergy: !!(karma?.max)
+        hasAstralEnergy: (toNumber(astral?.max) ?? 0) > 0,
+        hasKarmaEnergy: (toNumber(karma?.max) ?? 0) > 0,
       };
     }
 

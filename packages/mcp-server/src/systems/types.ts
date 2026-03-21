@@ -45,7 +45,7 @@ export interface SystemCreatureIndex {
 
   // System-specific metadata
   system: SystemId;
-  systemData: any; // System-specific fields (D&D 5e CR, PF2e level, etc.)
+  systemData: unknown; // System-specific fields (D&D 5e CR, PF2e level, etc.)
 }
 
 /**
@@ -74,8 +74,8 @@ export interface SystemAdapter {
    * @returns Creature data or null if not a valid creature
    */
   extractCreatureData(
-    doc: any,
-    pack: any
+    doc: unknown,
+    pack: unknown
   ): { creature: SystemCreatureIndex; errors: number } | null;
 
   /**
@@ -89,7 +89,7 @@ export interface SystemAdapter {
    * @param creature - Indexed creature data
    * @param filters - User-provided filter criteria
    */
-  matchesFilters(creature: SystemCreatureIndex, filters: Record<string, any>): boolean;
+  matchesFilters(creature: SystemCreatureIndex, filters: Record<string, unknown>): boolean;
 
   /**
    * Get system-specific data paths for actor properties
@@ -101,19 +101,19 @@ export interface SystemAdapter {
    * Format creature data for list display
    * Used in search results and creature lists
    */
-  formatCreatureForList(creature: SystemCreatureIndex): any;
+  formatCreatureForList(creature: SystemCreatureIndex): unknown;
 
   /**
    * Format creature data for detailed display
    * Used when showing full creature information
    */
-  formatCreatureForDetails(creature: SystemCreatureIndex): any;
+  formatCreatureForDetails(creature: SystemCreatureIndex): unknown;
 
   /**
    * Generate human-readable description of filters
    * @param filters - Filter criteria to describe
    */
-  describeFilters(filters: Record<string, any>): string;
+  describeFilters(filters: Record<string, unknown>): string;
 
   /**
    * Get normalized power level for a creature
@@ -129,7 +129,7 @@ export interface SystemAdapter {
    * Used by get-character and list-characters tools
    * @param actorData - Raw Foundry actor data
    */
-  extractCharacterStats(actorData: any): any;
+  extractCharacterStats(actorData: unknown): unknown;
 }
 
 /**
@@ -151,14 +151,14 @@ export interface IndexBuilder {
    * @param force - Force rebuild even if cache exists
    * @returns Array of indexed creatures
    */
-  buildIndex(packs: any[], force?: boolean): Promise<SystemCreatureIndex[]>;
+  buildIndex(packs: unknown[], force?: boolean): Promise<SystemCreatureIndex[]>;
 
   /**
    * Extract creature data from a single compendium pack
    * @param pack - Compendium pack to process
    * @returns Creatures and error count
    */
-  extractDataFromPack(pack: any): Promise<{ creatures: SystemCreatureIndex[]; errors: number }>;
+  extractDataFromPack(pack: unknown): Promise<{ creatures: SystemCreatureIndex[]; errors: number }>;
 }
 
 /**
@@ -226,10 +226,14 @@ export interface DSA5CreatureIndex extends SystemCreatureIndex {
  */
 export interface GenericCreatureIndex extends SystemCreatureIndex {
   system: 'other';
-  systemData: Record<string, any>;
+  systemData: Record<string, unknown>;
 }
 
 /**
  * Union type of all creature index types
  */
-export type AnyCreatureIndex = DnD5eCreatureIndex | PF2eCreatureIndex | DSA5CreatureIndex | GenericCreatureIndex;
+export type AnyCreatureIndex =
+  | DnD5eCreatureIndex
+  | PF2eCreatureIndex
+  | DSA5CreatureIndex
+  | GenericCreatureIndex;

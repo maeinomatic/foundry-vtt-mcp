@@ -65,7 +65,13 @@ function getBundledPythonPath(): string {
   }
 
   // Check for nested ComfyUI installation (current actual structure)
-  const nestedComfyUIPythonPath = path.join(installDir, 'ComfyUI', 'ComfyUI', 'python_embeded', 'python.exe');
+  const nestedComfyUIPythonPath = path.join(
+    installDir,
+    'ComfyUI',
+    'ComfyUI',
+    'python_embeded',
+    'python.exe'
+  );
   if (fs.existsSync(nestedComfyUIPythonPath)) {
     return nestedComfyUIPythonPath;
   }
@@ -86,14 +92,56 @@ function getBundledPythonPath(): string {
 
   // Fallback: try alternative installation paths
   const fallbackPaths = [
-    path.join(os.homedir(), 'AppData', 'Local', 'FoundryMCPServer', 'ComfyUI', 'ComfyUI', 'python_embeded', 'python.exe'),
-    path.join(os.homedir(), 'AppData', 'Local', 'FoundryMCPServer', 'ComfyUI-headless', 'ComfyUI', 'python_embeded', 'python.exe'),
-    path.join(os.homedir(), 'AppData', 'Local', 'FoundryMCPServer', 'ComfyUI', 'python_embeded', 'python.exe'),
-    path.join(os.homedir(), 'AppData', 'Local', 'FoundryMCPServer', 'ComfyUI-headless', 'python_embeded', 'python.exe'),
-    path.join(os.homedir(), 'AppData', 'Local', 'FoundryMCPServer', 'ComfyUI-env', 'Scripts', 'python.exe'),
+    path.join(
+      os.homedir(),
+      'AppData',
+      'Local',
+      'FoundryMCPServer',
+      'ComfyUI',
+      'ComfyUI',
+      'python_embeded',
+      'python.exe'
+    ),
+    path.join(
+      os.homedir(),
+      'AppData',
+      'Local',
+      'FoundryMCPServer',
+      'ComfyUI-headless',
+      'ComfyUI',
+      'python_embeded',
+      'python.exe'
+    ),
+    path.join(
+      os.homedir(),
+      'AppData',
+      'Local',
+      'FoundryMCPServer',
+      'ComfyUI',
+      'python_embeded',
+      'python.exe'
+    ),
+    path.join(
+      os.homedir(),
+      'AppData',
+      'Local',
+      'FoundryMCPServer',
+      'ComfyUI-headless',
+      'python_embeded',
+      'python.exe'
+    ),
+    path.join(
+      os.homedir(),
+      'AppData',
+      'Local',
+      'FoundryMCPServer',
+      'ComfyUI-env',
+      'Scripts',
+      'python.exe'
+    ),
     path.join(process.cwd(), '..', '..', 'ComfyUI-env', 'Scripts', 'python.exe'),
     path.join(__dirname, '..', '..', '..', 'ComfyUI-env', 'Scripts', 'python.exe'),
-    path.join(os.homedir(), 'AppData', 'Local', 'FoundryMCPServer', 'Python', 'python.exe')
+    path.join(os.homedir(), 'AppData', 'Local', 'FoundryMCPServer', 'Python', 'python.exe'),
   ];
 
   for (const fallbackPath of fallbackPaths) {
@@ -107,7 +155,6 @@ function getBundledPythonPath(): string {
   return 'python';
 }
 
-
 // ComfyUI Service Management
 
 let comfyuiProcess: ChildProcess | null = null;
@@ -116,119 +163,201 @@ let comfyuiStatus: 'stopped' | 'starting' | 'running' | 'error' = 'stopped';
 
 let lockFd: number | null = null;
 
+type UnknownRecord = Record<string, unknown>;
+
+interface MapGenerationParams {
+  prompt: string;
+  scene_name: string;
+  size: string;
+  grid_size: number;
+  quality: string;
+}
+
+interface QueueJob {
+  id: string;
+  status?: string;
+  progress_percent?: number;
+  current_stage?: string;
+  result?: unknown;
+  error?: string;
+  comfyui_job_id?: string;
+  params: MapGenerationParams;
+}
+
+interface MapGenerationQueue {
+  createJob(input: { params: MapGenerationParams }): Promise<QueueJob>;
+  getJob(jobId: string): Promise<QueueJob | null>;
+  markJobStarted(jobId: string): Promise<void>;
+  updateJobProgress(jobId: string, progress: number, stage: string): Promise<void>;
+  markJobComplete(jobId: string, result: UnknownRecord): Promise<void>;
+  markJobFailed(jobId: string, error: string): Promise<void>;
+  cancelJob(jobId: string): Promise<boolean>;
+}
+
+interface ComfyUIClientLike {
+  config?: {
+    autoStart?: boolean;
+  };
+  checkInstallation?(): Promise<boolean>;
+  checkHealth(): Promise<{ available?: boolean }>;
+  startService(): Promise<unknown>;
+  getSizePixels(size: string): number;
+  submitJob(input: {
+    prompt: string;
+    width: number;
+    height: number;
+    quality: string;
+  }): Promise<{ prompt_id: string }>;
+  getJobStatus(promptId: string): Promise<string>;
+  getJobImages(promptId: string): Promise<string[]>;
+  downloadImage(filename: string): Promise<Buffer | null>;
+  registerProgressCallback(
+    promptId: string,
+    callback: (progress: { currentStep: number; totalSteps: number }) => void
+  ): void;
+  unregisterProgressCallback(promptId: string): void;
+  cancelJob(promptId: string): Promise<boolean>;
+}
+
+interface FoundryMessenger {
+  sendMessage(message: UnknownRecord): void;
+  broadcastMessage(message: UnknownRecord): void;
+  query(method: string, params?: UnknownRecord): Promise<UnknownRecord>;
+  getConnectionType?(): 'websocket' | 'webrtc' | null;
+}
+
+interface RpcMessage {
+  id?: string;
+  method?: string;
+  params?: UnknownRecord;
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : 'Unknown error';
+}
+
+function asRecord(value: unknown): UnknownRecord {
+  return value !== null && typeof value === 'object' ? (value as UnknownRecord) : {};
+}
+
+function asString(value: unknown, fallback: string): string {
+  return typeof value === 'string' ? value : fallback;
+}
+
+function asNumber(value: unknown, fallback: number): number {
+  return typeof value === 'number' ? value : fallback;
+}
+
 function acquireLock(): boolean {
-
   try {
-
     try {
-
       lockFd = fs.openSync(LOCK_FILE, 'wx');
-
-    } catch (err: any) {
-
-      if (err && err.code === 'EEXIST') {
-
+    } catch (err: unknown) {
+      const errRecord = asRecord(err);
+      if (errRecord.code === 'EEXIST') {
         try {
-
           const lockData = fs.readFileSync(LOCK_FILE, 'utf8');
 
           const lockPid = parseInt(lockData.trim(), 10);
 
           try {
-
             process.kill(lockPid, 0);
 
             // Backend already running - return false to exit gracefully
             return false;
-
           } catch {
-
             console.error(`Removing stale backend lock for PID ${lockPid}`);
 
-            try { fs.unlinkSync(LOCK_FILE); } catch {}
+            try {
+              fs.unlinkSync(LOCK_FILE);
+            } catch {}
 
             lockFd = fs.openSync(LOCK_FILE, 'wx');
-
           }
-
         } catch (readErr) {
-
           console.error('Corrupt backend lock file, removing:', readErr);
 
-          try { fs.unlinkSync(LOCK_FILE); } catch {}
+          try {
+            fs.unlinkSync(LOCK_FILE);
+          } catch {}
 
           lockFd = fs.openSync(LOCK_FILE, 'wx');
-
         }
-
       } else {
-
         console.error('Failed to open backend lock file:', err);
 
         return false;
-
       }
-
     }
 
     if (lockFd === null) return false;
 
     fs.writeFileSync(lockFd, String(process.pid));
 
-    try { fs.fsyncSync(lockFd); } catch {}
+    try {
+      fs.fsyncSync(lockFd);
+    } catch {}
 
     console.error(`Acquired backend lock with PID ${process.pid}`);
 
     return true;
-
   } catch (error) {
-
     console.error('Failed to acquire backend lock:', error);
 
     return false;
-
   }
-
 }
 
 function releaseLock(): void {
-
   try {
+    if (lockFd !== null) {
+      try {
+        fs.closeSync(lockFd);
+      } catch {}
+      lockFd = null;
+    }
 
-    if (lockFd !== null) { try { fs.closeSync(lockFd); } catch {} lockFd = null; }
-
-    if (fs.existsSync(LOCK_FILE)) { try { fs.unlinkSync(LOCK_FILE); } catch {} }
-
+    if (fs.existsSync(LOCK_FILE)) {
+      try {
+        fs.unlinkSync(LOCK_FILE);
+      } catch {}
+    }
   } catch (error) {
-
     console.error('Failed to release backend lock:', error);
-
   }
-
 }
 
 // ComfyUI Service Management Functions
 
-async function findComfyUIPath(): Promise<string> {
-
+function findComfyUIPath(): string {
   // Check for nested ComfyUI installation (current actual structure)
 
-  const nestedComfyUIPath = path.join(os.homedir(), 'AppData', 'Local', 'FoundryMCPServer', 'ComfyUI', 'ComfyUI');
+  const nestedComfyUIPath = path.join(
+    os.homedir(),
+    'AppData',
+    'Local',
+    'FoundryMCPServer',
+    'ComfyUI',
+    'ComfyUI'
+  );
 
   if (fs.existsSync(path.join(nestedComfyUIPath, 'main.py'))) {
-
     return nestedComfyUIPath;
-
   }
 
   // Check for legacy nested ComfyUI-headless installation (fallback)
 
-  const nestedHeadlessPath = path.join(os.homedir(), 'AppData', 'Local', 'FoundryMCPServer', 'ComfyUI-headless', 'ComfyUI');
+  const nestedHeadlessPath = path.join(
+    os.homedir(),
+    'AppData',
+    'Local',
+    'FoundryMCPServer',
+    'ComfyUI-headless',
+    'ComfyUI'
+  );
 
   if (fs.existsSync(path.join(nestedHeadlessPath, 'main.py'))) {
-
     return nestedHeadlessPath;
-
   }
 
   // Check for flat ComfyUI installation (unlikely but possible)
@@ -236,82 +365,65 @@ async function findComfyUIPath(): Promise<string> {
   const flatPath = path.join(os.homedir(), 'AppData', 'Local', 'FoundryMCPServer', 'ComfyUI');
 
   if (fs.existsSync(path.join(flatPath, 'main.py'))) {
-
     return flatPath;
-
   }
 
   // Check for legacy flat ComfyUI-headless installation (fallback)
 
-  const legacyFlatPath = path.join(os.homedir(), 'AppData', 'Local', 'FoundryMCPServer', 'ComfyUI-headless');
+  const legacyFlatPath = path.join(
+    os.homedir(),
+    'AppData',
+    'Local',
+    'FoundryMCPServer',
+    'ComfyUI-headless'
+  );
 
   if (fs.existsSync(path.join(legacyFlatPath, 'main.py'))) {
-
     return legacyFlatPath;
-
   }
 
   throw new Error('ComfyUI installation not found');
-
 }
 
 async function waitForComfyUIReady(timeoutMs: number = 60000): Promise<void> {
-
   const startTime = Date.now();
 
   while (Date.now() - startTime < timeoutMs) {
-
     try {
-
       const response = await fetch('http://127.0.0.1:31411/system_stats', {
-
-        signal: AbortSignal.timeout(5000)
-
+        signal: AbortSignal.timeout(5000),
       });
 
       if (response.ok) {
-
         return; // ComfyUI is ready
-
       }
-
     } catch (error) {
-
       // Still starting up, continue polling
-
     }
 
     await new Promise(resolve => setTimeout(resolve, 2000));
-
   }
 
   throw new Error('ComfyUI failed to start within timeout');
-
 }
 
-async function startComfyUIService(logger: Logger): Promise<any> {
-
+async function startComfyUIService(logger: Logger): Promise<Record<string, unknown>> {
   if (comfyuiStatus === 'running') {
-
     return { status: 'already_running', message: 'ComfyUI service is already running' };
-
   }
 
   if (comfyuiStatus === 'starting') {
-
     return { status: 'starting', message: 'ComfyUI service start already in progress' };
-
   }
 
   try {
-
     comfyuiStatus = 'starting';
 
     logger.info('Starting ComfyUI service...');
 
     // Find ComfyUI installation
 
-    const comfyUIPath = await findComfyUIPath();
+    const comfyUIPath = findComfyUIPath();
 
     logger.info('ComfyUI found', { path: comfyUIPath });
 
@@ -323,68 +435,60 @@ async function startComfyUIService(logger: Logger): Promise<any> {
     const pythonExe = getBundledPythonPath();
     logger.info('Using bundled Python', { pythonPath: pythonExe });
 
-    comfyuiProcess = spawn(pythonExe, [
+    comfyuiProcess = spawn(
+      pythonExe,
+      [
+        'main.py',
 
-      'main.py',
+        '--port',
+        '31411',
 
-      '--port', '31411',
+        '--listen',
+        '127.0.0.1',
 
-      '--listen', '127.0.0.1',
+        '--disable-auto-launch',
 
-      '--disable-auto-launch',
+        '--dont-print-server',
+      ],
+      {
+        cwd: comfyUIPath,
 
-      '--dont-print-server'
+        stdio: ['ignore', 'pipe', 'pipe'],
 
-    ], {
+        detached: false,
 
-      cwd: comfyUIPath,
-
-      stdio: ['ignore', 'pipe', 'pipe'],
-
-      detached: false,
-
-      windowsHide: true // Prevent Python console window on Windows
-
-    });
+        windowsHide: true, // Prevent Python console window on Windows
+      }
+    );
 
     // Handle process events
 
     comfyuiProcess.on('spawn', () => {
-
       logger.info('ComfyUI process spawned successfully');
-
     });
 
-    comfyuiProcess.on('error', (error) => {
-
+    comfyuiProcess.on('error', error => {
       logger.error('ComfyUI process error', { error: error.message });
 
       comfyuiStatus = 'error';
-
     });
 
     comfyuiProcess.on('exit', (code, signal) => {
-
       logger.info('ComfyUI process exited', { code, signal });
 
       comfyuiStatus = 'stopped';
 
       comfyuiProcess = null;
-
     });
 
     // Capture stdout/stderr for debugging
 
-    comfyuiProcess.stdout?.on('data', (data) => {
-
-      logger.debug('ComfyUI stdout', { data: data.toString().trim() });
-
+    comfyuiProcess.stdout?.on('data', (data: unknown) => {
+      logger.debug('ComfyUI stdout', { data: String(data).trim() });
     });
 
-    comfyuiProcess.stderr?.on('data', (data) => {
-
-      logger.debug('ComfyUI stderr', { data: data.toString().trim() });
-
+    comfyuiProcess.stderr?.on('data', (data: unknown) => {
+      logger.debug('ComfyUI stderr', { data: String(data).trim() });
     });
 
     // Wait for ComfyUI API to be ready
@@ -394,63 +498,46 @@ async function startComfyUIService(logger: Logger): Promise<any> {
     comfyuiStatus = 'running';
 
     logger.info('ComfyUI service started successfully', {
-
       pid: comfyuiProcess.pid,
 
-      status: comfyuiStatus
-
+      status: comfyuiStatus,
     });
 
     return {
-
       status: 'running',
 
       message: 'ComfyUI service started successfully',
 
-      pid: comfyuiProcess.pid
-
+      pid: comfyuiProcess.pid,
     };
-
-  } catch (error: any) {
-
-    logger.error('ComfyUI service start failed', { error: error.message });
+  } catch (error: unknown) {
+    logger.error('ComfyUI service start failed', { error: getErrorMessage(error) });
 
     comfyuiStatus = 'error';
 
     if (comfyuiProcess) {
-
       comfyuiProcess.kill();
 
       comfyuiProcess = null;
-
     }
 
     return {
-
       status: 'error',
 
-      message: `Failed to start ComfyUI service: ${error.message}`
-
+      message: `Failed to start ComfyUI service: ${getErrorMessage(error)}`,
     };
-
   }
-
 }
 
-async function stopComfyUIService(logger: Logger): Promise<any> {
-
+async function stopComfyUIService(logger: Logger): Promise<Record<string, unknown>> {
   if (comfyuiStatus === 'stopped') {
-
     return { status: 'already_stopped', message: 'ComfyUI service is already stopped' };
-
   }
 
   try {
-
     logger.info('Stopping ComfyUI service...');
 
     if (comfyuiProcess) {
-
       comfyuiProcess.kill('SIGTERM');
 
       // Wait for graceful shutdown, then force kill if needed
@@ -458,11 +545,8 @@ async function stopComfyUIService(logger: Logger): Promise<any> {
       await new Promise(resolve => setTimeout(resolve, 5000));
 
       if (comfyuiProcess && !comfyuiProcess.killed) {
-
         comfyuiProcess.kill('SIGKILL');
-
       }
-
     }
 
     comfyuiStatus = 'stopped';
@@ -472,79 +556,66 @@ async function stopComfyUIService(logger: Logger): Promise<any> {
     logger.info('ComfyUI service stopped successfully');
 
     return { status: 'stopped', message: 'ComfyUI service stopped successfully' };
+  } catch (error: unknown) {
+    logger.error('ComfyUI service stop failed', { error: getErrorMessage(error) });
 
-  } catch (error: any) {
-
-    logger.error('ComfyUI service stop failed', { error: error.message });
-
-    return { status: 'error', message: `Failed to stop ComfyUI service: ${error.message}` };
-
+    return {
+      status: 'error',
+      message: `Failed to stop ComfyUI service: ${getErrorMessage(error)}`,
+    };
   }
-
 }
 
-async function checkComfyUIStatus(): Promise<any> {
-
+async function checkComfyUIStatus(): Promise<Record<string, unknown>> {
   // Always check if ComfyUI is actually responsive on port 31411
   // This handles both spawned processes and externally-started instances
 
   try {
-
     const response = await fetch('http://127.0.0.1:31411/system_stats', {
-
-      signal: AbortSignal.timeout(5000)
-
+      signal: AbortSignal.timeout(5000),
     });
 
     if (response.ok) {
-
       comfyuiStatus = 'running';
-
     } else {
-
       comfyuiStatus = 'error';
-
     }
-
   } catch (error) {
-
     // ComfyUI is not responsive on port 31411
     comfyuiStatus = 'stopped';
-
   }
 
   return {
-
     status: comfyuiStatus,
 
     message: getStatusMessage(comfyuiStatus),
 
-    pid: comfyuiProcess?.pid || null
-
+    pid: comfyuiProcess?.pid ?? null,
   };
-
 }
 
 function getStatusMessage(status: string): string {
-
   const statusMessages = {
+    stopped: 'ComfyUI service is not running',
 
-    'stopped': 'ComfyUI service is not running',
+    starting: 'ComfyUI service is starting...',
 
-    'starting': 'ComfyUI service is starting...',
+    running: 'ComfyUI service is running',
 
-    'running': 'ComfyUI service is running',
-
-    'error': 'ComfyUI service encountered an error'
-
+    error: 'ComfyUI service encountered an error',
   };
 
-  return statusMessages[status as keyof typeof statusMessages] || 'Unknown status';
-
+  return statusMessages[status as keyof typeof statusMessages] ?? 'Unknown status';
 }
 
 // Map generation WebSocket handlers (matching existing tool pattern)
-async function handleGenerateMapRequest(message: any, jobQueue: any, comfyuiClient: any, logger: Logger, foundryClient: any): Promise<any> {
+async function handleGenerateMapRequest(
+  message: unknown,
+  jobQueue: MapGenerationQueue,
+  comfyuiClient: ComfyUIClientLike,
+  logger: Logger,
+  foundryClient: FoundryMessenger
+): Promise<Record<string, unknown>> {
   try {
     logger.info('Map generation request received via WebSocket', { message });
 
@@ -553,23 +624,24 @@ async function handleGenerateMapRequest(message: any, jobQueue: any, comfyuiClie
     }
 
     // Extract data from message - could be in message.data or message directly
-    const data = message.data || message;
+    const messageRecord = asRecord(message);
+    const data = asRecord(messageRecord.data ?? message);
 
     // Validate input
-    if (!data.prompt || typeof data.prompt !== 'string') {
+    if (typeof data.prompt !== 'string' || data.prompt.length === 0) {
       throw new Error('Prompt is required and must be a string');
     }
 
-    if (!data.scene_name || typeof data.scene_name !== 'string') {
+    if (typeof data.scene_name !== 'string' || data.scene_name.length === 0) {
       throw new Error('Scene name is required and must be a string');
     }
 
-    const params = {
+    const params: MapGenerationParams = {
       prompt: data.prompt.trim(),
       scene_name: data.scene_name.trim(),
-      size: data.size || 'medium',
-      grid_size: data.grid_size || 70,
-      quality: data.quality || 'low'
+      size: asString(data.size, 'medium'),
+      grid_size: asNumber(data.grid_size, 70),
+      quality: asString(data.quality, 'low'),
     };
 
     // Create job using mapgen's JobQueue
@@ -577,32 +649,38 @@ async function handleGenerateMapRequest(message: any, jobQueue: any, comfyuiClie
     const jobId = job.id;
 
     // Start background processing (mapgen style)
-    processMapGenerationInBackend(jobId, jobQueue, comfyuiClient, logger, foundryClient).catch((error) => {
-      logger.error('Background map generation failed', { jobId, error });
-    });
+    processMapGenerationInBackend(jobId, jobQueue, comfyuiClient, logger, foundryClient).catch(
+      (error: unknown) => {
+        logger.error('Background map generation failed', { jobId, error });
+      }
+    );
 
     return {
       status: 'success',
-      jobId: jobId,
+      jobId,
       message: 'Map generation started',
-      estimatedTime: 'varies by hardware and quality setting'
+      estimatedTime: 'varies by hardware and quality setting',
     };
-
-  } catch (error: any) {
-    logger.error('Map generation request failed', { error: error.message });
+  } catch (error: unknown) {
+    logger.error('Map generation request failed', { error: getErrorMessage(error) });
     return {
       status: 'error',
-      message: error.message
+      message: getErrorMessage(error),
     };
   }
 }
 
-async function handleCheckMapStatusRequest(data: any, jobQueue: any, logger: Logger): Promise<any> {
+async function handleCheckMapStatusRequest(
+  data: unknown,
+  jobQueue: MapGenerationQueue,
+  logger: Logger
+): Promise<Record<string, unknown>> {
   try {
-    if (!data) {
+    const dataRecord = asRecord(data);
+    if (Object.keys(dataRecord).length === 0) {
       throw new Error('Request data is required');
     }
-    const jobId = data.job_id;
+    const jobId = asString(dataRecord.job_id, '');
     if (!jobId) {
       throw new Error('Job ID is required');
     }
@@ -611,7 +689,7 @@ async function handleCheckMapStatusRequest(data: any, jobQueue: any, logger: Log
     if (!job) {
       return {
         status: 'error',
-        message: `Job ${jobId} not found`
+        message: `Job ${jobId} not found`,
       };
     }
 
@@ -623,25 +701,30 @@ async function handleCheckMapStatusRequest(data: any, jobQueue: any, logger: Log
         progress_percent: job.progress_percent,
         current_stage: job.current_stage,
         result: job.result,
-        error: job.error
-      }
+        error: job.error,
+      },
     };
-
-  } catch (error: any) {
-    logger.error('Map status check failed', { error: error.message });
+  } catch (error: unknown) {
+    logger.error('Map status check failed', { error: getErrorMessage(error) });
     return {
       status: 'error',
-      message: error.message
+      message: getErrorMessage(error),
     };
   }
 }
 
-async function handleCancelMapJobRequest(data: any, jobQueue: any, comfyuiClient: any, logger: Logger): Promise<any> {
+async function handleCancelMapJobRequest(
+  data: unknown,
+  jobQueue: MapGenerationQueue,
+  comfyuiClient: ComfyUIClientLike,
+  logger: Logger
+): Promise<Record<string, unknown>> {
   try {
-    if (!data) {
+    const dataRecord = asRecord(data);
+    if (Object.keys(dataRecord).length === 0) {
       throw new Error('Request data is required');
     }
-    const jobId = data.job_id;
+    const jobId = asString(dataRecord.job_id, '');
     if (!jobId) {
       throw new Error('Job ID is required');
     }
@@ -651,7 +734,7 @@ async function handleCancelMapJobRequest(data: any, jobQueue: any, comfyuiClient
     if (!job) {
       return {
         status: 'error',
-        message: 'Job not found'
+        message: 'Job not found',
       };
     }
 
@@ -660,7 +743,10 @@ async function handleCancelMapJobRequest(data: any, jobQueue: any, comfyuiClient
       logger.info('Cancelling ComfyUI job', { jobId, promptId: job.comfyui_job_id });
       const comfyuiCancelled = await comfyuiClient.cancelJob(job.comfyui_job_id);
       if (comfyuiCancelled) {
-        logger.info('ComfyUI job interrupted successfully', { jobId, promptId: job.comfyui_job_id });
+        logger.info('ComfyUI job interrupted successfully', {
+          jobId,
+          promptId: job.comfyui_job_id,
+        });
       } else {
         logger.warn('Failed to interrupt ComfyUI job', { jobId, promptId: job.comfyui_job_id });
       }
@@ -671,56 +757,85 @@ async function handleCancelMapJobRequest(data: any, jobQueue: any, comfyuiClient
 
     return {
       status: cancelled ? 'success' : 'error',
-      message: cancelled ? 'Job cancelled successfully' : 'Failed to cancel job'
+      message: cancelled ? 'Job cancelled successfully' : 'Failed to cancel job',
     };
-
-  } catch (error: any) {
-    logger.error('Map job cancellation failed', { error: error.message });
+  } catch (error: unknown) {
+    logger.error('Map job cancellation failed', { error: getErrorMessage(error) });
     return {
       status: 'error',
-      message: error.message
+      message: getErrorMessage(error),
     };
   }
 }
 
 // Background processing using mapgen's proven approach
-async function processMapGenerationInBackend(jobId: string, jobQueue: any, comfyuiClient: any, logger: Logger, foundryClient: any): Promise<void> {
+async function processMapGenerationInBackend(
+  jobId: string,
+  jobQueue: MapGenerationQueue,
+  comfyuiClient: ComfyUIClientLike,
+  logger: Logger,
+  foundryClient: FoundryMessenger
+): Promise<void> {
   // CRITICAL: Log entry to file IMMEDIATELY
   const fs2 = await import('fs').then(m => m.promises);
   const path2 = await import('path');
   const os2 = await import('os');
   const processDebugLog = path2.join(os2.tmpdir(), 'process-mapgen-debug.log');
-  await fs2.appendFile(processDebugLog, `[${new Date().toISOString()}] processMapGenerationInBackend ENTERED - jobId: ${jobId}\n`);
+  await fs2.appendFile(
+    processDebugLog,
+    `[${new Date().toISOString()}] processMapGenerationInBackend ENTERED - jobId: ${jobId}\n`
+  );
 
   try {
-    await fs2.appendFile(processDebugLog, `[${new Date().toISOString()}] Getting job from queue...\n`);
+    await fs2.appendFile(
+      processDebugLog,
+      `[${new Date().toISOString()}] Getting job from queue...\n`
+    );
     const job = await jobQueue.getJob(jobId);
     if (!job) {
-      await fs2.appendFile(processDebugLog, `[${new Date().toISOString()}] ERROR: Job not found!\n`);
+      await fs2.appendFile(
+        processDebugLog,
+        `[${new Date().toISOString()}] ERROR: Job not found!\n`
+      );
       throw new Error(`Job ${jobId} not found`);
     }
 
-    await fs2.appendFile(processDebugLog, `[${new Date().toISOString()}] Job retrieved: ${JSON.stringify(job.params)}\n`);
+    await fs2.appendFile(
+      processDebugLog,
+      `[${new Date().toISOString()}] Job retrieved: ${JSON.stringify(job.params)}\n`
+    );
     logger.info('Starting background map generation processing', { jobId, params: job.params });
 
     // Mark job as started (mapgen style)
-    await fs2.appendFile(processDebugLog, `[${new Date().toISOString()}] Marking job as started...\n`);
+    await fs2.appendFile(
+      processDebugLog,
+      `[${new Date().toISOString()}] Marking job as started...\n`
+    );
     await jobQueue.markJobStarted(jobId);
     await fs2.appendFile(processDebugLog, `[${new Date().toISOString()}] Job marked as started\n`);
 
     // Emit progress to Foundry module
-    await fs2.appendFile(processDebugLog, `[${new Date().toISOString()}] Sending initial progress...\n`);
+    await fs2.appendFile(
+      processDebugLog,
+      `[${new Date().toISOString()}] Sending initial progress...\n`
+    );
     foundryClient.sendMessage({
       type: 'map-generation-progress',
-      jobId: jobId,
+      jobId,
       progress: 10,
-      stage: 'Starting processing...'
+      stage: 'Starting processing...',
     });
 
     // Ensure ComfyUI is running
-    await fs2.appendFile(processDebugLog, `[${new Date().toISOString()}] Checking ComfyUI health...\n`);
+    await fs2.appendFile(
+      processDebugLog,
+      `[${new Date().toISOString()}] Checking ComfyUI health...\n`
+    );
     const healthInfo = await comfyuiClient.checkHealth();
-    await fs2.appendFile(processDebugLog, `[${new Date().toISOString()}] Health check: ${JSON.stringify(healthInfo)}\n`);
+    await fs2.appendFile(
+      processDebugLog,
+      `[${new Date().toISOString()}] Health check: ${JSON.stringify(healthInfo)}\n`
+    );
     if (!healthInfo.available) {
       await comfyuiClient.startService();
     }
@@ -728,35 +843,49 @@ async function processMapGenerationInBackend(jobId: string, jobQueue: any, comfy
     await jobQueue.updateJobProgress(jobId, 25, 'Submitting to ComfyUI...');
     foundryClient.sendMessage({
       type: 'map-generation-progress',
-      jobId: jobId,
+      jobId,
       progress: 25,
-      stage: 'Submitting to ComfyUI...'
+      stage: 'Submitting to ComfyUI...',
     });
 
     // Submit to ComfyUI (using mapgen's client)
-    await fs2.appendFile(processDebugLog, `[${new Date().toISOString()}] Submitting job to ComfyUI...\n`);
-    const sizePixels = comfyuiClient.getSizePixels(job.params.size as any);
-    await fs2.appendFile(processDebugLog, `[${new Date().toISOString()}] Size pixels: ${sizePixels}\n`);
+    await fs2.appendFile(
+      processDebugLog,
+      `[${new Date().toISOString()}] Submitting job to ComfyUI...\n`
+    );
+    const sizePixels = comfyuiClient.getSizePixels(job.params.size);
+    await fs2.appendFile(
+      processDebugLog,
+      `[${new Date().toISOString()}] Size pixels: ${sizePixels}\n`
+    );
 
-    let comfyuiJob;
+    let comfyuiJob: { prompt_id: string };
     try {
       comfyuiJob = await comfyuiClient.submitJob({
         prompt: job.params.prompt,
         width: sizePixels,
         height: sizePixels,
-        quality: job.params.quality
+        quality: job.params.quality,
       });
-      await fs2.appendFile(processDebugLog, `[${new Date().toISOString()}] ComfyUI job submitted: ${comfyuiJob.prompt_id}\n`);
+      await fs2.appendFile(
+        processDebugLog,
+        `[${new Date().toISOString()}] ComfyUI job submitted: ${comfyuiJob.prompt_id}\n`
+      );
 
       // Store ComfyUI prompt_id in job for cancellation support
       const currentJob = await jobQueue.getJob(jobId);
       if (currentJob) {
         currentJob.comfyui_job_id = comfyuiJob.prompt_id;
       }
-
-    } catch (submitError: any) {
-      await fs2.appendFile(processDebugLog, `[${new Date().toISOString()}] ERROR submitting to ComfyUI: ${submitError.message}\n`);
-      await fs2.appendFile(processDebugLog, `[${new Date().toISOString()}] Error stack: ${submitError.stack}\n`);
+    } catch (submitError: unknown) {
+      await fs2.appendFile(
+        processDebugLog,
+        `[${new Date().toISOString()}] ERROR submitting to ComfyUI: ${getErrorMessage(submitError)}\n`
+      );
+      await fs2.appendFile(
+        processDebugLog,
+        `[${new Date().toISOString()}] Error stack: ${submitError instanceof Error ? (submitError.stack ?? 'none') : 'none'}\n`
+      );
       throw submitError;
     }
 
@@ -764,62 +893,89 @@ async function processMapGenerationInBackend(jobId: string, jobQueue: any, comfy
     await jobQueue.updateJobProgress(jobId, 50, 'Generating battlemap...');
     foundryClient.sendMessage({
       type: 'map-generation-progress',
-      jobId: jobId,
+      jobId,
       progress: 50,
-      stage: 'Generating battlemap...'
+      stage: 'Generating battlemap...',
     });
 
-    await fs2.appendFile(processDebugLog, `[${new Date().toISOString()}] Starting status polling with WebSocket progress...\n`);
+    await fs2.appendFile(
+      processDebugLog,
+      `[${new Date().toISOString()}] Starting status polling with WebSocket progress...\n`
+    );
 
     // Register WebSocket callback for real-time progress updates
-    comfyuiClient.registerProgressCallback(comfyuiJob.prompt_id, (progress: { currentStep: number; totalSteps: number }) => {
-      const { currentStep, totalSteps } = progress;
-      const progressPercent = Math.floor((currentStep / totalSteps) * 100);
+    comfyuiClient.registerProgressCallback(
+      comfyuiJob.prompt_id,
+      (progress: { currentStep: number; totalSteps: number }) => {
+        const { currentStep, totalSteps } = progress;
+        const progressPercent = Math.floor((currentStep / totalSteps) * 100);
 
-      logger.info('Real-time progress update from ComfyUI', {
-        jobId,
-        promptId: comfyuiJob.prompt_id,
-        currentStep,
-        totalSteps,
-        progressPercent
-      });
+        logger.info('Real-time progress update from ComfyUI', {
+          jobId,
+          promptId: comfyuiJob.prompt_id,
+          currentStep,
+          totalSteps,
+          progressPercent,
+        });
 
-      // Send progress update to Foundry
-      foundryClient.sendMessage({
-        type: 'map-generation-progress',
-        data: {
-          jobId: jobId,
-          progress: 50 + (progressPercent / 2), // Map 0-100% to 50-100% (since we're at 50% when generation starts)
-          status: 'AI generating battlemap...',
-          queueInfo: {
-            currentStep,
-            totalSteps,
-            estimatedTimeRemaining: undefined // WebSocket doesn't provide time estimates
-          }
-        }
-      });
-    });
+        // Send progress update to Foundry
+        foundryClient.sendMessage({
+          type: 'map-generation-progress',
+          data: {
+            jobId,
+            progress: 50 + progressPercent / 2, // Map 0-100% to 50-100% (since we're at 50% when generation starts)
+            status: 'AI generating battlemap...',
+            queueInfo: {
+              currentStep,
+              totalSteps,
+              estimatedTimeRemaining: undefined, // WebSocket doesn't provide time estimates
+            },
+          },
+        });
+      }
+    );
 
     let status = await comfyuiClient.getJobStatus(comfyuiJob.prompt_id);
     logger.info('Initial job status', { jobId, promptId: comfyuiJob.prompt_id, status });
-    await fs2.appendFile(processDebugLog, `[${new Date().toISOString()}] Initial status: ${status}\n`);
+    await fs2.appendFile(
+      processDebugLog,
+      `[${new Date().toISOString()}] Initial status: ${status}\n`
+    );
 
     let pollCount = 0;
     while (status === 'queued' || status === 'running') {
       pollCount++;
-      logger.info('Polling job status', { jobId, promptId: comfyuiJob.prompt_id, pollCount, currentStatus: status });
+      logger.info('Polling job status', {
+        jobId,
+        promptId: comfyuiJob.prompt_id,
+        pollCount,
+        currentStatus: status,
+      });
 
       await new Promise(resolve => setTimeout(resolve, 5000)); // Check status every 5 seconds (WebSocket handles progress)
       status = await comfyuiClient.getJobStatus(comfyuiJob.prompt_id);
 
-      logger.info('Job status after poll', { jobId, promptId: comfyuiJob.prompt_id, pollCount, newStatus: status });
+      logger.info('Job status after poll', {
+        jobId,
+        promptId: comfyuiJob.prompt_id,
+        pollCount,
+        newStatus: status,
+      });
     }
 
     // Unregister callback when done
     comfyuiClient.unregisterProgressCallback(comfyuiJob.prompt_id);
 
-    logger.info('Job polling completed', { jobId, promptId: comfyuiJob.prompt_id, finalStatus: status, totalPolls: pollCount });
-    await fs2.appendFile(processDebugLog, `[${new Date().toISOString()}] Polling complete, status: ${status}\n`);
+    logger.info('Job polling completed', {
+      jobId,
+      promptId: comfyuiJob.prompt_id,
+      finalStatus: status,
+      totalPolls: pollCount,
+    });
+    await fs2.appendFile(
+      processDebugLog,
+      `[${new Date().toISOString()}] Polling complete, status: ${status}\n`
+    );
 
     if (status === 'failed') {
       throw new Error('ComfyUI generation failed');
@@ -831,54 +987,86 @@ async function processMapGenerationInBackend(jobId: string, jobQueue: any, comfy
 
     // Get the generated image filenames from ComfyUI history
     const imageFilenames = await comfyuiClient.getJobImages(comfyuiJob.prompt_id);
-    await fs2.appendFile(processDebugLog, `[${new Date().toISOString()}] Images: ${JSON.stringify(imageFilenames)}\n`);
+    await fs2.appendFile(
+      processDebugLog,
+      `[${new Date().toISOString()}] Images: ${JSON.stringify(imageFilenames)}\n`
+    );
     if (!imageFilenames || imageFilenames.length === 0) {
       throw new Error('No images found in ComfyUI job output');
     }
 
     // Download the first generated image
-    await fs2.appendFile(processDebugLog, `[${new Date().toISOString()}] Downloading image: ${imageFilenames[0]}\n`);
-    const firstImageFilename = imageFilenames[0];
+    await fs2.appendFile(
+      processDebugLog,
+      `[${new Date().toISOString()}] Downloading image: ${imageFilenames[0]}\n`
+    );
+    const firstImageFilename = imageFilenames[0] ?? '';
     const imageBuffer = await comfyuiClient.downloadImage(firstImageFilename);
-    await fs2.appendFile(processDebugLog, `[${new Date().toISOString()}] Downloaded, buffer size: ${imageBuffer?.length || 0}\n`);
+    await fs2.appendFile(
+      processDebugLog,
+      `[${new Date().toISOString()}] Downloaded, buffer size: ${imageBuffer?.length ?? 0}\n`
+    );
     if (!imageBuffer) {
       throw new Error(`Failed to download generated image: ${firstImageFilename}`);
     }
 
-    await fs2.appendFile(processDebugLog, `[${new Date().toISOString()}] Updating progress to 90%...\n`);
+    await fs2.appendFile(
+      processDebugLog,
+      `[${new Date().toISOString()}] Updating progress to 90%...\n`
+    );
     await jobQueue.updateJobProgress(jobId, 90, 'Saving image...');
     await fs2.appendFile(processDebugLog, `[${new Date().toISOString()}] Progress updated\n`);
 
     // Save image to Foundry-accessible location
-    await fs2.appendFile(processDebugLog, `[${new Date().toISOString()}] About to import fs/path/os for upload...\n`);
+    await fs2.appendFile(
+      processDebugLog,
+      `[${new Date().toISOString()}] About to import fs/path/os for upload...\n`
+    );
     const fs = await import('fs').then(m => m.promises);
     const path = await import('path');
     const os = await import('os');
     await fs2.appendFile(processDebugLog, `[${new Date().toISOString()}] Imports complete\n`);
 
-    await fs2.appendFile(processDebugLog, `[${new Date().toISOString()}] Creating filename and checking connection type...\n`);
+    await fs2.appendFile(
+      processDebugLog,
+      `[${new Date().toISOString()}] Creating filename and checking connection type...\n`
+    );
     const timestamp = Date.now();
     const filename = `map_${jobId}_${timestamp}.png`;
-    let webPath: string;
 
     // ALWAYS upload images via Foundry query instead of direct filesystem write
     // Reason: MCP server and Foundry may be on different machines or have different paths
     // The Foundry module's upload handler knows the correct local path
-    await fs2.appendFile(processDebugLog, `[${new Date().toISOString()}] foundryClient exists: ${!!foundryClient}, type: ${typeof foundryClient}\n`);
-    await fs2.appendFile(processDebugLog, `[${new Date().toISOString()}] About to call getConnectionType()...\n`);
+    await fs2.appendFile(
+      processDebugLog,
+      `[${new Date().toISOString()}] foundryClient exists: ${!!foundryClient}, type: ${typeof foundryClient}\n`
+    );
+    await fs2.appendFile(
+      processDebugLog,
+      `[${new Date().toISOString()}] About to call getConnectionType()...\n`
+    );
     let connectionType: 'websocket' | 'webrtc' | null = null;
     try {
-      connectionType = foundryClient.getConnectionType();
-      await fs2.appendFile(processDebugLog, `[${new Date().toISOString()}] getConnectionType() returned: ${connectionType}\n`);
-    } catch (err) {
-      await fs2.appendFile(processDebugLog, `[${new Date().toISOString()}] getConnectionType() threw error: ${err}\n`);
+      connectionType = foundryClient.getConnectionType?.() ?? null;
+      await fs2.appendFile(
+        processDebugLog,
+        `[${new Date().toISOString()}] getConnectionType() returned: ${connectionType}\n`
+      );
+    } catch (err: unknown) {
+      await fs2.appendFile(
+        processDebugLog,
+        `[${new Date().toISOString()}] getConnectionType() threw error: ${getErrorMessage(err)}\n`
+      );
       connectionType = 'webrtc'; // Assume WebRTC since we're here
     }
 
-    await fs2.appendFile(processDebugLog, `[${new Date().toISOString()}] Using upload method for all connections\n`);
+    await fs2.appendFile(
+      processDebugLog,
+      `[${new Date().toISOString()}] Using upload method for all connections\n`
+    );
 
     // ALWAYS write debug log to trace execution
-    const debugLog = async (msg: string) => {
+    const debugLog = async (msg: string): Promise<void> => {
       const logPath = path.join(os.tmpdir(), 'foundry-mcp-upload-debug.log');
       await fs.appendFile(logPath, `[${new Date().toISOString()}] ${msg}\n`);
     };
@@ -891,25 +1079,28 @@ async function processMapGenerationInBackend(jobId: string, jobQueue: any, comfy
 
     // Convert image buffer to base64 for transmission
     const base64Image = imageBuffer.toString('base64');
-    await debugLog(`Base64 conversion complete - size: ${base64Image.length} bytes (${(base64Image.length / 1024 / 1024).toFixed(2)} MB)`);
+    await debugLog(
+      `Base64 conversion complete - size: ${base64Image.length} bytes (${(base64Image.length / 1024 / 1024).toFixed(2)} MB)`
+    );
 
     // Upload to Foundry via WebRTC/WebSocket query
     // The Foundry module's upload handler knows the correct local path
     await debugLog('Sending upload query to Foundry...');
 
-    let uploadResult: any;
+    let uploadResult: UnknownRecord;
     try {
       uploadResult = await foundryClient.query('foundry-mcp-bridge.upload-generated-map', {
-        filename: filename,
-        imageData: base64Image
+        filename,
+        imageData: base64Image,
       });
 
-      await debugLog(`Upload query completed - success: ${uploadResult.success}`);
+      await debugLog(`Upload query completed - success: ${String(uploadResult.success)}`);
       await debugLog(`Full uploadResult: ${JSON.stringify(uploadResult)}`);
 
-      if (!uploadResult.success) {
-        await debugLog(`Upload failed - error: ${uploadResult.error}`);
-        throw new Error(`Failed to upload image to Foundry: ${uploadResult.error}`);
+      if (uploadResult.success !== true) {
+        const uploadError = asString(uploadResult.error, 'Unknown upload error');
+        await debugLog(`Upload failed - error: ${uploadError}`);
+        throw new Error(`Failed to upload image to Foundry: ${uploadError}`);
       }
     } catch (error) {
       await debugLog(`Upload exception: ${error instanceof Error ? error.message : String(error)}`);
@@ -917,23 +1108,28 @@ async function processMapGenerationInBackend(jobId: string, jobQueue: any, comfy
     }
 
     await debugLog(`Extracting path from uploadResult...`);
-    webPath = uploadResult.path;
+    const webPath = asString(uploadResult.path, '');
+    if (!webPath) {
+      throw new Error('Upload succeeded but no path was returned by Foundry');
+    }
     await debugLog(`webPath extracted: ${webPath}`);
     logger.info('Image uploaded successfully to Foundry', { path: webPath });
 
     await jobQueue.updateJobProgress(jobId, 95, 'Creating scene data...');
 
     // Create scene data payload (simplified version of mapgen's FoundryIntegrator)
-    const sceneSize = comfyuiClient.getSizePixels(job.params.size as any);
+    const sceneSize = comfyuiClient.getSizePixels(job.params.size);
     // Debug: Log what we received
     logger.info('Job params received', {
       scene_name: job.params.scene_name,
       prompt: job.params.prompt,
-      all_params: job.params
+      all_params: job.params,
     });
 
     if (!job.params.scene_name) {
-      throw new Error(`Scene name missing from job params. Received params: ${JSON.stringify(job.params)}`);
+      throw new Error(
+        `Scene name missing from job params. Received params: ${JSON.stringify(job.params)}`
+      );
     }
 
     const sceneName = job.params.scene_name.trim();
@@ -948,16 +1144,16 @@ async function processMapGenerationInBackend(jobId: string, jobQueue: any, comfy
       initial: {
         x: sceneSize / 2,
         y: sceneSize / 2,
-        scale: 1
+        scale: 1,
       },
-      backgroundColor: "#999999",
+      backgroundColor: '#999999',
       grid: {
         type: 1, // CONST.GRID_TYPES.SQUARE
-        size: job.params.grid_size || 100,
-        color: "#000000",
+        size: job.params.grid_size ?? 100,
+        color: '#000000',
         alpha: 0.2,
         distance: 5,
-        units: "ft"
+        units: 'ft',
       },
       tokenVision: true,
       fogExploration: true,
@@ -967,9 +1163,9 @@ async function processMapGenerationInBackend(jobId: string, jobQueue: any, comfy
       navigation: true,
       active: false,
       permission: {
-        default: 2 // CONST.DOCUMENT_OWNERSHIP_LEVELS.OBSERVER
+        default: 2, // CONST.DOCUMENT_OWNERSHIP_LEVELS.OBSERVER
       },
-      walls: [] // Could add wall detection here later
+      walls: [], // Could add wall detection here later
     };
 
     // Mark job as complete with full result data
@@ -977,46 +1173,49 @@ async function processMapGenerationInBackend(jobId: string, jobQueue: any, comfy
     await jobQueue.markJobComplete(jobId, {
       generation_time_ms: Date.now() - (job.started_at || job.created_at),
       image_url: webPath,
-      foundry_scene_payload: sceneData
+      foundry_scene_payload: sceneData,
     });
 
     // Broadcast completion with scene data (like mapgen does)
     foundryClient.broadcastMessage({
       type: 'job-completed', // Use mapgen's message type
-      jobId: jobId,
+      jobId,
       data: {
         status: 'completed',
         result: sceneData, // Complete scene payload
         image_path: webPath,
-        prompt: job.params.prompt
-      }
+        prompt: job.params.prompt,
+      },
     });
 
     logger.info('Map generation completed successfully', { jobId });
-
-  } catch (error: any) {
+  } catch (error: unknown) {
     // Log to debug file first
-    await fs2.appendFile(processDebugLog, `[${new Date().toISOString()}] ERROR in processMapGenerationInBackend: ${error.message}\n`);
-    await fs2.appendFile(processDebugLog, `[${new Date().toISOString()}] Error stack: ${error.stack}\n`);
+    await fs2.appendFile(
+      processDebugLog,
+      `[${new Date().toISOString()}] ERROR in processMapGenerationInBackend: ${getErrorMessage(error)}\n`
+    );
+    await fs2.appendFile(
+      processDebugLog,
+      `[${new Date().toISOString()}] Error stack: ${error instanceof Error ? (error.stack ?? 'none') : 'none'}\n`
+    );
 
     logger.error('Background map generation processing failed', { jobId, error });
-    await jobQueue.markJobFailed(jobId, error.message);
+    await jobQueue.markJobFailed(jobId, getErrorMessage(error));
 
     // Emit failure to Foundry module
     foundryClient.sendMessage({
       type: 'map-generation-failed',
-      jobId: jobId,
-      error: error.message
+      jobId,
+      error: getErrorMessage(error),
     });
   }
 }
 
 async function startBackend(): Promise<void> {
-
   // Logger: file output allowed; avoid stdout noise
 
   const logger = new Logger({
-
     level: config.logLevel,
 
     format: config.logFormat,
@@ -1026,17 +1225,14 @@ async function startBackend(): Promise<void> {
     enableFile: true,
 
     filePath: path.join(os.tmpdir(), 'foundry-mcp-server', 'mcp-server.log'),
-
   });
 
   logger.info('Starting Foundry MCP Backend', {
-
     version: config.server.version,
 
     foundryHost: config.foundry.host,
 
     foundryPort: config.foundry.port,
-
   });
 
   // Initialize Foundry client and tools
@@ -1055,7 +1251,7 @@ async function startBackend(): Promise<void> {
   systemRegistry.register(new DSA5Adapter());
 
   logger.info('System registry initialized', {
-    supportedSystems: systemRegistry.getSupportedSystems()
+    supportedSystems: systemRegistry.getSupportedSystems(),
   });
 
   const characterTools = new CharacterTools({ foundryClient, logger, systemRegistry });
@@ -1079,8 +1275,8 @@ async function startBackend(): Promise<void> {
   const tokenManipulationTools = new TokenManipulationTools({ foundryClient, logger });
 
   // Initialize mapgen-style backend components for map generation
-  let mapGenerationJobQueue: any = null;
-  let mapGenerationComfyUIClient: any = null;
+  let mapGenerationJobQueue: MapGenerationQueue | null = null;
+  let mapGenerationComfyUIClient: ComfyUIClientLike | null = null;
 
   try {
     // Import and initialize job queue and ComfyUI client
@@ -1093,19 +1289,20 @@ async function startBackend(): Promise<void> {
     mapGenerationComfyUIClient = new ComfyUIClient({
       logger,
       config: {
-        port: config.comfyui?.port || 31411
-      }
+        port: config.comfyui?.port || 31411,
+      },
     });
 
     logger.info('Map generation backend components initialized (ComfyUI on localhost:31411)');
 
     // Auto-start ComfyUI if installed and autoStart is enabled
-    if (mapGenerationComfyUIClient && (mapGenerationComfyUIClient as any).config?.autoStart) {
-      const isInstalled = await (mapGenerationComfyUIClient as any).checkInstallation();
+    if (mapGenerationComfyUIClient?.config?.autoStart) {
+      const isInstalled = await (mapGenerationComfyUIClient.checkInstallation?.() ??
+        Promise.resolve(false));
       if (isInstalled) {
         logger.info('Auto-starting ComfyUI service...');
         try {
-          await (mapGenerationComfyUIClient as any).startService();
+          await mapGenerationComfyUIClient.startService();
           logger.info('ComfyUI service auto-started successfully');
         } catch (error) {
           logger.warn('Failed to auto-start ComfyUI service', { error });
@@ -1120,24 +1317,33 @@ async function startBackend(): Promise<void> {
 
   // Set up global ComfyUI message handlers for WebSocket messages from Foundry BEFORE creating map tools
 
-  (globalThis as any).backendComfyUIHandlers = {
+  const globalHandlers = globalThis as {
+    backendComfyUIHandlers?: { handleMessage: (message: unknown) => Promise<unknown> };
+  };
 
-    handleMessage: async (message: any) => {
+  globalHandlers.backendComfyUIHandlers = {
+    handleMessage: async (message: unknown): Promise<unknown> => {
       // CRITICAL DEBUG: Write to file IMMEDIATELY when this function is called
       const fs = await import('fs').then(m => m.promises);
       const path = await import('path');
       const os = await import('os');
       const debugLog = path.join(os.tmpdir(), 'backend-handler-debug.log');
-      await fs.appendFile(debugLog, `[${new Date().toISOString()}] handleMessage called - type: ${message?.type}, requestId: ${message?.requestId}\n`);
+      const messageRecord = asRecord(message);
+      const messageType = asString(messageRecord.type, 'unknown');
+      const requestId = asString(messageRecord.requestId, '');
+      const messageData = messageRecord.data;
+
+      await fs.appendFile(
+        debugLog,
+        `[${new Date().toISOString()}] handleMessage called - type: ${messageType}, requestId: ${requestId}\n`
+      );
 
       logger.info('Handling ComfyUI message', {
+        requestId,
 
-        requestId: message.requestId,
+        type: messageType,
 
-        type: message.type,
-
-        hasData: !!message.data
-
+        hasData: Boolean(messageData),
       });
 
       try {
@@ -1146,137 +1352,128 @@ async function startBackend(): Promise<void> {
         const path = await import('path');
         const os = await import('os');
         const debugLog = path.join(os.tmpdir(), 'backend-handler-debug.log');
-        await fs.appendFile(debugLog, `[${new Date().toISOString()}] About to switch on message.type: "${message.type}"\n`);
+        await fs.appendFile(
+          debugLog,
+          `[${new Date().toISOString()}] About to switch on message.type: "${messageType}"\n`
+        );
 
-        let result: any;
+        let result: unknown;
 
-        switch (message.type) {
-
+        switch (messageType) {
           case 'start-comfyui-service':
-
             result = await startComfyUIService(logger);
 
             break;
 
           case 'stop-comfyui-service':
-
             result = await stopComfyUIService(logger);
 
             break;
 
           case 'check-comfyui-status':
-
             result = await checkComfyUIStatus();
 
             break;
 
           // Map generation handlers (following existing tool pattern)
           case 'generate-map-request':
-            await fs.appendFile(debugLog, `[${new Date().toISOString()}] Matched generate-map-request case, calling handler...\n`);
-            result = await handleGenerateMapRequest(message, mapGenerationJobQueue, mapGenerationComfyUIClient, logger, foundryClient);
-            await fs.appendFile(debugLog, `[${new Date().toISOString()}] Handler returned: ${JSON.stringify(result)}\n`);
+            await fs.appendFile(
+              debugLog,
+              `[${new Date().toISOString()}] Matched generate-map-request case, calling handler...\n`
+            );
+            result = await handleGenerateMapRequest(
+              messageRecord,
+              mapGenerationJobQueue as MapGenerationQueue,
+              mapGenerationComfyUIClient as ComfyUIClientLike,
+              logger,
+              foundryClient
+            );
+            await fs.appendFile(
+              debugLog,
+              `[${new Date().toISOString()}] Handler returned: ${JSON.stringify(result)}\n`
+            );
             break;
 
           case 'check-map-status-request':
-
-            result = await handleCheckMapStatusRequest(message.data, mapGenerationJobQueue, logger);
+            result = await handleCheckMapStatusRequest(
+              messageData,
+              mapGenerationJobQueue as MapGenerationQueue,
+              logger
+            );
 
             break;
 
           case 'cancel-map-job-request':
-
-            result = await handleCancelMapJobRequest(message.data, mapGenerationJobQueue, mapGenerationComfyUIClient, logger);
+            result = await handleCancelMapJobRequest(
+              messageData,
+              mapGenerationJobQueue as MapGenerationQueue,
+              mapGenerationComfyUIClient as ComfyUIClientLike,
+              logger
+            );
 
             break;
 
           default:
+            logger.warn('Unknown ComfyUI message type', { type: messageType });
 
-            logger.warn('Unknown ComfyUI message type', { type: message.type });
-
-            result = { status: 'error', message: `Unknown message type: ${message.type}` };
-
+            result = { status: 'error', message: `Unknown message type: ${messageType}` };
         }
 
         // Send response back through foundryClient if requestId is provided
 
-        if (message.requestId && foundryClient) {
-
+        if (requestId && foundryClient) {
           const response = {
+            type: `${messageType}-response`,
 
-            type: `${message.type}-response`,
+            requestId,
 
-            requestId: message.requestId,
-
-            ...result
-
+            ...asRecord(result),
           };
 
           // Send response to Foundry via WebSocket
 
           try {
-
             foundryClient.sendMessage(response);
-
           } catch (error) {
-
             logger.error('Failed to send ComfyUI response to Foundry', { error, response });
-
           }
-
         }
 
         return result;
-
-      } catch (error: any) {
-
+      } catch (error: unknown) {
         logger.error('ComfyUI message handling failed', {
+          requestId,
 
-          requestId: message.requestId,
+          type: messageType,
 
-          type: message.type,
-
-          error: error.message
-
+          error: getErrorMessage(error),
         });
 
         const errorResult = {
-
           status: 'error',
 
-          message: error.message
-
+          message: getErrorMessage(error),
         };
 
         // Send error response if requestId provided
 
-        if (message.requestId && foundryClient) {
-
+        if (requestId && foundryClient) {
           try {
-
             foundryClient.sendMessage({
+              type: `${messageType}-response`,
 
-              type: `${message.type}-response`,
+              requestId,
 
-              requestId: message.requestId,
-
-              ...errorResult
-
+              ...errorResult,
             });
-
           } catch (sendError) {
-
             logger.error('Failed to send ComfyUI error response', { sendError });
-
           }
-
         }
 
         return errorResult;
-
       }
-
-    }
-
+    },
   };
 
   // Now create MapGenerationTools with the handlers available
@@ -1284,11 +1481,10 @@ async function startBackend(): Promise<void> {
   const mapGenerationTools = new MapGenerationTools({
     foundryClient,
     logger,
-    backendComfyUIHandlers: (globalThis as any).backendComfyUIHandlers
+    backendComfyUIHandlers: globalHandlers.backendComfyUIHandlers,
   });
 
   const allTools = [
-
     ...characterTools.getToolDefinitions(),
 
     ...compendiumTools.getToolDefinitions(),
@@ -1310,399 +1506,350 @@ async function startBackend(): Promise<void> {
     ...tokenManipulationTools.getToolDefinitions(),
 
     ...mapGenerationTools.getToolDefinitions(),
-
   ];
 
   // Start Foundry connector (owns app port 31415)
 
-  foundryClient.connect().catch((e) => {
-
+  foundryClient.connect().catch(e => {
     logger.error('Foundry connector failed to start', e);
-
   });
 
-  const autoStartComfyUI = async () => {
-
+  const autoStartComfyUI = async (): Promise<void> => {
     try {
-
       logger.info('Auto-starting ComfyUI service...');
 
       const result = await startComfyUIService(logger);
 
       logger.info('ComfyUI auto-start result', result);
-
-    } catch (error: any) {
-
+    } catch (error: unknown) {
       logger.warn('ComfyUI auto-start failed', {
-
-        error: error instanceof Error ? error.message : String(error)
-
+        error: error instanceof Error ? error.message : String(error),
       });
 
       // Don't throw - backend should continue even if ComfyUI fails to start
-
     }
-
   };
 
   // Control channel (TCP JSON-lines)
 
-  const server = net.createServer((socket) => {
-
+  const server = net.createServer((socket): void => {
     socket.setEncoding('utf8');
 
     let buffer = '';
 
-    socket.on('data', async (chunk: string) => {
+    socket.on('data', (chunk: string): void => {
+      void (async (): Promise<void> => {
+        buffer += chunk;
 
-      buffer += chunk;
+        let idx: number;
 
-      let idx: number;
+        while ((idx = buffer.indexOf('\n')) >= 0) {
+          const line = buffer.slice(0, idx).trim();
 
-      while ((idx = buffer.indexOf('\n')) >= 0) {
+          buffer = buffer.slice(idx + 1);
 
-        const line = buffer.slice(0, idx).trim();
+          if (!line) continue;
 
-        buffer = buffer.slice(idx + 1);
+          try {
+            const msg = JSON.parse(line) as RpcMessage;
+            const msgId = asString(msg.id, '');
+            const msgMethod = asString(msg.method, '');
+            const msgParams = msg.params ?? {};
 
-        if (!line) continue;
+            if (msgMethod === 'ping') {
+              socket.write(`${JSON.stringify({ id: msgId, result: { ok: true } })}\n`);
 
-        try {
-
-          const msg = JSON.parse(line) as { id: string; method: string; params?: any };
-
-          if (msg.method === 'ping') {
-
-            socket.write(JSON.stringify({ id: msg.id, result: { ok: true } }) + '\n');
-
-            continue;
-
-          }
-
-          if (msg.method === 'list_tools') {
-
-            socket.write(JSON.stringify({ id: msg.id, result: { tools: allTools } }) + '\n');
-
-            continue;
-
-          }
-
-          if (msg.method === 'call_tool') {
-
-            const { name, args } = (msg.params || {}) as { name: string; args?: any };
-
-            try {
-
-              let result: any;
-
-              switch (name) {
-
-                // Character tools
-
-                case 'get-character':
-
-                  result = await characterTools.handleGetCharacter(args);
-
-                  break;
-
-                case 'list-characters':
-
-                  result = await characterTools.handleListCharacters(args);
-
-                  break;
-
-                case 'get-character-entity':
-
-                  result = await characterTools.handleGetCharacterEntity(args);
-
-                  break;
-
-                case 'use-item':
-
-                  result = await characterTools.handleUseItem(args);
-
-                  break;
-
-                case 'search-character-items':
-
-                  result = await characterTools.handleSearchCharacterItems(args);
-
-                  break;
-
-                // Compendium tools
-
-                case 'search-compendium':
-
-                  result = await compendiumTools.handleSearchCompendium(args);
-
-                  break;
-
-                case 'get-compendium-item':
-
-                  result = await compendiumTools.handleGetCompendiumItem(args);
-
-                  break;
-
-                case 'list-creatures-by-criteria':
-
-                  result = await compendiumTools.handleListCreaturesByCriteria(args);
-
-                  break;
-
-                case 'list-compendium-packs':
-
-                  result = await compendiumTools.handleListCompendiumPacks(args);
-
-                  break;
-
-                // Scene tools
-
-                case 'get-current-scene':
-
-                  result = await sceneTools.handleGetCurrentScene(args);
-
-                  break;
-
-                case 'get-world-info':
-
-                  result = await sceneTools.handleGetWorldInfo(args);
-
-                  break;
-
-                // Actor creation tools
-
-                case 'create-actor-from-compendium':
-
-                  result = await actorCreationTools.handleCreateActorFromCompendium(args);
-
-                  break;
-
-                case 'get-compendium-entry-full':
-
-                  result = await actorCreationTools.handleGetCompendiumEntryFull(args);
-
-                  break;
-
-                // DSA5 character creation tools
-
-                case 'create-dsa5-character-from-archetype':
-
-                  result = await dsa5CharacterCreator.handleCreateCharacterFromArchetype(args);
-
-                  break;
-
-                case 'list-dsa5-archetypes':
-
-                  result = await dsa5CharacterCreator.handleListArchetypes(args);
-
-                  break;
-
-                // Quest creation tools
-
-                case 'create-quest-journal':
-
-                  result = await questCreationTools.handleCreateQuestJournal(args);
-
-                  break;
-
-                case 'link-quest-to-npc':
-
-                  result = await questCreationTools.handleLinkQuestToNPC(args);
-
-                  break;
-
-                case 'update-quest-journal':
-
-                  result = await questCreationTools.handleUpdateQuestJournal(args);
-
-                  break;
-
-                case 'list-journals':
-
-                  result = await questCreationTools.handleListJournals(args);
-
-                  break;
-
-                case 'search-journals':
-
-                  result = await questCreationTools.handleSearchJournals(args);
-
-                  break;
-
-                // Dice roll tools
-
-                case 'request-player-rolls':
-
-                  result = await diceRollTools.handleRequestPlayerRolls(args);
-
-                  break;
-
-                // Campaign management tools
-
-                case 'create-campaign-dashboard':
-
-                  result = await campaignManagementTools.handleCreateCampaignDashboard(args);
-
-                  break;
-
-                // Ownership tools
-
-                case 'assign-actor-ownership':
-
-                  result = await ownershipTools.handleToolCall('assign-actor-ownership', args);
-
-                  break;
-
-                case 'remove-actor-ownership':
-
-                  result = await ownershipTools.handleToolCall('remove-actor-ownership', args);
-
-                  break;
-
-                case 'list-actor-ownership':
-
-                  result = await ownershipTools.handleToolCall('list-actor-ownership', args);
-
-                  break;
-
-                // Token manipulation tools
-
-                case 'move-token':
-
-                  result = await tokenManipulationTools.handleMoveToken(args);
-
-                  break;
-
-                case 'update-token':
-
-                  result = await tokenManipulationTools.handleUpdateToken(args);
-
-                  break;
-
-                case 'delete-tokens':
-
-                  result = await tokenManipulationTools.handleDeleteTokens(args);
-
-                  break;
-
-                case 'get-token-details':
-
-                  result = await tokenManipulationTools.handleGetTokenDetails(args);
-
-                  break;
-
-                case 'toggle-token-condition':
-
-                  result = await tokenManipulationTools.handleToggleTokenCondition(args);
-
-                  break;
-
-                case 'get-available-conditions':
-
-                  result = await tokenManipulationTools.handleGetAvailableConditions(args);
-
-                  break;
-
-                // Map generation tools
-
-                case 'generate-map':
-
-                  result = await mapGenerationTools.generateMap(args);
-
-                  break;
-
-                case 'check-map-status':
-
-                  result = await mapGenerationTools.checkMapStatus(args);
-
-                  break;
-
-                case 'cancel-map-job':
-
-                  result = await mapGenerationTools.cancelMapJob(args);
-
-                  break;
-
-                case 'list-scenes':
-
-                  result = await mapGenerationTools.listScenes(args);
-
-                  break;
-
-                case 'switch-scene':
-
-                  result = await mapGenerationTools.switchScene(args);
-
-                  break;
-
-                default:
-
-                  throw new Error(`Unknown tool: ${name}`);
-
-              }
-
-              const payload = {
-
-                content: [{ type: 'text', text: typeof result === 'string' ? result : JSON.stringify(result) }],
-
-              };
-
-              socket.write(JSON.stringify({ id: msg.id, result: payload }) + '\n');
-
-            } catch (e: any) {
-
-              const errorMessage = e instanceof Error ? e.message : 'Unknown error occurred';
-
-              socket.write(
-
-                JSON.stringify({ id: msg.id, result: { content: [{ type: 'text', text: `Error: ${errorMessage}` }], isError: true } }) + '\n'
-
-              );
-
+              continue;
             }
 
-            continue;
+            if (msgMethod === 'list_tools') {
+              socket.write(`${JSON.stringify({ id: msgId, result: { tools: allTools } })}\n`);
 
+              continue;
+            }
+
+            if (msgMethod === 'call_tool') {
+              const name = asString(msgParams.name, '');
+              const args = msgParams.args;
+
+              try {
+                let result: unknown;
+
+                switch (name) {
+                  // Character tools
+
+                  case 'get-character':
+                    result = await characterTools.handleGetCharacter(args);
+
+                    break;
+
+                  case 'list-characters':
+                    result = await characterTools.handleListCharacters(args);
+
+                    break;
+
+                  case 'get-character-entity':
+                    result = await characterTools.handleGetCharacterEntity(args);
+
+                    break;
+
+                  case 'use-item':
+                    result = await characterTools.handleUseItem(args);
+
+                    break;
+
+                  case 'search-character-items':
+                    result = await characterTools.handleSearchCharacterItems(args);
+
+                    break;
+
+                  // Compendium tools
+
+                  case 'search-compendium':
+                    result = await compendiumTools.handleSearchCompendium(args);
+
+                    break;
+
+                  case 'get-compendium-item':
+                    result = await compendiumTools.handleGetCompendiumItem(args);
+
+                    break;
+
+                  case 'list-creatures-by-criteria':
+                    result = await compendiumTools.handleListCreaturesByCriteria(args);
+
+                    break;
+
+                  case 'list-compendium-packs':
+                    result = await compendiumTools.handleListCompendiumPacks(args);
+
+                    break;
+
+                  // Scene tools
+
+                  case 'get-current-scene':
+                    result = await sceneTools.handleGetCurrentScene(args);
+
+                    break;
+
+                  case 'get-world-info':
+                    result = await sceneTools.handleGetWorldInfo(args);
+
+                    break;
+
+                  // Actor creation tools
+
+                  case 'create-actor-from-compendium':
+                    result = await actorCreationTools.handleCreateActorFromCompendium(args);
+
+                    break;
+
+                  case 'get-compendium-entry-full':
+                    result = await actorCreationTools.handleGetCompendiumEntryFull(args);
+
+                    break;
+
+                  // DSA5 character creation tools
+
+                  case 'create-dsa5-character-from-archetype':
+                    result = await dsa5CharacterCreator.handleCreateCharacterFromArchetype(args);
+
+                    break;
+
+                  case 'list-dsa5-archetypes':
+                    result = await dsa5CharacterCreator.handleListArchetypes(args);
+
+                    break;
+
+                  // Quest creation tools
+
+                  case 'create-quest-journal':
+                    result = await questCreationTools.handleCreateQuestJournal(args);
+
+                    break;
+
+                  case 'link-quest-to-npc':
+                    result = await questCreationTools.handleLinkQuestToNPC(args);
+
+                    break;
+
+                  case 'update-quest-journal':
+                    result = await questCreationTools.handleUpdateQuestJournal(args);
+
+                    break;
+
+                  case 'list-journals':
+                    result = await questCreationTools.handleListJournals(args);
+
+                    break;
+
+                  case 'search-journals':
+                    result = await questCreationTools.handleSearchJournals(args);
+
+                    break;
+
+                  // Dice roll tools
+
+                  case 'request-player-rolls':
+                    result = await diceRollTools.handleRequestPlayerRolls(args);
+
+                    break;
+
+                  // Campaign management tools
+
+                  case 'create-campaign-dashboard':
+                    result = await campaignManagementTools.handleCreateCampaignDashboard(args);
+
+                    break;
+
+                  // Ownership tools
+
+                  case 'assign-actor-ownership':
+                    result = await ownershipTools.handleToolCall('assign-actor-ownership', args);
+
+                    break;
+
+                  case 'remove-actor-ownership':
+                    result = await ownershipTools.handleToolCall('remove-actor-ownership', args);
+
+                    break;
+
+                  case 'list-actor-ownership':
+                    result = await ownershipTools.handleToolCall('list-actor-ownership', args);
+
+                    break;
+
+                  // Token manipulation tools
+
+                  case 'move-token':
+                    result = await tokenManipulationTools.handleMoveToken(args);
+
+                    break;
+
+                  case 'update-token':
+                    result = await tokenManipulationTools.handleUpdateToken(args);
+
+                    break;
+
+                  case 'delete-tokens':
+                    result = await tokenManipulationTools.handleDeleteTokens(args);
+
+                    break;
+
+                  case 'get-token-details':
+                    result = await tokenManipulationTools.handleGetTokenDetails(args);
+
+                    break;
+
+                  case 'toggle-token-condition':
+                    result = await tokenManipulationTools.handleToggleTokenCondition(args);
+
+                    break;
+
+                  case 'get-available-conditions':
+                    result = await tokenManipulationTools.handleGetAvailableConditions(args);
+
+                    break;
+
+                  // Map generation tools
+
+                  case 'generate-map':
+                    result = await mapGenerationTools.generateMap(args);
+
+                    break;
+
+                  case 'check-map-status':
+                    result = await mapGenerationTools.checkMapStatus(args);
+
+                    break;
+
+                  case 'cancel-map-job':
+                    result = await mapGenerationTools.cancelMapJob(args);
+
+                    break;
+
+                  case 'list-scenes':
+                    result = await mapGenerationTools.listScenes(args);
+
+                    break;
+
+                  case 'switch-scene':
+                    result = await mapGenerationTools.switchScene(args);
+
+                    break;
+
+                  default:
+                    throw new Error(`Unknown tool: ${name}`);
+                }
+
+                const payload = {
+                  content: [
+                    {
+                      type: 'text',
+                      text: typeof result === 'string' ? result : JSON.stringify(result),
+                    },
+                  ],
+                };
+
+                socket.write(`${JSON.stringify({ id: msgId, result: payload })}\n`);
+              } catch (e: unknown) {
+                const errorMessage = e instanceof Error ? e.message : 'Unknown error occurred';
+
+                socket.write(
+                  `${JSON.stringify({
+                    id: msgId,
+                    result: {
+                      content: [{ type: 'text', text: `Error: ${errorMessage}` }],
+                      isError: true,
+                    },
+                  })}\n`
+                );
+              }
+
+              continue;
+            }
+
+            // Unknown method
+
+            socket.write(
+              `${JSON.stringify({ id: msgId, error: { message: 'Unknown method' } })}\n`
+            );
+          } catch (e: unknown) {
+            try {
+              const errorText = e instanceof Error ? e.message : 'Bad request';
+              socket.write(`${JSON.stringify({ error: { message: errorText } })}\n`);
+            } catch {}
           }
-
-          // Unknown method
-
-          socket.write(JSON.stringify({ id: msg.id, error: { message: 'Unknown method' } }) + '\n');
-
-        } catch (e: any) {
-
-          try { socket.write(JSON.stringify({ error: { message: e?.message || 'Bad request' } }) + '\n'); } catch {}
-
         }
-
-      }
-
+      })();
     });
-
   });
 
   await new Promise<void>((resolve, reject) => {
-
     server.listen(CONTROL_PORT, CONTROL_HOST, () => {
-
       logger.info(`Backend control channel listening on ${CONTROL_HOST}:${CONTROL_PORT}`);
 
       resolve();
-
     });
 
     server.on('error', reject);
-
   });
 
   void autoStartComfyUI();
 
   // Shutdown hooks
 
-  process.on('SIGINT', () => { foundryClient.disconnect(); releaseLock(); process.exit(0); });
+  process.on('SIGINT', () => {
+    foundryClient.disconnect();
+    releaseLock();
+    process.exit(0);
+  });
 
-  process.on('SIGTERM', () => { foundryClient.disconnect(); releaseLock(); process.exit(0); });
-
+  process.on('SIGTERM', () => {
+    foundryClient.disconnect();
+    releaseLock();
+    process.exit(0);
+  });
 }
 
 // Check lock BEFORE any async operations
@@ -1710,8 +1857,7 @@ async function startBackend(): Promise<void> {
 // This prevents Claude Desktop from seeing a "server closed" error
 const hasLock = acquireLock();
 
-(async function main() {
-
+void (async function main(): Promise<void> {
   if (!hasLock) {
     // Another backend is running - wait forever without doing anything
     // This keeps the process alive so Claude doesn't see an error
@@ -1722,17 +1868,13 @@ const hasLock = acquireLock();
   process.on('exit', releaseLock);
 
   try {
-
     await startBackend();
-
-  } catch (e: any) {
-
-    console.error('Failed to start backend:', e?.message || e);
+  } catch (e: unknown) {
+    const errorText = e instanceof Error ? e.message : String(e);
+    console.error('Failed to start backend:', errorText);
 
     releaseLock();
 
     process.exit(1);
-
   }
-
 })();

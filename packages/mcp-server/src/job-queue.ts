@@ -14,7 +14,7 @@ export interface CreateJobParams {
 }
 
 export interface JobResult {
-  foundry_scene_payload?: any;
+  foundry_scene_payload?: Record<string, unknown>;
   image_url?: string;
   walls_detected?: number;
   generation_time_ms?: number;
@@ -44,8 +44,15 @@ export interface JobCompletionNotificationData {
   imageWidth?: number;
   imageHeight?: number;
   gridSize?: number;
-  walls?: any[];
+  walls?: unknown[];
 }
+
+const asRecord = (value: unknown): Record<string, unknown> | undefined => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return undefined;
+  }
+  return value as Record<string, unknown>;
+};
 
 export interface QueueMetrics {
   total_jobs: number;
@@ -73,7 +80,7 @@ const JOB_STAGES = {
   DETECTING_WALLS: 'Detecting walls and structures',
   CREATING_SCENE: 'Creating Foundry scene data',
   COMPLETE: 'Generation complete',
-  FAILED: 'Generation failed'
+  FAILED: 'Generation failed',
 } as const;
 
 const SIZE_CONFIG = {
@@ -81,20 +88,20 @@ const SIZE_CONFIG = {
     pixels: 512,
     estimated_time_ms: 30000, // 30 seconds
     priority_weight: 1,
-    grid_squares: Math.floor(512 / 70)
+    grid_squares: Math.floor(512 / 70),
   },
   medium: {
     pixels: 768,
     estimated_time_ms: 45000, // 45 seconds
     priority_weight: 2,
-    grid_squares: Math.floor(768 / 70)
+    grid_squares: Math.floor(768 / 70),
   },
   large: {
     pixels: 1024,
     estimated_time_ms: 60000, // 60 seconds
     priority_weight: 3,
-    grid_squares: Math.floor(1024 / 70)
-  }
+    grid_squares: Math.floor(1024 / 70),
+  },
 } as const;
 
 export class JobQueue {
@@ -104,11 +111,13 @@ export class JobQueue {
   private config: JobQueueConfig;
   private cleanupTimer?: NodeJS.Timeout | undefined;
   private jobIdCounter = 0;
-  private onJobCompleted: ((jobId: string, data: JobCompletionNotificationData) => void) | undefined;
+  private onJobCompleted:
+    | ((jobId: string, data: JobCompletionNotificationData) => void)
+    | undefined;
 
   constructor(options: {
     logger: Logger;
-    onJobCompleted?: (jobId: string, data: JobCompletionNotificationData) => void
+    onJobCompleted?: (jobId: string, data: JobCompletionNotificationData) => void;
   }) {
     this.logger = options.logger.child({ component: 'JobQueue' });
     this.onJobCompleted = options.onJobCompleted;
@@ -116,13 +125,13 @@ export class JobQueue {
       ttl_minutes: 30,
       max_concurrent_jobs: 2,
       max_retry_attempts: 3,
-      retry_backoff_ms: 2000
+      retry_backoff_ms: 2000,
     };
 
     this.startCleanupTimer();
   }
 
-  async createJob(params: CreateJobParams): Promise<JobData> {
+  createJob(params: CreateJobParams): Promise<JobData> {
     const promptHash = this.generatePromptHash(params.params);
     this.logger.debug('Creating job', { promptHash, params: params.params });
 
@@ -133,7 +142,7 @@ export class JobQueue {
       if (existingJob && !['failed', 'expired'].includes(existingJob.status)) {
         this.logger.info('Returning existing job for identical request', {
           jobId: existingJobId,
-          status: existingJob.status
+          status: existingJob.status,
         });
         return existingJob;
       }
@@ -141,7 +150,7 @@ export class JobQueue {
 
     // Create new job
     const jobId = this.generateJobId();
-    const estimatedDuration = SIZE_CONFIG[params.params.size]?.estimated_time_ms || 45000;
+    const estimatedDuration = SIZE_CONFIG[params.params.size]?.estimated_time_ms ?? 45000;
 
     const job: JobData = {
       id: jobId,
@@ -153,7 +162,7 @@ export class JobQueue {
       current_stage: JOB_STAGES.QUEUED,
       attempts: 0,
       max_attempts: this.config.max_retry_attempts,
-      estimated_duration_ms: estimatedDuration
+      estimated_duration_ms: estimatedDuration,
     };
 
     this.jobs.set(jobId, job);
@@ -163,17 +172,17 @@ export class JobQueue {
       jobId,
       prompt: params.params.prompt,
       size: params.params.size,
-      estimatedDuration
+      estimatedDuration,
     });
 
-    return job;
+    return Promise.resolve(job);
   }
 
-  async getJob(jobId: string): Promise<JobData | undefined> {
-    return this.jobs.get(jobId);
+  getJob(jobId: string): Promise<JobData | undefined> {
+    return Promise.resolve(this.jobs.get(jobId));
   }
 
-  async markJobStarted(jobId: string): Promise<void> {
+  markJobStarted(jobId: string): Promise<void> {
     const job = this.jobs.get(jobId);
     if (!job) {
       throw new Error(`Job ${jobId} not found`);
@@ -185,9 +194,10 @@ export class JobQueue {
     job.progress_percent = 10;
 
     this.logger.info('Job started', { jobId, stage: job.current_stage });
+    return Promise.resolve();
   }
 
-  async updateJobProgress(jobId: string, progress: number, stage: string): Promise<void> {
+  updateJobProgress(jobId: string, progress: number, stage: string): Promise<void> {
     const job = this.jobs.get(jobId);
     if (!job) {
       throw new Error(`Job ${jobId} not found`);
@@ -199,11 +209,13 @@ export class JobQueue {
     this.logger.debug('Job progress updated', {
       jobId,
       progress: job.progress_percent,
-      stage
+      stage,
     });
+
+    return Promise.resolve();
   }
 
-  async markJobComplete(jobId: string, result: JobResult): Promise<void> {
+  markJobComplete(jobId: string, result: JobResult): Promise<void> {
     const job = this.jobs.get(jobId);
     if (!job) {
       throw new Error(`Job ${jobId} not found`);
@@ -215,12 +227,15 @@ export class JobQueue {
     job.current_stage = JOB_STAGES.COMPLETE;
     job.result = result;
 
-    const completionTime = job.completed_at - (job.started_at || job.created_at);
+    const completionTime = job.completed_at - (job.started_at ?? job.created_at);
     this.logger.info('Job completed', {
       jobId,
       completionTime,
-      wallsDetected: result.walls_detected
+      wallsDetected: result.walls_detected,
     });
+
+    const scenePayload = asRecord(result.foundry_scene_payload);
+    const walls = Array.isArray(scenePayload?.walls) ? scenePayload.walls : [];
 
     // Notify completion for scene creation
     if (this.onJobCompleted && result.image_url && job.params.prompt) {
@@ -229,8 +244,8 @@ export class JobQueue {
         imagePath: result.image_url,
         imageWidth: 1024, // Default, could be extracted from job params
         imageHeight: 1024, // Default, could be extracted from job params
-        gridSize: job.params.grid_size || 100,
-        walls: result.foundry_scene_payload?.walls || []
+        gridSize: job.params.grid_size ?? 100,
+        walls,
       };
 
       try {
@@ -240,9 +255,11 @@ export class JobQueue {
         this.logger.error('Failed to send job completion notification', { jobId, error });
       }
     }
+
+    return Promise.resolve();
   }
 
-  async markJobFailed(jobId: string, error: string): Promise<void> {
+  markJobFailed(jobId: string, error: string): Promise<void> {
     const job = this.jobs.get(jobId);
     if (!job) {
       throw new Error(`Job ${jobId} not found`);
@@ -257,7 +274,7 @@ export class JobQueue {
       this.logger.error('Job failed permanently', {
         jobId,
         attempts: job.attempts,
-        error
+        error,
       });
     } else {
       job.status = 'queued';
@@ -266,19 +283,21 @@ export class JobQueue {
         jobId,
         attempts: job.attempts,
         maxAttempts: job.max_attempts,
-        error
+        error,
       });
     }
+
+    return Promise.resolve();
   }
 
-  async cancelJob(jobId: string): Promise<boolean> {
+  cancelJob(jobId: string): Promise<boolean> {
     const job = this.jobs.get(jobId);
     if (!job) {
-      return false;
+      return Promise.resolve(false);
     }
 
     if (['complete', 'failed', 'expired'].includes(job.status)) {
-      return false; // Cannot cancel already finished jobs
+      return Promise.resolve(false); // Cannot cancel already finished jobs
     }
 
     job.status = 'failed';
@@ -286,37 +305,39 @@ export class JobQueue {
     job.current_stage = 'Cancelled';
 
     this.logger.info('Job cancelled', { jobId });
-    return true;
+    return Promise.resolve(true);
   }
 
-  async getQueueMetrics(): Promise<QueueMetrics> {
+  getQueueMetrics(): Promise<QueueMetrics> {
     const allJobs = Array.from(this.jobs.values());
 
     const completedJobs = allJobs.filter(j => j.status === 'complete');
-    const avgCompletionTime = completedJobs.length > 0
-      ? completedJobs.reduce((sum, job) => {
-          const completionTime = (job.completed_at || 0) - (job.started_at || job.created_at);
-          return sum + completionTime;
-        }, 0) / completedJobs.length
-      : 0;
+    const avgCompletionTime =
+      completedJobs.length > 0
+        ? completedJobs.reduce((sum, job) => {
+            const completionTime = (job.completed_at ?? 0) - (job.started_at ?? job.created_at);
+            return sum + completionTime;
+          }, 0) / completedJobs.length
+        : 0;
 
     const startedJobs = allJobs.filter(j => j.started_at);
-    const avgQueueTime = startedJobs.length > 0
-      ? startedJobs.reduce((sum, job) => {
-          const queueTime = (job.started_at || 0) - job.created_at;
-          return sum + queueTime;
-        }, 0) / startedJobs.length
-      : 0;
+    const avgQueueTime =
+      startedJobs.length > 0
+        ? startedJobs.reduce((sum, job) => {
+            const queueTime = (job.started_at ?? 0) - job.created_at;
+            return sum + queueTime;
+          }, 0) / startedJobs.length
+        : 0;
 
-    return {
+    return Promise.resolve({
       total_jobs: allJobs.length,
       queued_jobs: allJobs.filter(j => j.status === 'queued').length,
       active_jobs: allJobs.filter(j => ['generating', 'processing'].includes(j.status)).length,
       completed_jobs: completedJobs.length,
       failed_jobs: allJobs.filter(j => j.status === 'failed').length,
       avg_completion_time_ms: avgCompletionTime,
-      avg_queue_time_ms: avgQueueTime
-    };
+      avg_queue_time_ms: avgQueueTime,
+    });
   }
 
   private generateJobId(): string {
@@ -331,13 +352,10 @@ export class JobQueue {
     const hashInput = JSON.stringify({
       prompt: params.prompt.trim().toLowerCase(),
       size: params.size,
-      grid_size: params.grid_size
+      grid_size: params.grid_size,
     });
 
-    return createHash('sha256')
-      .update(hashInput)
-      .digest('hex')
-      .substring(0, 16);
+    return createHash('sha256').update(hashInput).digest('hex').substring(0, 16);
   }
 
   private startCleanupTimer(): void {
@@ -369,12 +387,13 @@ export class JobQueue {
     }
   }
 
-  async shutdown(): Promise<void> {
+  shutdown(): Promise<void> {
     if (this.cleanupTimer) {
       clearInterval(this.cleanupTimer);
-      this.cleanupTimer = undefined as NodeJS.Timeout | undefined;
+      this.cleanupTimer = undefined;
     }
 
     this.logger.info('JobQueue shutdown complete');
+    return Promise.resolve();
   }
 }

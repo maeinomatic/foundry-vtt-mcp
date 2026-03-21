@@ -19,18 +19,41 @@ export type GameSystem = 'dnd5e' | 'pf2e' | 'other';
 let cachedSystem: GameSystem | null = null;
 let cachedSystemId: string | null = null;
 
+const asRecord = (value: unknown): Record<string, unknown> | undefined => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return undefined;
+  }
+  return value as Record<string, unknown>;
+};
+
+const toNumber = (value: unknown): number | undefined => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+  return undefined;
+};
+
 /**
  * Detect the active Foundry game system
  * Results are cached to avoid repeated queries
  */
-export async function detectGameSystem(foundryClient: FoundryClient, logger?: Logger): Promise<GameSystem> {
+export async function detectGameSystem(
+  foundryClient: FoundryClient,
+  logger?: Logger
+): Promise<GameSystem> {
   if (cachedSystem) {
     return cachedSystem;
   }
 
   try {
-    const worldInfo = await foundryClient.query('foundry-mcp-bridge.getWorldInfo');
-    const systemId = worldInfo.system?.toLowerCase() || '';
+    const worldInfo: unknown = await foundryClient.query('foundry-mcp-bridge.getWorldInfo');
+    const worldInfoRecord = asRecord(worldInfo);
+    const systemValue = worldInfoRecord?.system;
+    const systemId = typeof systemValue === 'string' ? systemValue.toLowerCase() : '';
 
     cachedSystemId = systemId;
 
@@ -88,7 +111,7 @@ export const SystemPaths = {
     skills: 'system.skills',
     spells: 'system.spells',
     legendaryActions: 'system.resources.legact',
-    legendaryResistances: 'system.resources.legres'
+    legendaryResistances: 'system.resources.legres',
   },
   pf2e: {
     // Pathfinder 2e specific paths
@@ -106,14 +129,16 @@ export const SystemPaths = {
     saves: 'system.saves',
     // PF2e doesn't have CR or legendary actions
     challengeRating: null,
-    legendaryActions: null
-  }
+    legendaryActions: null,
+  },
 } as const;
 
 /**
  * Get system-specific data paths based on detected system
  */
-export function getSystemPaths(system: GameSystem) {
+export function getSystemPaths(
+  system: GameSystem
+): typeof SystemPaths.dnd5e | typeof SystemPaths.pf2e {
   if (system === 'dnd5e') {
     return SystemPaths.dnd5e;
   } else if (system === 'pf2e') {
@@ -127,19 +152,20 @@ export function getSystemPaths(system: GameSystem) {
  * Extract a value from system data using a path string
  * Handles both simple and nested paths (e.g., "system.details.cr")
  */
-export function extractSystemValue(data: any, path: string | null): any {
+export function extractSystemValue(data: unknown, path: string | null): unknown {
   if (!path || !data) {
     return undefined;
   }
 
   const parts = path.split('.');
-  let value = data;
+  let value: unknown = data;
 
   for (const part of parts) {
-    if (value === undefined || value === null) {
+    const record = asRecord(value);
+    if (!record) {
       return undefined;
     }
-    value = value[part];
+    value = record[part];
   }
 
   return value;
@@ -149,20 +175,23 @@ export function extractSystemValue(data: any, path: string | null): any {
  * Get creature level/CR based on system
  * Returns a normalized level value for both D&D 5e and PF2e
  */
-export function getCreatureLevel(actorData: any, system: GameSystem): number | undefined {
+export function getCreatureLevel(actorData: unknown, system: GameSystem): number | undefined {
   const paths = getSystemPaths(system);
 
   if (system === 'dnd5e') {
     // D&D 5e: Try CR first, then level
     const cr = extractSystemValue(actorData, paths.challengeRating);
-    if (cr !== undefined) return Number(cr);
+    const crNumber = toNumber(cr);
+    if (crNumber !== undefined) return crNumber;
 
     const level = extractSystemValue(actorData, paths.level);
-    if (level !== undefined) return Number(level);
+    const levelNumber = toNumber(level);
+    if (levelNumber !== undefined) return levelNumber;
   } else if (system === 'pf2e') {
     // PF2e: Level is the primary metric
     const level = extractSystemValue(actorData, paths.level);
-    if (level !== undefined) return Number(level);
+    const levelNumber = toNumber(level);
+    if (levelNumber !== undefined) return levelNumber;
   }
 
   return undefined;
@@ -171,7 +200,10 @@ export function getCreatureLevel(actorData: any, system: GameSystem): number | u
 /**
  * Get creature type/traits based on system
  */
-export function getCreatureType(actorData: any, system: GameSystem): string | string[] | undefined {
+export function getCreatureType(
+  actorData: unknown,
+  system: GameSystem
+): string | string[] | undefined {
   if (system === 'dnd5e') {
     // D&D 5e: Single creature type string
     return extractSystemValue(actorData, SystemPaths.dnd5e.creatureType);
@@ -187,7 +219,7 @@ export function getCreatureType(actorData: any, system: GameSystem): string | st
 /**
  * Check if creature has spellcasting based on system
  */
-export function hasSpellcasting(actorData: any, system: GameSystem): boolean {
+export function hasSpellcasting(actorData: unknown, system: GameSystem): boolean {
   if (system === 'dnd5e') {
     // D&D 5e: Check for spells object or spellcasting level
     const spells = extractSystemValue(actorData, SystemPaths.dnd5e.spells);
@@ -196,7 +228,8 @@ export function hasSpellcasting(actorData: any, system: GameSystem): boolean {
   } else if (system === 'pf2e') {
     // PF2e: Check for spellcasting entries
     const spellcasting = extractSystemValue(actorData, 'system.spellcasting');
-    return spellcasting && Object.keys(spellcasting).length > 0;
+    const spellcastingRecord = asRecord(spellcasting);
+    return Boolean(spellcastingRecord && Object.keys(spellcastingRecord).length > 0);
   }
 
   return false;
@@ -207,7 +240,7 @@ export function hasSpellcasting(actorData: any, system: GameSystem): boolean {
  */
 export function formatSystemError(system: GameSystem, systemId: string | null): string {
   if (system === 'other') {
-    return `This tool currently supports D&D 5e and Pathfinder 2e. Your world uses system: "${systemId || 'unknown'}". Please use a supported system or request support for additional systems.`;
+    return `This tool currently supports D&D 5e and Pathfinder 2e. Your world uses system: "${systemId ?? 'unknown'}". Please use a supported system or request support for additional systems.`;
   }
   return 'Unknown system error';
 }

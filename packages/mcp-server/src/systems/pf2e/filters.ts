@@ -25,51 +25,80 @@ export const PF2eCreatureTypes = [
   'monitor',
   'ooze',
   'plant',
-  'undead'
+  'undead',
 ] as const;
 
-export type PF2eCreatureType = typeof PF2eCreatureTypes[number];
+export type PF2eCreatureType = (typeof PF2eCreatureTypes)[number];
 
 /**
  * Pathfinder 2e rarity levels
  */
 export const PF2eRarities = ['common', 'uncommon', 'rare', 'unique'] as const;
-export type PF2eRarity = typeof PF2eRarities[number];
+export type PF2eRarity = (typeof PF2eRarities)[number];
 
 /**
  * Common creature sizes
  */
 export const CreatureSizes = ['tiny', 'small', 'medium', 'large', 'huge', 'gargantuan'] as const;
-export type CreatureSize = typeof CreatureSizes[number];
+export type CreatureSize = (typeof CreatureSizes)[number];
 
 /**
  * Pathfinder 2e filter schema
  */
 export const PF2eFiltersSchema = z.object({
-  level: z.union([
-    z.number().min(-1).max(30), // PF2e levels range from -1 to 25+ (accounting for higher levels)
-    z.object({
-      min: z.number().min(-1).optional(),
-      max: z.number().max(30).optional()
-    })
-  ]).optional(),
+  level: z
+    .union([
+      z.number().min(-1).max(30), // PF2e levels range from -1 to 25+ (accounting for higher levels)
+      z.object({
+        min: z.number().min(-1).optional(),
+        max: z.number().max(30).optional(),
+      }),
+    ])
+    .optional(),
   creatureType: z.enum(PF2eCreatureTypes).optional(),
   traits: z.array(z.string()).optional(), // Array of trait names
   rarity: z.enum(PF2eRarities).optional(),
   size: z.enum(CreatureSizes).optional(),
   alignment: z.string().optional(),
-  hasSpells: z.boolean().optional() // PF2e uses spellcasting entries
+  hasSpells: z.boolean().optional(), // PF2e uses spellcasting entries
 });
 
 export type PF2eFilters = z.infer<typeof PF2eFiltersSchema>;
 
+const asRecord = (value: unknown): Record<string, unknown> | undefined => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return undefined;
+  }
+  return value as Record<string, unknown>;
+};
+
+const getSystemData = (creature: unknown): Record<string, unknown> | undefined => {
+  const record = asRecord(creature);
+  return asRecord(record?.systemData);
+};
+
+const toStringValue = (value: unknown): string | undefined =>
+  typeof value === 'string' ? value : undefined;
+
+const toNumber = (value: unknown): number | undefined => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  return undefined;
+};
+
+const toBoolean = (value: unknown): boolean | undefined =>
+  typeof value === 'boolean' ? value : undefined;
+
 /**
  * Check if a creature matches PF2e filters
  */
-export function matchesPF2eFilters(creature: any, filters: PF2eFilters): boolean {
+export function matchesPF2eFilters(creature: unknown, filters: PF2eFilters): boolean {
+  const systemData = getSystemData(creature);
+
   // Level filter
   if (filters.level !== undefined) {
-    const level = creature.systemData?.level;
+    const level = toNumber(systemData?.level);
     if (level === undefined) return false;
 
     if (typeof filters.level === 'number') {
@@ -83,21 +112,23 @@ export function matchesPF2eFilters(creature: any, filters: PF2eFilters): boolean
 
   // Creature Type filter (checks traits array)
   if (filters.creatureType) {
-    const traits = creature.systemData?.traits;
+    const traits = systemData?.traits;
     if (!Array.isArray(traits)) return false;
 
-    const hasType = traits.some((trait: string) =>
-      trait.toLowerCase() === filters.creatureType!.toLowerCase()
+    const hasType = traits.some(
+      trait => toStringValue(trait)?.toLowerCase() === filters.creatureType.toLowerCase()
     );
     if (!hasType) return false;
   }
 
   // Traits filter (creature must have all specified traits)
   if (filters.traits && filters.traits.length > 0) {
-    const creatureTraits = creature.systemData?.traits;
+    const creatureTraits = systemData?.traits;
     if (!Array.isArray(creatureTraits)) return false;
 
-    const lowerTraits = creatureTraits.map((t: string) => t.toLowerCase());
+    const lowerTraits = creatureTraits
+      .map(t => toStringValue(t)?.toLowerCase())
+      .filter((t): t is string => typeof t === 'string');
     for (const requiredTrait of filters.traits) {
       if (!lowerTraits.includes(requiredTrait.toLowerCase())) {
         return false;
@@ -107,7 +138,7 @@ export function matchesPF2eFilters(creature: any, filters: PF2eFilters): boolean
 
   // Rarity filter
   if (filters.rarity) {
-    const rarity = creature.systemData?.rarity;
+    const rarity = toStringValue(systemData?.rarity);
     if (!rarity || rarity.toLowerCase() !== filters.rarity.toLowerCase()) {
       return false;
     }
@@ -115,7 +146,7 @@ export function matchesPF2eFilters(creature: any, filters: PF2eFilters): boolean
 
   // Size filter
   if (filters.size) {
-    const size = creature.systemData?.size;
+    const size = toStringValue(systemData?.size);
     if (!size || size.toLowerCase() !== filters.size.toLowerCase()) {
       return false;
     }
@@ -123,15 +154,15 @@ export function matchesPF2eFilters(creature: any, filters: PF2eFilters): boolean
 
   // Alignment filter
   if (filters.alignment) {
-    const alignment = creature.systemData?.alignment;
-    if (!alignment || !alignment.toLowerCase().includes(filters.alignment.toLowerCase())) {
+    const alignment = toStringValue(systemData?.alignment);
+    if (!alignment?.toLowerCase().includes(filters.alignment.toLowerCase())) {
       return false;
     }
   }
 
   // Spellcaster filter
   if (filters.hasSpells !== undefined) {
-    const hasSpells = creature.systemData?.hasSpellcasting || false;
+    const hasSpells = toBoolean(systemData?.hasSpellcasting) ?? false;
     if (hasSpells !== filters.hasSpells) {
       return false;
     }

@@ -23,10 +23,10 @@ export function isValidComfyUIPath(dirPath: string): boolean {
  */
 function getCommonComfyUIPaths(): string[] {
   const paths: string[] = [];
-  const home = process.env.HOME || process.env.USERPROFILE || '';
+  const home = process.env.HOME ?? process.env.USERPROFILE ?? '';
 
   if (isWindows()) {
-    const localAppData = process.env.LOCALAPPDATA || 'C:\\Users\\Default\\AppData\\Local';
+    const localAppData = process.env.LOCALAPPDATA ?? 'C:\\Users\\Default\\AppData\\Local';
 
     // Windows paths
     paths.push(
@@ -95,7 +95,7 @@ export function isComfyUIDesktopInstalled(): boolean {
   const appPath = '/Applications/ComfyUI.app';
   try {
     return fs.existsSync(appPath);
-  } catch (error) {
+  } catch (_error) {
     return false;
   }
 }

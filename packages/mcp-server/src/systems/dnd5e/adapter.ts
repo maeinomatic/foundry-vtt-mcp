@@ -5,8 +5,48 @@
  * Handles creature indexing, filtering, formatting, and data extraction.
  */
 
-import type { SystemAdapter, SystemMetadata, SystemCreatureIndex, DnD5eCreatureIndex } from '../types.js';
-import { DnD5eFiltersSchema, matchesDnD5eFilters, describeDnD5eFilters, type DnD5eFilters } from './filters.js';
+import type {
+  SystemAdapter,
+  SystemMetadata,
+  SystemCreatureIndex,
+  DnD5eCreatureIndex,
+} from '../types.js';
+import { DnD5eFiltersSchema, matchesDnD5eFilters, describeDnD5eFilters } from './filters.js';
+
+type UnknownRecord = Record<string, unknown>;
+
+function asRecord(value: unknown): UnknownRecord | undefined {
+  return typeof value === 'object' && value !== null ? (value as UnknownRecord) : undefined;
+}
+
+function getNestedValue(source: UnknownRecord | undefined, path: string[]): unknown {
+  let current: unknown = source;
+  for (const segment of path) {
+    const currentRecord = asRecord(current);
+    if (!currentRecord) {
+      return undefined;
+    }
+    current = currentRecord[segment];
+  }
+  return current;
+}
+
+function toNumber(value: unknown): number | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+
+  return undefined;
+}
+
+function toStringValue(value: unknown): string | undefined {
+  return typeof value === 'string' ? value : undefined;
+}
 
 /**
  * D&D 5e system adapter
@@ -18,13 +58,14 @@ export class DnD5eAdapter implements SystemAdapter {
       name: 'dnd5e',
       displayName: 'Dungeons & Dragons 5th Edition',
       version: '1.0.0',
-      description: 'Support for D&D 5e game system with Challenge Rating, creature types, and legendary actions',
+      description:
+        'Support for D&D 5e game system with Challenge Rating, creature types, and legendary actions',
       supportedFeatures: {
         creatureIndex: true,
         characterStats: true,
         spellcasting: true,
-        powerLevel: true // Uses Challenge Rating
-      }
+        powerLevel: true, // Uses Challenge Rating
+      },
     };
   }
 
@@ -36,24 +77,27 @@ export class DnD5eAdapter implements SystemAdapter {
    * Extract creature data from Foundry document for indexing
    * This is called by the index builder in Foundry's browser context
    */
-  extractCreatureData(doc: any, pack: any): { creature: SystemCreatureIndex; errors: number } | null {
+  extractCreatureData(
+    _doc: unknown,
+    _pack: unknown
+  ): { creature: SystemCreatureIndex; errors: number } | null {
     // Implementation is in index-builder.ts since it runs in browser
     // This method is here for type compliance but delegates to IndexBuilder
     throw new Error('extractCreatureData should be called from DnD5eIndexBuilder, not the adapter');
   }
 
-  getFilterSchema() {
+  getFilterSchema(): typeof DnD5eFiltersSchema {
     return DnD5eFiltersSchema;
   }
 
-  matchesFilters(creature: SystemCreatureIndex, filters: Record<string, any>): boolean {
+  matchesFilters(creature: SystemCreatureIndex, filters: Record<string, unknown>): boolean {
     // Validate filters match D&D 5e schema
     const validated = DnD5eFiltersSchema.safeParse(filters);
     if (!validated.success) {
       return false;
     }
 
-    return matchesDnD5eFilters(creature, validated.data as DnD5eFilters);
+    return matchesDnD5eFilters(creature, validated.data);
   }
 
   getDataPaths(): Record<string, string | null> {
@@ -74,25 +118,25 @@ export class DnD5eAdapter implements SystemAdapter {
       // PF2e-specific paths don't exist in D&D 5e
       perception: null,
       saves: null,
-      rarity: null
+      rarity: null,
     };
   }
 
-  formatCreatureForList(creature: SystemCreatureIndex): any {
+  formatCreatureForList(creature: SystemCreatureIndex): Record<string, unknown> {
     const dnd5eCreature = creature as DnD5eCreatureIndex;
-    const formatted: any = {
+    const formatted: Record<string, unknown> = {
       id: creature.id,
       name: creature.name,
       type: creature.type,
       pack: {
         id: creature.packName,
-        label: creature.packLabel
-      }
+        label: creature.packLabel,
+      },
     };
 
     // Add D&D 5e specific stats
     if (dnd5eCreature.systemData) {
-      const stats: any = {};
+      const stats: Record<string, unknown> = {};
 
       if (dnd5eCreature.systemData.challengeRating !== undefined) {
         stats.challengeRating = dnd5eCreature.systemData.challengeRating;
@@ -138,7 +182,7 @@ export class DnD5eAdapter implements SystemAdapter {
     return formatted;
   }
 
-  formatCreatureForDetails(creature: SystemCreatureIndex): any {
+  formatCreatureForDetails(creature: SystemCreatureIndex): Record<string, unknown> {
     const dnd5eCreature = creature as DnD5eCreatureIndex;
     const formatted = this.formatCreatureForList(creature);
 
@@ -153,7 +197,7 @@ export class DnD5eAdapter implements SystemAdapter {
         hitPoints: dnd5eCreature.systemData.hitPoints,
         armorClass: dnd5eCreature.systemData.armorClass,
         hasSpellcasting: dnd5eCreature.systemData.hasSpellcasting,
-        hasLegendaryActions: dnd5eCreature.systemData.hasLegendaryActions
+        hasLegendaryActions: dnd5eCreature.systemData.hasLegendaryActions,
       };
     }
 
@@ -164,13 +208,13 @@ export class DnD5eAdapter implements SystemAdapter {
     return formatted;
   }
 
-  describeFilters(filters: Record<string, any>): string {
+  describeFilters(filters: Record<string, unknown>): string {
     const validated = DnD5eFiltersSchema.safeParse(filters);
     if (!validated.success) {
       return 'invalid filters';
     }
 
-    return describeDnD5eFilters(validated.data as DnD5eFilters);
+    return describeDnD5eFilters(validated.data);
   }
 
   getPowerLevel(creature: SystemCreatureIndex): number | undefined {
@@ -191,101 +235,123 @@ export class DnD5eAdapter implements SystemAdapter {
   /**
    * Extract character statistics from actor data
    */
-  extractCharacterStats(actorData: any): any {
-    const system = actorData.system || {};
-    const stats: any = {};
+  extractCharacterStats(actorData: unknown): Record<string, unknown> {
+    const actor = asRecord(actorData);
+    const system = asRecord(actor?.system);
+    const stats: Record<string, unknown> = {};
 
     // Basic info
-    stats.name = actorData.name;
-    stats.type = actorData.type;
+    stats.name = toStringValue(actor?.name);
+    stats.type = toStringValue(actor?.type);
 
     // Challenge Rating or Level
-    const cr = system.details?.cr ?? system.details?.cr?.value ?? system.cr;
-    if (cr !== undefined && cr !== null) {
-      stats.challengeRating = Number(cr);
+    const cr =
+      toNumber(getNestedValue(system, ['details', 'cr'])) ??
+      toNumber(getNestedValue(system, ['details', 'cr', 'value'])) ??
+      toNumber(getNestedValue(system, ['cr']));
+    if (cr !== undefined) {
+      stats.challengeRating = cr;
     }
 
-    const level = system.details?.level?.value ?? system.details?.level ?? system.level;
-    if (level !== undefined && level !== null) {
-      stats.level = Number(level);
+    const level =
+      toNumber(getNestedValue(system, ['details', 'level', 'value'])) ??
+      toNumber(getNestedValue(system, ['details', 'level'])) ??
+      toNumber(getNestedValue(system, ['level']));
+    if (level !== undefined) {
+      stats.level = level;
     }
 
     // Hit Points
-    const hp = system.attributes?.hp;
+    const hp = asRecord(getNestedValue(system, ['attributes', 'hp']));
     if (hp) {
       stats.hitPoints = {
-        current: hp.value ?? 0,
-        max: hp.max ?? 0,
-        temp: hp.temp ?? 0
+        current: toNumber(hp.value) ?? 0,
+        max: toNumber(hp.max) ?? 0,
+        temp: toNumber(hp.temp) ?? 0,
       };
     }
 
     // Armor Class
-    const ac = system.attributes?.ac?.value ?? system.attributes?.ac;
+    const ac =
+      toNumber(getNestedValue(system, ['attributes', 'ac', 'value'])) ??
+      toNumber(getNestedValue(system, ['attributes', 'ac']));
     if (ac !== undefined) {
       stats.armorClass = ac;
     }
 
     // Abilities (STR, DEX, CON, INT, WIS, CHA)
-    if (system.abilities) {
-      stats.abilities = {};
-      for (const [key, ability] of Object.entries(system.abilities)) {
-        const abilityData = ability as any;
-        stats.abilities[key] = {
-          value: abilityData.value ?? 10,
-          modifier: abilityData.mod ?? 0
+    const abilities = asRecord(getNestedValue(system, ['abilities']));
+    if (abilities) {
+      const abilityStats: Record<string, UnknownRecord> = {};
+      for (const [key, ability] of Object.entries(abilities)) {
+        const abilityData = asRecord(ability);
+        abilityStats[key] = {
+          value: toNumber(abilityData?.value) ?? 10,
+          modifier: toNumber(abilityData?.mod) ?? 0,
         };
       }
+      stats.abilities = abilityStats;
     }
 
     // Skills
-    if (system.skills) {
-      stats.skills = {};
-      for (const [key, skill] of Object.entries(system.skills)) {
-        const skillData = skill as any;
-        stats.skills[key] = {
-          value: skillData.value ?? 0,
-          modifier: skillData.total ?? skillData.mod ?? 0,
-          proficient: skillData.proficient ?? 0
+    const skills = asRecord(getNestedValue(system, ['skills']));
+    if (skills) {
+      const skillStats: Record<string, UnknownRecord> = {};
+      for (const [key, skill] of Object.entries(skills)) {
+        const skillData = asRecord(skill);
+        skillStats[key] = {
+          value: toNumber(skillData?.value) ?? 0,
+          modifier: toNumber(skillData?.total) ?? toNumber(skillData?.mod) ?? 0,
+          proficient: toNumber(skillData?.proficient) ?? 0,
         };
       }
+      stats.skills = skillStats;
     }
 
     // Creature-specific info
-    if (actorData.type === 'npc') {
-      const creatureType = system.details?.type?.value ?? system.details?.type;
+    if (toStringValue(actor?.type) === 'npc') {
+      const creatureType =
+        toStringValue(getNestedValue(system, ['details', 'type', 'value'])) ??
+        toStringValue(getNestedValue(system, ['details', 'type']));
       if (creatureType) {
         stats.creatureType = creatureType;
       }
 
-      const size = system.traits?.size?.value ?? system.traits?.size ?? system.size;
+      const size =
+        toStringValue(getNestedValue(system, ['traits', 'size', 'value'])) ??
+        toStringValue(getNestedValue(system, ['traits', 'size'])) ??
+        toStringValue(getNestedValue(system, ['size']));
       if (size) {
         stats.size = size;
       }
 
-      const alignment = system.details?.alignment?.value ?? system.details?.alignment;
+      const alignment =
+        toStringValue(getNestedValue(system, ['details', 'alignment', 'value'])) ??
+        toStringValue(getNestedValue(system, ['details', 'alignment']));
       if (alignment) {
         stats.alignment = alignment;
       }
 
       // Legendary actions
-      const legact = system.resources?.legact;
+      const legact = asRecord(getNestedValue(system, ['resources', 'legact']));
       if (legact) {
         stats.legendaryActions = {
-          available: legact.value ?? 0,
-          max: legact.max ?? 0
+          available: toNumber(legact.value) ?? 0,
+          max: toNumber(legact.max) ?? 0,
         };
       }
     }
 
     // Spellcasting
-    const hasSpells = !!(system.spells ||
-                        system.attributes?.spellcasting ||
-                        (system.details?.spellLevel && system.details.spellLevel > 0));
+    const spellLevel = toNumber(getNestedValue(system, ['details', 'spellLevel'])) ?? 0;
+    const hasSpells =
+      getNestedValue(system, ['spells']) !== undefined ||
+      getNestedValue(system, ['attributes', 'spellcasting']) !== undefined ||
+      spellLevel > 0;
     if (hasSpells) {
       stats.spellcasting = {
         hasSpells: true,
-        spellLevel: system.details?.spellLevel ?? 0
+        spellLevel,
       };
     }
 

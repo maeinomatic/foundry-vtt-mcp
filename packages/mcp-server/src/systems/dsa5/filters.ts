@@ -12,51 +12,53 @@ import { z } from 'zod';
  * Common species from DSA5 Grundregelwerk
  */
 export const DSA5Species = [
-  'mensch',      // Human
-  'elf',         // Elf
-  'halbelf',     // Half-Elf
-  'zwerg',       // Dwarf
-  'goblin',      // Goblin
-  'ork',         // Orc
-  'halborc',     // Half-Orc
-  'achaz',       // Achaz (lizard folk)
-  'troll',       // Troll
-  'oger',        // Ogre
-  'drache',      // Dragon
-  'dämon',       // Demon
-  'elementar',   // Elemental
-  'untot',       // Undead
-  'tier',        // Animal/Beast
-  'chimäre',     // Chimera/Hybrid creature
+  'mensch', // Human
+  'elf', // Elf
+  'halbelf', // Half-Elf
+  'zwerg', // Dwarf
+  'goblin', // Goblin
+  'ork', // Orc
+  'halborc', // Half-Orc
+  'achaz', // Achaz (lizard folk)
+  'troll', // Troll
+  'oger', // Ogre
+  'drache', // Dragon
+  'dämon', // Demon
+  'elementar', // Elemental
+  'untot', // Undead
+  'tier', // Animal/Beast
+  'chimäre', // Chimera/Hybrid creature
 ] as const;
 
-export type DSA5SpeciesType = typeof DSA5Species[number];
+export type DSA5SpeciesType = (typeof DSA5Species)[number];
 
 /**
  * Common creature sizes (shared with D&D5e)
  */
 export const CreatureSizes = ['tiny', 'small', 'medium', 'large', 'huge', 'gargantuan'] as const;
-export type CreatureSize = typeof CreatureSizes[number];
+export type CreatureSize = (typeof CreatureSizes)[number];
 
 /**
  * Experience levels (Erfahrungsgrade) 1-7
  * Maps to AP ranges defined in DSA5_EXPERIENCE_LEVELS.md
  */
 export const ExperienceLevels = [1, 2, 3, 4, 5, 6, 7] as const;
-export type ExperienceLevel = typeof ExperienceLevels[number];
+export type ExperienceLevel = (typeof ExperienceLevels)[number];
 
 /**
  * DSA5 filter schema
  */
 export const DSA5FiltersSchema = z.object({
   // Level filter (1-7) - replaces D&D5e's Challenge Rating
-  level: z.union([
-    z.number().min(1).max(7),
-    z.object({
-      min: z.number().min(1).max(7).optional(),
-      max: z.number().min(1).max(7).optional()
-    })
-  ]).optional(),
+  level: z
+    .union([
+      z.number().min(1).max(7),
+      z.object({
+        min: z.number().min(1).max(7).optional(),
+        max: z.number().min(1).max(7).optional(),
+      }),
+    ])
+    .optional(),
 
   // Species filter (Spezies/Rasse)
   species: z.enum(DSA5Species).optional(),
@@ -71,24 +73,53 @@ export const DSA5FiltersSchema = z.object({
   hasSpells: z.boolean().optional(),
 
   // Experience points range (AP) - detail filter
-  experiencePoints: z.union([
-    z.number(),
-    z.object({
-      min: z.number().optional(),
-      max: z.number().optional()
-    })
-  ]).optional(),
+  experiencePoints: z
+    .union([
+      z.number(),
+      z.object({
+        min: z.number().optional(),
+        max: z.number().optional(),
+      }),
+    ])
+    .optional(),
 });
 
 export type DSA5Filters = z.infer<typeof DSA5FiltersSchema>;
 
+const asRecord = (value: unknown): Record<string, unknown> | undefined => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return undefined;
+  }
+  return value as Record<string, unknown>;
+};
+
+const getSystemData = (creature: unknown): Record<string, unknown> | undefined => {
+  const record = asRecord(creature);
+  return asRecord(record?.systemData);
+};
+
+const toStringValue = (value: unknown): string | undefined =>
+  typeof value === 'string' ? value : undefined;
+
+const toNumber = (value: unknown): number | undefined => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  return undefined;
+};
+
+const toBoolean = (value: unknown): boolean | undefined =>
+  typeof value === 'boolean' ? value : undefined;
+
 /**
  * Check if a creature matches DSA5 filters
  */
-export function matchesDSA5Filters(creature: any, filters: DSA5Filters): boolean {
+export function matchesDSA5Filters(creature: unknown, filters: DSA5Filters): boolean {
+  const systemData = getSystemData(creature);
+
   // Level filter (Erfahrungsgrad 1-7)
   if (filters.level !== undefined) {
-    const level = creature.systemData?.level;
+    const level = toNumber(systemData?.level);
     if (level === undefined) return false;
 
     if (typeof filters.level === 'number') {
@@ -102,7 +133,7 @@ export function matchesDSA5Filters(creature: any, filters: DSA5Filters): boolean
 
   // Species filter (Spezies)
   if (filters.species) {
-    const species = creature.systemData?.species;
+    const species = toStringValue(systemData?.species);
     if (!species || species.toLowerCase() !== filters.species.toLowerCase()) {
       return false;
     }
@@ -110,15 +141,15 @@ export function matchesDSA5Filters(creature: any, filters: DSA5Filters): boolean
 
   // Culture filter (Kultur)
   if (filters.culture) {
-    const culture = creature.systemData?.culture;
-    if (!culture || !culture.toLowerCase().includes(filters.culture.toLowerCase())) {
+    const culture = toStringValue(systemData?.culture);
+    if (!culture?.toLowerCase().includes(filters.culture.toLowerCase())) {
       return false;
     }
   }
 
   // Size filter (Größe)
   if (filters.size) {
-    const size = creature.systemData?.size;
+    const size = toStringValue(systemData?.size);
     if (!size || size.toLowerCase() !== filters.size.toLowerCase()) {
       return false;
     }
@@ -126,7 +157,7 @@ export function matchesDSA5Filters(creature: any, filters: DSA5Filters): boolean
 
   // Has spells filter (Zauber)
   if (filters.hasSpells !== undefined) {
-    const hasSpells = creature.systemData?.hasSpells || false;
+    const hasSpells = toBoolean(systemData?.hasSpells) ?? false;
     if (hasSpells !== filters.hasSpells) {
       return false;
     }
@@ -134,7 +165,7 @@ export function matchesDSA5Filters(creature: any, filters: DSA5Filters): boolean
 
   // Experience points filter (AP)
   if (filters.experiencePoints !== undefined) {
-    const ap = creature.systemData?.experiencePoints;
+    const ap = toNumber(systemData?.experiencePoints);
     if (ap === undefined) return false;
 
     if (typeof filters.experiencePoints === 'number') {

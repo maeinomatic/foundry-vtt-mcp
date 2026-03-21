@@ -5,8 +5,76 @@
  * Handles creature indexing, filtering, formatting, and data extraction.
  */
 
-import type { SystemAdapter, SystemMetadata, SystemCreatureIndex, PF2eCreatureIndex } from '../types.js';
-import { PF2eFiltersSchema, matchesPF2eFilters, describePF2eFilters, type PF2eFilters } from './filters.js';
+import type {
+  SystemAdapter,
+  SystemMetadata,
+  SystemCreatureIndex,
+  PF2eCreatureIndex,
+} from '../types.js';
+import { PF2eFiltersSchema, matchesPF2eFilters, describePF2eFilters } from './filters.js';
+
+type UnknownRecord = Record<string, unknown>;
+
+const PF2E_CREATURE_TRAITS = [
+  'aberration',
+  'animal',
+  'beast',
+  'celestial',
+  'construct',
+  'dragon',
+  'elemental',
+  'fey',
+  'fiend',
+  'fungus',
+  'humanoid',
+  'monitor',
+  'ooze',
+  'plant',
+  'undead',
+];
+
+function asRecord(value: unknown): UnknownRecord | undefined {
+  return typeof value === 'object' && value !== null ? (value as UnknownRecord) : undefined;
+}
+
+function getNestedValue(source: UnknownRecord | undefined, path: string[]): unknown {
+  let current: unknown = source;
+  for (const segment of path) {
+    const currentRecord = asRecord(current);
+    if (!currentRecord) {
+      return undefined;
+    }
+    current = currentRecord[segment];
+  }
+  return current;
+}
+
+function toNumber(value: unknown): number | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+
+  return undefined;
+}
+
+function toStringValue(value: unknown): string | undefined {
+  return typeof value === 'string' ? value : undefined;
+}
+
+function toStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map(entry => toStringValue(entry))
+    .filter((entry): entry is string => entry !== undefined);
+}
 
 /**
  * Pathfinder 2e system adapter
@@ -18,13 +86,14 @@ export class PF2eAdapter implements SystemAdapter {
       name: 'pf2e',
       displayName: 'Pathfinder 2nd Edition',
       version: '1.0.0',
-      description: 'Support for PF2e game system with Level, traits, rarity, and spellcasting entries',
+      description:
+        'Support for PF2e game system with Level, traits, rarity, and spellcasting entries',
       supportedFeatures: {
         creatureIndex: true,
         characterStats: true,
         spellcasting: true,
-        powerLevel: true // Uses Level
-      }
+        powerLevel: true, // Uses Level
+      },
     };
   }
 
@@ -36,24 +105,27 @@ export class PF2eAdapter implements SystemAdapter {
    * Extract creature data from Foundry document for indexing
    * This is called by the index builder in Foundry's browser context
    */
-  extractCreatureData(doc: any, pack: any): { creature: SystemCreatureIndex; errors: number } | null {
+  extractCreatureData(
+    _doc: unknown,
+    _pack: unknown
+  ): { creature: SystemCreatureIndex; errors: number } | null {
     // Implementation is in index-builder.ts since it runs in browser
     // This method is here for type compliance but delegates to IndexBuilder
     throw new Error('extractCreatureData should be called from PF2eIndexBuilder, not the adapter');
   }
 
-  getFilterSchema() {
+  getFilterSchema(): typeof PF2eFiltersSchema {
     return PF2eFiltersSchema;
   }
 
-  matchesFilters(creature: SystemCreatureIndex, filters: Record<string, any>): boolean {
+  matchesFilters(creature: SystemCreatureIndex, filters: Record<string, unknown>): boolean {
     // Validate filters match PF2e schema
     const validated = PF2eFiltersSchema.safeParse(filters);
     if (!validated.success) {
       return false;
     }
 
-    return matchesPF2eFilters(creature, validated.data as PF2eFilters);
+    return matchesPF2eFilters(creature, validated.data);
   }
 
   getDataPaths(): Record<string, string | null> {
@@ -75,25 +147,25 @@ export class PF2eAdapter implements SystemAdapter {
       challengeRating: null,
       legendaryActions: null,
       legendaryResistances: null,
-      spells: null // PF2e uses spellcasting entries instead
+      spells: null, // PF2e uses spellcasting entries instead
     };
   }
 
-  formatCreatureForList(creature: SystemCreatureIndex): any {
+  formatCreatureForList(creature: SystemCreatureIndex): Record<string, unknown> {
     const pf2eCreature = creature as PF2eCreatureIndex;
-    const formatted: any = {
+    const formatted: Record<string, unknown> = {
       id: creature.id,
       name: creature.name,
       type: creature.type,
       pack: {
         id: creature.packName,
-        label: creature.packLabel
-      }
+        label: creature.packLabel,
+      },
     };
 
     // Add PF2e specific stats
     if (pf2eCreature.systemData) {
-      const stats: any = {};
+      const stats: Record<string, unknown> = {};
 
       if (pf2eCreature.systemData.level !== undefined) {
         stats.level = pf2eCreature.systemData.level;
@@ -103,11 +175,8 @@ export class PF2eAdapter implements SystemAdapter {
         stats.traits = pf2eCreature.systemData.traits;
 
         // Extract primary creature type from traits
-        const creatureTraits = ['aberration', 'animal', 'beast', 'celestial', 'construct',
-                                'dragon', 'elemental', 'fey', 'fiend', 'fungus', 'humanoid',
-                                'monitor', 'ooze', 'plant', 'undead'];
         const primaryType = pf2eCreature.systemData.traits.find((t: string) =>
-          creatureTraits.includes(t.toLowerCase())
+          PF2E_CREATURE_TRAITS.includes(t.toLowerCase())
         );
         if (primaryType) stats.creatureType = primaryType;
       }
@@ -148,7 +217,7 @@ export class PF2eAdapter implements SystemAdapter {
     return formatted;
   }
 
-  formatCreatureForDetails(creature: SystemCreatureIndex): any {
+  formatCreatureForDetails(creature: SystemCreatureIndex): Record<string, unknown> {
     const pf2eCreature = creature as PF2eCreatureIndex;
     const formatted = this.formatCreatureForList(creature);
 
@@ -162,7 +231,7 @@ export class PF2eAdapter implements SystemAdapter {
         rarity: pf2eCreature.systemData.rarity,
         hitPoints: pf2eCreature.systemData.hitPoints,
         armorClass: pf2eCreature.systemData.armorClass,
-        hasSpellcasting: pf2eCreature.systemData.hasSpellcasting
+        hasSpellcasting: pf2eCreature.systemData.hasSpellcasting,
       };
     }
 
@@ -173,13 +242,13 @@ export class PF2eAdapter implements SystemAdapter {
     return formatted;
   }
 
-  describeFilters(filters: Record<string, any>): string {
+  describeFilters(filters: Record<string, unknown>): string {
     const validated = PF2eFiltersSchema.safeParse(filters);
     if (!validated.success) {
       return 'invalid filters';
     }
 
-    return describePF2eFilters(validated.data as PF2eFilters);
+    return describePF2eFilters(validated.data);
   }
 
   getPowerLevel(creature: SystemCreatureIndex): number | undefined {
@@ -196,120 +265,135 @@ export class PF2eAdapter implements SystemAdapter {
   /**
    * Extract character statistics from actor data
    */
-  extractCharacterStats(actorData: any): any {
-    const system = actorData.system || {};
-    const stats: any = {};
+  extractCharacterStats(actorData: unknown): Record<string, unknown> {
+    const actor = asRecord(actorData);
+    const system = asRecord(actor?.system);
+    const stats: Record<string, unknown> = {};
 
     // Basic info
-    stats.name = actorData.name;
-    stats.type = actorData.type;
+    stats.name = toStringValue(actor?.name);
+    stats.type = toStringValue(actor?.type);
 
     // Level
-    const level = system.details?.level?.value ?? system.details?.level ?? system.level;
-    if (level !== undefined && level !== null) {
-      stats.level = Number(level);
+    const level =
+      toNumber(getNestedValue(system, ['details', 'level', 'value'])) ??
+      toNumber(getNestedValue(system, ['details', 'level'])) ??
+      toNumber(getNestedValue(system, ['level']));
+    if (level !== undefined) {
+      stats.level = level;
     }
 
     // Hit Points
-    const hp = system.attributes?.hp;
+    const hp = asRecord(getNestedValue(system, ['attributes', 'hp']));
     if (hp) {
       stats.hitPoints = {
-        current: hp.value ?? 0,
-        max: hp.max ?? 0,
-        temp: hp.temp ?? 0
+        current: toNumber(hp.value) ?? 0,
+        max: toNumber(hp.max) ?? 0,
+        temp: toNumber(hp.temp) ?? 0,
       };
     }
 
     // Armor Class
-    const ac = system.attributes?.ac?.value ?? system.attributes?.ac;
+    const ac =
+      toNumber(getNestedValue(system, ['attributes', 'ac', 'value'])) ??
+      toNumber(getNestedValue(system, ['attributes', 'ac']));
     if (ac !== undefined) {
       stats.armorClass = ac;
     }
 
     // Abilities (STR, DEX, CON, INT, WIS, CHA)
-    if (system.abilities) {
-      stats.abilities = {};
-      for (const [key, ability] of Object.entries(system.abilities)) {
-        const abilityData = ability as any;
-        stats.abilities[key] = {
-          value: abilityData.value ?? abilityData.mod ?? 0,
-          modifier: abilityData.mod ?? 0
+    const abilities = asRecord(getNestedValue(system, ['abilities']));
+    if (abilities) {
+      const abilityStats: Record<string, UnknownRecord> = {};
+      for (const [key, ability] of Object.entries(abilities)) {
+        const abilityData = asRecord(ability);
+        abilityStats[key] = {
+          value: toNumber(abilityData?.value) ?? toNumber(abilityData?.mod) ?? 0,
+          modifier: toNumber(abilityData?.mod) ?? 0,
         };
       }
+      stats.abilities = abilityStats;
     }
 
     // Skills
-    if (system.skills) {
-      stats.skills = {};
-      for (const [key, skill] of Object.entries(system.skills)) {
-        const skillData = skill as any;
-        stats.skills[key] = {
-          modifier: skillData.value ?? skillData.mod ?? 0,
-          rank: skillData.rank ?? 0,
-          proficient: (skillData.rank ?? 0) > 0
+    const skills = asRecord(getNestedValue(system, ['skills']));
+    if (skills) {
+      const skillStats: Record<string, UnknownRecord> = {};
+      for (const [key, skill] of Object.entries(skills)) {
+        const skillData = asRecord(skill);
+        const rank = toNumber(skillData?.rank) ?? 0;
+        skillStats[key] = {
+          modifier: toNumber(skillData?.value) ?? toNumber(skillData?.mod) ?? 0,
+          rank,
+          proficient: rank > 0,
         };
       }
+      stats.skills = skillStats;
     }
 
     // Perception
-    if (system.perception) {
+    const perception = asRecord(getNestedValue(system, ['perception']));
+    if (perception) {
       stats.perception = {
-        modifier: system.perception.value ?? system.perception.mod ?? 0,
-        rank: system.perception.rank ?? 0
+        modifier: toNumber(perception.value) ?? toNumber(perception.mod) ?? 0,
+        rank: toNumber(perception.rank) ?? 0,
       };
     }
 
     // Saves
-    if (system.saves) {
-      stats.saves = {};
-      for (const [key, save] of Object.entries(system.saves)) {
-        const saveData = save as any;
-        stats.saves[key] = {
-          modifier: saveData.value ?? saveData.mod ?? 0,
-          rank: saveData.rank ?? 0
+    const saves = asRecord(getNestedValue(system, ['saves']));
+    if (saves) {
+      const saveStats: Record<string, UnknownRecord> = {};
+      for (const [key, save] of Object.entries(saves)) {
+        const saveData = asRecord(save);
+        saveStats[key] = {
+          modifier: toNumber(saveData?.value) ?? toNumber(saveData?.mod) ?? 0,
+          rank: toNumber(saveData?.rank) ?? 0,
         };
       }
+      stats.saves = saveStats;
     }
 
     // Creature-specific info
-    if (actorData.type === 'npc') {
-      const traits = system.traits?.value || [];
-      if (Array.isArray(traits) && traits.length > 0) {
+    if (toStringValue(actor?.type) === 'npc') {
+      const traits = toStringArray(getNestedValue(system, ['traits', 'value']));
+      if (traits.length > 0) {
         stats.traits = traits;
 
         // Extract primary creature type
-        const creatureTraits = ['aberration', 'animal', 'beast', 'celestial', 'construct',
-                                'dragon', 'elemental', 'fey', 'fiend', 'fungus', 'humanoid',
-                                'monitor', 'ooze', 'plant', 'undead'];
-        const primaryType = traits.find((t: string) => creatureTraits.includes(t.toLowerCase()));
+        const primaryType = traits.find(t => PF2E_CREATURE_TRAITS.includes(t.toLowerCase()));
         if (primaryType) {
           stats.creatureType = primaryType;
         }
       }
 
-      const size = system.traits?.size?.value ?? system.traits?.size;
+      const size =
+        toStringValue(getNestedValue(system, ['traits', 'size', 'value'])) ??
+        toStringValue(getNestedValue(system, ['traits', 'size']));
       if (size) {
         stats.size = size;
       }
 
-      const alignment = system.details?.alignment?.value ?? system.details?.alignment;
+      const alignment =
+        toStringValue(getNestedValue(system, ['details', 'alignment', 'value'])) ??
+        toStringValue(getNestedValue(system, ['details', 'alignment']));
       if (alignment) {
         stats.alignment = alignment;
       }
 
-      const rarity = system.traits?.rarity;
+      const rarity = toStringValue(getNestedValue(system, ['traits', 'rarity']));
       if (rarity) {
         stats.rarity = rarity;
       }
     }
 
     // Spellcasting
-    const spellcasting = system.spellcasting || {};
+    const spellcasting = asRecord(getNestedValue(system, ['spellcasting'])) ?? {};
     const hasSpells = Object.keys(spellcasting).length > 0;
     if (hasSpells) {
       stats.spellcasting = {
         hasSpells: true,
-        entries: Object.keys(spellcasting).length
+        entries: Object.keys(spellcasting).length,
       };
     }
 
