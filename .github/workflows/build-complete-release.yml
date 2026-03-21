@@ -355,6 +355,9 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && github.event.inputs.publish_prerelease == 'true')
     permissions:
       contents: write
+    env:
+      FOUNDRY_ENABLE_REGISTRY_PUBLISH: 'false'
+      FOUNDRY_RELEASE_SECRET_NAME: FOUNDRY_PACKAGE_RELEASE_TOKEN
 
     steps:
     - name: Checkout code
@@ -575,18 +578,24 @@ jobs:
         draft: false
         prerelease: ${{ steps.release_meta.outputs.prerelease }}
 
+    - name: Skip Foundry VTT Package Registry update (disabled)
+      if: startsWith(github.ref, 'refs/tags/v') && env.FOUNDRY_ENABLE_REGISTRY_PUBLISH != 'true'
+      run: |
+        echo "ℹ️ Foundry registry publish is disabled for this repository."
+        echo "Set create-release env FOUNDRY_ENABLE_REGISTRY_PUBLISH=true to enable publishing."
+
     - name: Update Foundry VTT Package Registry
-      if: startsWith(github.ref, 'refs/tags/v')
+      if: startsWith(github.ref, 'refs/tags/v') && env.FOUNDRY_ENABLE_REGISTRY_PUBLISH == 'true'
       env:
-        FOUNDRY_PACKAGE_RELEASE_TOKEN: ${{ secrets.FOUNDRY_PACKAGE_RELEASE_TOKEN }}
+        FOUNDRY_PACKAGE_RELEASE_TOKEN: ${{ secrets[env.FOUNDRY_RELEASE_SECRET_NAME] }}
         FOUNDRY_RELEASE_ENDPOINT: https://foundryvtt.com/_api/packages/release_version/
       run: |
         echo "🔄 Updating Foundry VTT Package Registry..."
 
-        # Optional dry-run for manual dispatches
+        DRY_RUN=false
         if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.dry_run_foundry }}" = "true" ]; then
-          echo "🧪 dry_run_foundry=true: skipping registry update by request"
-          exit 0
+          DRY_RUN=true
+          echo "🧪 dry_run_foundry=true: sending API validation request with dry-run enabled"
         fi
 
         # Validate secret availability with a clear error
@@ -611,10 +620,16 @@ jobs:
         echo "📎 Manifest URL: $MANIFEST_URL"
         echo "📋 Release Notes: $RELEASE_NOTES_URL"
 
+        DRY_RUN_FIELD=""
+        if [ "$DRY_RUN" = "true" ]; then
+          DRY_RUN_FIELD='"dry-run": true,'
+        fi
+
         # Prepare API request body
         REQUEST_BODY=$(cat <<EOF
         {
           "id": "$PACKAGE_ID",
+          ${DRY_RUN_FIELD}
           "release": {
             "version": "$VERSION",
             "manifest": "$MANIFEST_URL",
