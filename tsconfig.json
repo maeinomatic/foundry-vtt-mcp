@@ -5,7 +5,7 @@
     "moduleResolution": "bundler",
     "allowSyntheticDefaultImports": true,
     "esModuleInterop": true,
-    "allowJs": true,
+    "allowJs": false,
     "checkJs": false,
     "strict": true,
     "noUnusedLocals": true,
@@ -29,7 +29,7 @@
     },
     "lib": ["ES2022", "DOM", "DOM.Iterable"]
   },
-  "include": ["packages/**/*", "shared/**/*"],
+  "include": ["packages/**/*.ts", "packages/**/*.d.ts", "shared/**/*.ts", "shared/**/*.d.ts"],
   "exclude": ["node_modules", "**/dist", "**/build", "**/*.test.*"],
   "references": [
     {

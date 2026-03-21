@@ -1,0 +1,185 @@
+name: Release Smoke Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to simulate (example: v1.2.3-rc.1)"
+        required: false
+        default: "v0.0.0-rc.1"
+
+concurrency:
+  group: release-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --workspaces --include-workspace-root
+
+      - name: Check version consistency
+        run: npm run version:check
+
+      - name: Resolve smoke version
+        id: version
+        run: |
+          VERSION_INPUT="${{ github.event.inputs.version }}"
+          if [ -z "$VERSION_INPUT" ]; then
+            VERSION_INPUT="v0.0.0-rc.1"
+          fi
+
+          if ! echo "$VERSION_INPUT" | grep -Eq '^v?[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.]+)?$'; then
+            echo "Invalid version format: '$VERSION_INPUT'"
+            echo "Expected examples: v1.2.3, v1.2.3-rc.1"
+            exit 1
+          fi
+
+          VERSION="${VERSION_INPUT#v}"
+          VERSION="v$VERSION"
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "version_no_v=${VERSION#v}" >> "$GITHUB_OUTPUT"
+          echo "Resolved smoke version: $VERSION"
+
+      - name: Build shared types
+        run: npm run build --workspace=shared
+
+      - name: Build MCP Server bundle
+        run: npm run build:bundle --workspace=packages/mcp-server
+
+      - name: Build Foundry Module
+        run: npm run build --workspace=packages/foundry-module
+
+      - name: Prepare release manifest metadata (simulation)
+        env:
+          GH_SERVER_URL: ${{ github.server_url }}
+          GH_REPOSITORY: ${{ github.repository }}
+          GH_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          node <<'EOF'
+          const fs = require('node:fs');
+
+          const path = './packages/foundry-module/module.json';
+          const manifest = JSON.parse(fs.readFileSync(path, 'utf8'));
+
+          const serverUrl = process.env.GH_SERVER_URL;
+          const repository = process.env.GH_REPOSITORY;
+          const defaultBranch = process.env.GH_DEFAULT_BRANCH || 'master';
+
+          manifest.url = `${serverUrl}/${repository}`;
+          manifest.bugs = `${serverUrl}/${repository}/issues`;
+          manifest.changelog = `${serverUrl}/${repository}/releases`;
+          manifest.readme = `${serverUrl}/${repository}/blob/${defaultBranch}/README.md`;
+          manifest.license = `${serverUrl}/${repository}/blob/${defaultBranch}/LICENSE`;
+          manifest.manifest = `https://raw.githubusercontent.com/${repository}/${defaultBranch}/packages/foundry-module/module.json`;
+          manifest.download = `${serverUrl}/${repository}/releases/latest/download/foundry-vtt-mcp.zip`;
+
+          fs.writeFileSync(path, `${JSON.stringify(manifest, null, 2)}\n`);
+          console.log('Prepared manifest metadata for smoke test context.');
+          EOF
+
+      - name: Create Foundry module ZIP
+        run: |
+          cd packages/foundry-module
+          zip -r ../../foundry-vtt-mcp.zip . -x ".*" -x "node_modules/*"
+          cd ../..
+          test -f foundry-vtt-mcp.zip
+          ls -lh foundry-vtt-mcp.zip
+
+      - name: Create standalone MCP server ZIP
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          VERSION_NO_V="${VERSION#v}"
+
+          mkdir -p standalone-mcp-server
+          cp packages/mcp-server/dist/index.bundle.cjs standalone-mcp-server/index.js
+
+          cat > standalone-mcp-server/package.json << EOF
+          {
+            "name": "foundry-mcp-server",
+            "version": "$VERSION_NO_V",
+            "description": "Foundry VTT MCP Server - Standalone Installation",
+            "main": "index.js",
+            "scripts": {
+              "start": "node index.js"
+            },
+            "engines": {
+              "node": ">=18.0.0"
+            }
+          }
+          EOF
+
+          cat > standalone-mcp-server/README.md << EOF
+          # Foundry MCP Server - Manual Installation
+
+          Smoke-test package for release validation.
+          Version: $VERSION
+          EOF
+
+          zip -r "foundry-mcp-server-$VERSION.zip" standalone-mcp-server
+          rm -rf standalone-mcp-server
+          test -f "foundry-mcp-server-$VERSION.zip"
+          ls -lh "foundry-mcp-server-$VERSION.zip"
+
+      - name: Generate Foundry registry payload (simulation)
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          VERSION_NO_V="${VERSION#v}"
+          PACKAGE_ID=$(node -p "require('./packages/foundry-module/module.json').id")
+          MINIMUM=$(node -p "require('./packages/foundry-module/module.json').compatibility.minimum")
+          VERIFIED=$(node -p "require('./packages/foundry-module/module.json').compatibility.verified")
+          MAXIMUM=$(node -p "require('./packages/foundry-module/module.json').compatibility.maximum")
+
+          MANIFEST_URL="${{ github.server_url }}/${{ github.repository }}/releases/download/$VERSION/module.json"
+          RELEASE_NOTES_URL="${{ github.server_url }}/${{ github.repository }}/releases/tag/$VERSION"
+
+          cat > foundry-registry-payload-smoke.json << EOF
+          {
+            "id": "$PACKAGE_ID",
+            "release": {
+              "version": "$VERSION_NO_V",
+              "manifest": "$MANIFEST_URL",
+              "notes": "$RELEASE_NOTES_URL",
+              "compatibility": {
+                "minimum": "$MINIMUM",
+                "verified": "$VERIFIED",
+                "maximum": "$MAXIMUM"
+              }
+            }
+          }
+          EOF
+
+          echo "Generated foundry-registry-payload-smoke.json"
+          cat foundry-registry-payload-smoke.json
+
+      - name: Validate expected release file names
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          echo "Expected GitHub release assets for this version:"
+          echo "- foundry-vtt-mcp.zip"
+          echo "- foundry-mcp-server-$VERSION.zip"
+          echo "- FoundryMCPServer-Setup-$VERSION.exe"
+          echo "- FoundryMCPServer-$VERSION.dmg"
+
+      - name: Upload smoke artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-smoke-${{ steps.version.outputs.version }}
+          path: |
+            foundry-vtt-mcp.zip
+            foundry-mcp-server-${{ steps.version.outputs.version }}.zip
+            foundry-registry-payload-smoke.json
+            packages/foundry-module/module.json
+          retention-days: 7

@@ -1,0 +1,55 @@
+name: CI Quality Gates
+
+on:
+  pull_request:
+    branches:
+      - master
+  push:
+    branches:
+      - master
+      - feat/**
+      - feature/**
+  workflow_dispatch:
+
+concurrency:
+  group: ci-quality-gates-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality-gates:
+    name: Typecheck, Test, Build, Audit
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --workspaces --include-workspace-root
+
+      - name: Check version consistency
+        run: npm run version:check
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint (no warnings)
+        run: npm run lint:strict
+
+      - name: Format check
+        run: npm run format:check
+
+      - name: Run MCP server tests
+        run: npm -w @foundry-mcp/server test -- --run
+
+      - name: Build
+        run: npm run build
+
+      - name: Audit high/critical vulnerabilities
+        run: npm audit --workspaces --audit-level=high
