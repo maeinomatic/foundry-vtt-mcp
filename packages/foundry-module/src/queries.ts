@@ -1,6 +1,7 @@
 import { MODULE_ID } from './constants.js';
 import { FoundryDataAccess } from './data-access.js';
 import { ComfyUIManager } from './comfyui-manager.js';
+import { notifyGM } from './gm-notifications.js';
 
 type QueryErrorResult = { error: string; success: false; status?: string };
 
@@ -36,6 +37,22 @@ type UploadGeneratedMapRequest = {
   imageData: string;
 };
 
+type CreateJournalEntryRequest = {
+  name: string;
+  content: string;
+};
+
+type SetActorOwnershipRequest = {
+  actorId: string;
+  userId: string;
+  permission: number;
+};
+
+type GetActorOwnershipRequest = {
+  actorIdentifier?: string;
+  playerIdentifier?: string;
+};
+
 type ComfyMapResponse = {
   success?: boolean;
   status?: string;
@@ -58,7 +75,7 @@ export class QueryHandlers {
   /**
    * SECURITY: Validate GM access - returns silent failure for non-GM users
    */
-  private validateGMAccess(): { allowed: boolean; error?: any } {
+  private validateGMAccess(): { allowed: boolean; error?: unknown } {
     if (!game.user?.isGM) {
       // Silent failure - no error message for non-GM users
       return { allowed: false };
@@ -76,15 +93,31 @@ export class QueryHandlers {
     }
 
     const record = value as Record<string, unknown>;
-    return {
-      success: typeof record.success === 'boolean' ? record.success : undefined,
-      status: typeof record.status === 'string' ? record.status : undefined,
-      error: typeof record.error === 'string' ? record.error : undefined,
-      message: typeof record.message === 'string' ? record.message : undefined,
-      jobId: typeof record.jobId === 'string' ? record.jobId : undefined,
-      estimatedTime: typeof record.estimatedTime === 'string' ? record.estimatedTime : undefined,
-      job: record.job,
-    };
+    const parsed: ComfyMapResponse = {};
+
+    if (typeof record.success === 'boolean') {
+      parsed.success = record.success;
+    }
+    if (typeof record.status === 'string') {
+      parsed.status = record.status;
+    }
+    if (typeof record.error === 'string') {
+      parsed.error = record.error;
+    }
+    if (typeof record.message === 'string') {
+      parsed.message = record.message;
+    }
+    if (typeof record.jobId === 'string') {
+      parsed.jobId = record.jobId;
+    }
+    if (typeof record.estimatedTime === 'string') {
+      parsed.estimatedTime = record.estimatedTime;
+    }
+    if ('job' in record) {
+      parsed.job = record.job;
+    }
+
+    return parsed;
   }
 
   /**
@@ -200,9 +233,11 @@ export class QueryHandlers {
   /**
    * Handle query requests from other parts of the module
    */
-  async handleQuery(queryName: string, data: any): Promise<any> {
+  async handleQuery(queryName: string, data: unknown): Promise<unknown> {
     try {
-      const handler = CONFIG.queries[queryName];
+      const handler = CONFIG.queries[queryName] as
+        | ((payload: unknown) => Promise<unknown>)
+        | undefined;
       if (!handler || typeof handler !== 'function') {
         throw new Error(`Query handler not found: ${queryName}`);
       }
@@ -223,7 +258,7 @@ export class QueryHandlers {
   private async handleGetCharacterInfo(data: {
     characterName?: string;
     characterId?: string;
-  }): Promise<any> {
+  }): Promise<unknown> {
     try {
       // SECURITY: Silent GM validation
       const gmCheck = this.validateGMAccess();
@@ -233,7 +268,7 @@ export class QueryHandlers {
 
       this.dataAccess.validateFoundryState();
 
-      const identifier = data.characterName || data.characterId;
+      const identifier = data.characterName ?? data.characterId;
       if (!identifier) {
         throw new Error('characterName or characterId is required');
       }
@@ -249,7 +284,7 @@ export class QueryHandlers {
   /**
    * Handle list actors request
    */
-  private async handleListActors(data: { type?: string }): Promise<any> {
+  private async handleListActors(data: { type?: string }): Promise<unknown> {
     try {
       // SECURITY: Silent GM validation
       const gmCheck = this.validateGMAccess();
@@ -288,7 +323,7 @@ export class QueryHandlers {
       hasLegendaryActions?: boolean;
       spellcaster?: boolean;
     };
-  }): Promise<any> {
+  }): Promise<unknown> {
     try {
       // SECURITY: Silent GM validation
       const gmCheck = this.validateGMAccess();
@@ -325,7 +360,7 @@ export class QueryHandlers {
     hasSpells?: boolean;
     hasLegendaryActions?: boolean;
     limit?: number;
-  }): Promise<any> {
+  }): Promise<unknown> {
     try {
       // SECURITY: Silent GM validation
       const gmCheck = this.validateGMAccess();
@@ -351,7 +386,7 @@ export class QueryHandlers {
   /**
    * Handle get available packs request
    */
-  private async handleGetAvailablePacks(): Promise<any> {
+  private async handleGetAvailablePacks(): Promise<unknown> {
     try {
       // SECURITY: Silent GM validation
       const gmCheck = this.validateGMAccess();
@@ -371,7 +406,7 @@ export class QueryHandlers {
   /**
    * Handle get active scene request
    */
-  private async handleGetActiveScene(): Promise<any> {
+  private async handleGetActiveScene(): Promise<unknown> {
     try {
       // SECURITY: Silent GM validation
       const gmCheck = this.validateGMAccess();
@@ -391,7 +426,7 @@ export class QueryHandlers {
   /**
    * Handle get world info request
    */
-  private async handleGetWorldInfo(): Promise<any> {
+  private async handleGetWorldInfo(): Promise<unknown> {
     try {
       // SECURITY: Silent GM validation
       const gmCheck = this.validateGMAccess();
@@ -411,7 +446,7 @@ export class QueryHandlers {
   /**
    * Handle ping request
    */
-  private async handlePing(): Promise<any> {
+  private handlePing(): unknown {
     return {
       status: 'ok',
       timestamp: Date.now(),
@@ -457,7 +492,7 @@ export class QueryHandlers {
           coordinates?: { x: number; y: number }[];
         }
       | undefined;
-  }): Promise<any> {
+  }): Promise<unknown> {
     try {
       // SECURITY: Silent GM validation
       const gmCheck = this.validateGMAccess();
@@ -468,12 +503,22 @@ export class QueryHandlers {
       this.dataAccess.validateFoundryState();
 
       // Clean interface - direct pack/item reference only
-      const requestData: any = {
+      const requestData: {
+        packId: string;
+        itemId: string;
+        customNames: string[];
+        quantity: number;
+        addToScene: boolean;
+        placement?: {
+          type: 'random' | 'grid' | 'center' | 'coordinates';
+          coordinates?: { x: number; y: number }[];
+        };
+      } = {
         packId: data.packId,
         itemId: data.itemId,
-        customNames: data.customNames || [],
-        quantity: data.quantity || 1,
-        addToScene: data.addToScene || false,
+        customNames: data.customNames ?? [],
+        quantity: data.quantity ?? 1,
+        addToScene: data.addToScene ?? false,
       };
 
       if (data.placement) {
@@ -494,7 +539,7 @@ export class QueryHandlers {
   private async handleGetCompendiumDocumentFull(data: {
     packId: string;
     documentId: string;
-  }): Promise<any> {
+  }): Promise<unknown> {
     try {
       // SECURITY: Silent GM validation
       const gmCheck = this.validateGMAccess();
@@ -527,7 +572,7 @@ export class QueryHandlers {
     actorIds: string[];
     placement?: 'random' | 'grid' | 'center';
     hidden?: boolean;
-  }): Promise<any> {
+  }): Promise<unknown> {
     try {
       // SECURITY: Silent GM validation
       const gmCheck = this.validateGMAccess();
@@ -543,8 +588,8 @@ export class QueryHandlers {
 
       return await this.dataAccess.addActorsToScene({
         actorIds: data.actorIds,
-        placement: data.placement || 'random',
-        hidden: data.hidden || false,
+        placement: data.placement ?? 'random',
+        hidden: data.hidden ?? false,
       });
     } catch (error) {
       throw new Error(
@@ -558,7 +603,7 @@ export class QueryHandlers {
    */
   private async handleValidateWritePermissions(data: {
     operation: 'createActor' | 'modifyScene';
-  }): Promise<any> {
+  }): Promise<unknown> {
     try {
       // SECURITY: Silent GM validation
       const gmCheck = this.validateGMAccess();
@@ -583,7 +628,7 @@ export class QueryHandlers {
   /**
    * Handle journal entry creation
    */
-  async handleCreateJournalEntry(data: any): Promise<any> {
+  async handleCreateJournalEntry(data: CreateJournalEntryRequest): Promise<unknown> {
     try {
       // SECURITY: Silent GM validation
       const gmCheck = this.validateGMAccess();
@@ -612,7 +657,7 @@ export class QueryHandlers {
   /**
    * Handle list journals request
    */
-  async handleListJournals(): Promise<any> {
+  async handleListJournals(): Promise<unknown> {
     try {
       // SECURITY: Silent GM validation
       const gmCheck = this.validateGMAccess();
@@ -632,7 +677,7 @@ export class QueryHandlers {
   /**
    * Handle get journal content request
    */
-  async handleGetJournalContent(data: { journalId: string }): Promise<any> {
+  async handleGetJournalContent(data: { journalId: string }): Promise<unknown> {
     try {
       // SECURITY: Silent GM validation
       const gmCheck = this.validateGMAccess();
@@ -657,7 +702,7 @@ export class QueryHandlers {
   /**
    * Handle update journal content request
    */
-  async handleUpdateJournalContent(data: { journalId: string; content: string }): Promise<any> {
+  async handleUpdateJournalContent(data: { journalId: string; content: string }): Promise<unknown> {
     try {
       // SECURITY: Silent GM validation
       const gmCheck = this.validateGMAccess();
@@ -695,7 +740,7 @@ export class QueryHandlers {
     isPublic: boolean;
     rollModifier: string;
     flavor: string;
-  }): Promise<any> {
+  }): Promise<unknown> {
     try {
       // SECURITY: Silent GM validation
       const gmCheck = this.validateGMAccess();
@@ -720,7 +765,7 @@ export class QueryHandlers {
   /**
    * Handle get enhanced creature index request
    */
-  async handleGetEnhancedCreatureIndex(): Promise<any> {
+  async handleGetEnhancedCreatureIndex(): Promise<unknown> {
     try {
       // SECURITY: Silent GM validation
       const gmCheck = this.validateGMAccess();
@@ -730,7 +775,8 @@ export class QueryHandlers {
 
       this.dataAccess.validateFoundryState();
 
-      return await this.dataAccess.getEnhancedCreatureIndex();
+      const creatureIndex = (await this.dataAccess.getEnhancedCreatureIndex()) as unknown;
+      return creatureIndex;
     } catch (error) {
       throw new Error(
         `Failed to get enhanced creature index: ${error instanceof Error ? error.message : 'Unknown error'}`
@@ -741,11 +787,11 @@ export class QueryHandlers {
   /**
    * Handle campaign progress update request
    */
-  async handleUpdateCampaignProgress(data: {
+  handleUpdateCampaignProgress(data: {
     campaignId: string;
     partId: string;
     newStatus: string;
-  }): Promise<any> {
+  }): unknown {
     try {
       // SECURITY: Silent GM validation
       const gmCheck = this.validateGMAccess();
@@ -776,7 +822,7 @@ export class QueryHandlers {
   /**
    * Handle set actor ownership request
    */
-  async handleSetActorOwnership(data: any): Promise<any> {
+  async handleSetActorOwnership(data: SetActorOwnershipRequest): Promise<unknown> {
     try {
       // SECURITY: Silent GM validation
       const gmCheck = this.validateGMAccess();
@@ -801,7 +847,7 @@ export class QueryHandlers {
   /**
    * Handle get actor ownership request
    */
-  async handleGetActorOwnership(data: any): Promise<any> {
+  async handleGetActorOwnership(data: GetActorOwnershipRequest): Promise<unknown> {
     try {
       // SECURITY: Silent GM validation
       const gmCheck = this.validateGMAccess();
@@ -811,7 +857,8 @@ export class QueryHandlers {
 
       this.dataAccess.validateFoundryState();
 
-      return await this.dataAccess.getActorOwnership(data);
+      const actorOwnership = (await this.dataAccess.getActorOwnership(data)) as unknown;
+      return actorOwnership;
     } catch (error) {
       throw new Error(
         `Failed to get actor ownership: ${error instanceof Error ? error.message : 'Unknown error'}`
@@ -822,7 +869,7 @@ export class QueryHandlers {
   /**
    * Handle get friendly NPCs request
    */
-  async handleGetFriendlyNPCs(): Promise<any> {
+  async handleGetFriendlyNPCs(): Promise<unknown> {
     try {
       // SECURITY: Silent GM validation
       const gmCheck = this.validateGMAccess();
@@ -832,7 +879,7 @@ export class QueryHandlers {
 
       this.dataAccess.validateFoundryState();
 
-      return await this.dataAccess.getFriendlyNPCs();
+      return this.dataAccess.getFriendlyNPCs();
     } catch (error) {
       throw new Error(
         `Failed to get friendly NPCs: ${error instanceof Error ? error.message : 'Unknown error'}`
@@ -843,7 +890,7 @@ export class QueryHandlers {
   /**
    * Handle get party characters request
    */
-  async handleGetPartyCharacters(): Promise<any> {
+  async handleGetPartyCharacters(): Promise<unknown> {
     try {
       // SECURITY: Silent GM validation
       const gmCheck = this.validateGMAccess();
@@ -853,7 +900,7 @@ export class QueryHandlers {
 
       this.dataAccess.validateFoundryState();
 
-      return await this.dataAccess.getPartyCharacters();
+      return this.dataAccess.getPartyCharacters();
     } catch (error) {
       throw new Error(
         `Failed to get party characters: ${error instanceof Error ? error.message : 'Unknown error'}`
@@ -864,7 +911,7 @@ export class QueryHandlers {
   /**
    * Handle get connected players request
    */
-  async handleGetConnectedPlayers(): Promise<any> {
+  async handleGetConnectedPlayers(): Promise<unknown> {
     try {
       // SECURITY: Silent GM validation
       const gmCheck = this.validateGMAccess();
@@ -885,9 +932,9 @@ export class QueryHandlers {
   /**
    * Handle find players request
    */
-  async handleFindPlayers(data: FindPlayersRequest): Promise<
-    Array<{ id: string; name: string }> | QueryErrorResult
-  > {
+  async handleFindPlayers(
+    data: FindPlayersRequest
+  ): Promise<Array<{ id: string; name: string }> | QueryErrorResult> {
     try {
       // SECURITY: Silent GM validation
       const gmCheck = this.validateGMAccess();
@@ -912,7 +959,9 @@ export class QueryHandlers {
   /**
    * Handle find actor request
    */
-  async handleFindActor(data: FindActorRequest): Promise<{ id: string; name: string } | null | QueryErrorResult> {
+  async handleFindActor(
+    data: FindActorRequest
+  ): Promise<{ id: string; name: string } | null | QueryErrorResult> {
     try {
       // SECURITY: Silent GM validation
       const gmCheck = this.validateGMAccess();
@@ -948,8 +997,12 @@ export class QueryHandlers {
       }
 
       this.dataAccess.validateFoundryState();
-      const scenes = (await this.dataAccess.listScenes(data)) as unknown;
-      return Array.isArray(scenes) ? scenes : [];
+      const scenes = (await Promise.resolve(this.dataAccess.listScenes(data))) as unknown;
+      if (!Array.isArray(scenes)) {
+        return [];
+      }
+
+      return scenes as unknown[];
     } catch (error) {
       throw new Error(
         `Failed to list scenes: ${error instanceof Error ? error.message : 'Unknown error'}`
@@ -1012,7 +1065,8 @@ export class QueryHandlers {
 
       // Get quality setting from module settings
       const qualitySetting = game.settings.get(MODULE_ID, 'mapGenQuality') as unknown;
-      const quality = typeof qualitySetting === 'string' && qualitySetting.trim() ? qualitySetting : 'low';
+      const quality =
+        typeof qualitySetting === 'string' && qualitySetting.trim() ? qualitySetting : 'low';
 
       const params = {
         prompt: data.prompt.trim(),
@@ -1029,6 +1083,7 @@ export class QueryHandlers {
 
       if (!isSuccess) {
         const errorMessage = response.error ?? response.message ?? 'Map generation failed';
+        notifyGM('error', `Map generation failed: ${errorMessage}`);
         return {
           error: errorMessage,
           success: false,
@@ -1036,6 +1091,7 @@ export class QueryHandlers {
         };
       }
 
+      notifyGM('info', 'Map generation started');
       return {
         success: true,
         status: response.status ?? 'success',
@@ -1044,6 +1100,7 @@ export class QueryHandlers {
         estimatedTime: response.estimatedTime ?? '30-90 seconds',
       };
     } catch (error: unknown) {
+      notifyGM('error', this.errorMessage(error, 'Map generation failed'));
       return {
         error: this.errorMessage(error, 'Map generation failed'),
         success: false,
@@ -1119,6 +1176,7 @@ export class QueryHandlers {
 
       if (!isSuccess) {
         const errorMessage = response.error ?? response.message ?? 'Job cancellation failed';
+        notifyGM('warn', `Map cancellation failed: ${errorMessage}`);
         return {
           error: errorMessage,
           success: false,
@@ -1132,6 +1190,7 @@ export class QueryHandlers {
         message: response.message ?? 'Job cancelled successfully',
       };
     } catch (error: unknown) {
+      notifyGM('error', this.errorMessage(error, 'Job cancellation failed'));
       return {
         error: this.errorMessage(error, 'Job cancellation failed'),
         success: false,
@@ -1146,12 +1205,6 @@ export class QueryHandlers {
   private async handleUploadGeneratedMap(
     data: UploadGeneratedMapRequest
   ): Promise<Record<string, unknown> | QueryErrorResult> {
-    console.log(`[${MODULE_ID}] Upload generated map request received`, {
-      hasFilename: !!data.filename,
-      hasImageData: !!data.imageData,
-      imageDataLength: data.imageData?.length,
-    });
-
     try {
       // SECURITY: Silent GM validation
       const gmCheck = this.validateGMAccess();
@@ -1162,15 +1215,16 @@ export class QueryHandlers {
 
       if (!data.filename || typeof data.filename !== 'string') {
         console.error(`[${MODULE_ID}] Upload failed - invalid filename`);
+        notifyGM('error', 'Map upload failed: filename is missing or invalid');
         throw new Error('Filename is required and must be a string');
       }
 
       if (!data.imageData || typeof data.imageData !== 'string') {
         console.error(`[${MODULE_ID}] Upload failed - invalid image data`);
+        notifyGM('error', 'Map upload failed: image data is missing or invalid');
         throw new Error('Image data is required and must be a base64 string');
       }
 
-      console.log(`[${MODULE_ID}] Validating filename...`);
       // Validate filename for security (prevent path traversal)
       const safeFilename = data.filename.replace(/[^a-zA-Z0-9_.-]/g, '_');
       if (
@@ -1178,13 +1232,9 @@ export class QueryHandlers {
         !safeFilename.endsWith('.jpg') &&
         !safeFilename.endsWith('.jpeg')
       ) {
+        notifyGM('error', 'Map upload failed: only PNG and JPEG are supported');
         throw new Error('Only PNG and JPEG images are supported');
       }
-
-      console.log(`[${MODULE_ID}] Converting base64 to blob...`, {
-        base64Length: data.imageData.length,
-        estimatedSizeMB: (data.imageData.length / 1024 / 1024).toFixed(2),
-      });
 
       // Convert base64 to Blob
       const byteCharacters = atob(data.imageData);
@@ -1195,15 +1245,8 @@ export class QueryHandlers {
       const byteArray = new Uint8Array(byteNumbers);
       const blob = new Blob([byteArray], { type: 'image/png' });
 
-      console.log(`[${MODULE_ID}] Creating file object...`, {
-        filename: safeFilename,
-        blobSize: blob.size,
-      });
-
       // Create a File object from the Blob
       const file = new File([blob], safeFilename, { type: 'image/png' });
-
-      console.log(`[${MODULE_ID}] Ensuring upload directory exists...`);
 
       // Upload to world-specific folder so maps persist even if module is deleted
       // This also keeps maps organized per world
@@ -1248,23 +1291,19 @@ export class QueryHandlers {
       try {
         // Use the modern Foundry API (v13+) with fallback for older versions
         await filePickerAPI.createDirectory('data', uploadPath, { bucket: null });
-        console.log(`[${MODULE_ID}] Directory created/verified: ${uploadPath}`);
       } catch (dirError: unknown) {
         // Directory might already exist, that's okay
         const dirErrorMessage = this.errorMessage(dirError, 'Directory creation failed');
         if (!dirErrorMessage.includes('EEXIST') && !dirErrorMessage.includes('already exists')) {
+          notifyGM('warn', `Map upload directory warning: ${dirErrorMessage}`);
           console.warn(`[${MODULE_ID}] Directory creation warning:`, dirErrorMessage);
         }
       }
 
-      console.log(`[${MODULE_ID}] Uploading to FilePicker...`);
       // Upload using Foundry's FilePicker.upload method with modern API
       const response = await filePickerAPI.upload('data', uploadPath, file, {}, { notify: false });
 
-      console.log(`[${MODULE_ID}] FilePicker.upload response:`, JSON.stringify(response, null, 2));
-      console.log(`[${MODULE_ID}] Response keys:`, Object.keys(response || {}));
-      console.log(`[${MODULE_ID}] Uploaded generated map to:`, response.path);
-
+      notifyGM('info', `Map uploaded: ${safeFilename}`);
       return {
         success: true,
         path: response.path,
@@ -1273,6 +1312,7 @@ export class QueryHandlers {
       };
     } catch (error: unknown) {
       console.error(`[${MODULE_ID}] Failed to upload generated map:`, error);
+      notifyGM('error', this.errorMessage(error, 'Failed to upload generated map'));
       return {
         error: this.errorMessage(error, 'Failed to upload generated map'),
         success: false,
@@ -1290,7 +1330,7 @@ export class QueryHandlers {
     x: number;
     y: number;
     animate?: boolean;
-  }): Promise<any> {
+  }): Promise<unknown> {
     try {
       // SECURITY: Silent GM validation
       const gmCheck = this.validateGMAccess();
@@ -1307,7 +1347,8 @@ export class QueryHandlers {
         throw new Error('x and y coordinates are required and must be numbers');
       }
 
-      return await this.dataAccess.moveToken(data);
+      const moveResult = (await this.dataAccess.moveToken(data)) as unknown;
+      return moveResult;
     } catch (error) {
       throw new Error(
         `Failed to move token: ${error instanceof Error ? error.message : 'Unknown error'}`
@@ -1320,8 +1361,8 @@ export class QueryHandlers {
    */
   private async handleUpdateToken(data: {
     tokenId: string;
-    updates: Record<string, any>;
-  }): Promise<any> {
+    updates: Record<string, unknown>;
+  }): Promise<unknown> {
     try {
       // SECURITY: Silent GM validation
       const gmCheck = this.validateGMAccess();
@@ -1338,7 +1379,8 @@ export class QueryHandlers {
         throw new Error('updates object is required');
       }
 
-      return await this.dataAccess.updateToken(data);
+      const updateResult = (await this.dataAccess.updateToken(data)) as unknown;
+      return updateResult;
     } catch (error) {
       throw new Error(
         `Failed to update token: ${error instanceof Error ? error.message : 'Unknown error'}`
@@ -1349,7 +1391,7 @@ export class QueryHandlers {
   /**
    * Handle delete tokens request
    */
-  private async handleDeleteTokens(data: { tokenIds: string[] }): Promise<any> {
+  private async handleDeleteTokens(data: { tokenIds: string[] }): Promise<unknown> {
     try {
       // SECURITY: Silent GM validation
       const gmCheck = this.validateGMAccess();
@@ -1363,7 +1405,8 @@ export class QueryHandlers {
         throw new Error('tokenIds array is required and must not be empty');
       }
 
-      return await this.dataAccess.deleteTokens(data);
+      const deleteResult = (await this.dataAccess.deleteTokens(data)) as unknown;
+      return deleteResult;
     } catch (error) {
       throw new Error(
         `Failed to delete tokens: ${error instanceof Error ? error.message : 'Unknown error'}`
@@ -1374,7 +1417,7 @@ export class QueryHandlers {
   /**
    * Handle get token details request
    */
-  private async handleGetTokenDetails(data: { tokenId: string }): Promise<any> {
+  private async handleGetTokenDetails(data: { tokenId: string }): Promise<unknown> {
     try {
       // SECURITY: Silent GM validation
       const gmCheck = this.validateGMAccess();
@@ -1388,7 +1431,8 @@ export class QueryHandlers {
         throw new Error('tokenId is required');
       }
 
-      return await this.dataAccess.getTokenDetails(data);
+      const tokenDetails = (await this.dataAccess.getTokenDetails(data)) as unknown;
+      return tokenDetails;
     } catch (error) {
       throw new Error(
         `Failed to get token details: ${error instanceof Error ? error.message : 'Unknown error'}`
@@ -1403,7 +1447,7 @@ export class QueryHandlers {
     tokenId: string;
     conditionId: string;
     active: boolean;
-  }): Promise<any> {
+  }): Promise<unknown> {
     try {
       // SECURITY: Silent GM validation
       const gmCheck = this.validateGMAccess();
@@ -1423,7 +1467,8 @@ export class QueryHandlers {
         throw new Error('active must be a boolean');
       }
 
-      return await this.dataAccess.toggleTokenCondition(data);
+      const toggleResult = (await this.dataAccess.toggleTokenCondition(data)) as unknown;
+      return toggleResult;
     } catch (error) {
       throw new Error(
         `Failed to toggle token condition: ${error instanceof Error ? error.message : 'Unknown error'}`
@@ -1434,7 +1479,7 @@ export class QueryHandlers {
   /**
    * Handle get available conditions request
    */
-  private async handleGetAvailableConditions(): Promise<any> {
+  private async handleGetAvailableConditions(): Promise<unknown> {
     try {
       // SECURITY: Silent GM validation
       const gmCheck = this.validateGMAccess();
@@ -1444,7 +1489,8 @@ export class QueryHandlers {
 
       this.dataAccess.validateFoundryState();
 
-      return await this.dataAccess.getAvailableConditions();
+      const conditions = (await this.dataAccess.getAvailableConditions()) as unknown;
+      return conditions;
     } catch (error) {
       throw new Error(
         `Failed to get available conditions: ${error instanceof Error ? error.message : 'Unknown error'}`
@@ -1465,7 +1511,7 @@ export class QueryHandlers {
       spellLevel?: number;
       versatile?: boolean;
     };
-  }): Promise<any> {
+  }): Promise<unknown> {
     try {
       // SECURITY: Silent GM validation
       const gmCheck = this.validateGMAccess();
@@ -1504,7 +1550,7 @@ export class QueryHandlers {
     type?: string;
     category?: string;
     limit?: number;
-  }): Promise<any> {
+  }): Promise<unknown> {
     try {
       // SECURITY: Silent GM validation
       const gmCheck = this.validateGMAccess();

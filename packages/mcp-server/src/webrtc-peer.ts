@@ -66,7 +66,7 @@ export class WebRTCPeer {
       chunks: Map<number, string>;
       totalChunks: number;
       originalType: string;
-      originalId: string;
+      originalId?: string;
       timestamp: number; // For timeout cleanup
     }
   > = new Map();
@@ -101,7 +101,9 @@ export class WebRTCPeer {
 
     // Step 1: Set remote description (offer from client)
     const t1 = Date.now();
-    await this.peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+    const offerType = offer.type === 'offer' || offer.type === 'answer' ? offer.type : 'offer';
+    const offerSdp = typeof offer.sdp === 'string' ? offer.sdp : '';
+    await this.peerConnection.setRemoteDescription(new RTCSessionDescription(offerSdp, offerType));
     this.logger.info(`[WebRTC Timing] setRemoteDescription took ${Date.now() - t1}ms`);
 
     // Step 2: Create answer IMMEDIATELY - don't wait for data channel or ICE
@@ -258,16 +260,23 @@ export class WebRTCPeer {
    */
   private async handleChunkedMessage(chunkMessage: unknown): Promise<void> {
     const chunkRecord = asRecord(chunkMessage);
-    const parsedChunk: ChunkMessage | undefined = chunkRecord
-      ? {
-          chunkId: toStringValue(chunkRecord.chunkId) ?? '',
-          chunkIndex: toNumber(chunkRecord.chunkIndex) ?? -1,
-          totalChunks: toNumber(chunkRecord.totalChunks) ?? -1,
-          chunk: toStringValue(chunkRecord.chunk) ?? '',
-          originalType: toStringValue(chunkRecord.originalType) ?? 'unknown',
-          originalId: toStringValue(chunkRecord.originalId),
-        }
-      : undefined;
+    let parsedChunk: ChunkMessage | undefined;
+    if (chunkRecord) {
+      const chunk: ChunkMessage = {
+        chunkId: toStringValue(chunkRecord.chunkId) ?? '',
+        chunkIndex: toNumber(chunkRecord.chunkIndex) ?? -1,
+        totalChunks: toNumber(chunkRecord.totalChunks) ?? -1,
+        chunk: toStringValue(chunkRecord.chunk) ?? '',
+        originalType: toStringValue(chunkRecord.originalType) ?? 'unknown',
+      };
+
+      const originalId = toStringValue(chunkRecord.originalId);
+      if (originalId) {
+        chunk.originalId = originalId;
+      }
+
+      parsedChunk = chunk;
+    }
 
     if (!parsedChunk) {
       this.logger.error('Invalid chunk message payload - not an object');
@@ -325,7 +334,7 @@ export class WebRTCPeer {
         chunks: new Map(),
         totalChunks,
         originalType,
-        originalId,
+        ...(originalId ? { originalId } : {}),
         timestamp: Date.now(), // Track when first chunk arrived
       });
     }

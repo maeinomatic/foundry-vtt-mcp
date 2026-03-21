@@ -1,4 +1,41 @@
 import { MODULE_ID } from './constants.js';
+import { debugGM, notifyGM } from './gm-notifications.js';
+
+type BackendStatus = {
+  status: string;
+  message?: string;
+  phase?: string;
+};
+
+type BackendResponse = {
+  status?: string;
+  message?: string;
+  phase?: string;
+  success?: boolean;
+  error?: string;
+  requestId?: string;
+  [key: string]: unknown;
+};
+
+type MessageListener = (event: MessageEvent) => void;
+
+type MessageChannelLike = {
+  addEventListener: (type: 'message', listener: MessageListener) => void;
+  removeEventListener: (type: 'message', listener: MessageListener) => void;
+};
+
+type SocketBridgeLike = {
+  isConnected: () => boolean;
+  sendMessage: (request: { type: string; requestId: string; data: unknown }) => void;
+  ws?: MessageChannelLike;
+  webrtc?: {
+    dataChannel?: MessageChannelLike;
+  };
+};
+
+type FoundryMCPBridgeLike = {
+  socketBridge?: SocketBridgeLike;
+};
 
 /**
  * ComfyUI Service Manager - adapted from working foundry-mcp-mapgen implementation
@@ -6,6 +43,35 @@ import { MODULE_ID } from './constants.js';
 export class ComfyUIManager {
   private serviceStatus: string = 'unknown';
   private isStarting: boolean = false;
+
+  private getBridge(): FoundryMCPBridgeLike | undefined {
+    const root = globalThis as { foundryMCPBridge?: FoundryMCPBridgeLike };
+    return root.foundryMCPBridge;
+  }
+
+  private getSocketBridge(): SocketBridgeLike | undefined {
+    return this.getBridge()?.socketBridge;
+  }
+
+  private parseSocketMessage(input: unknown): BackendResponse | null {
+    if (typeof input !== 'string') {
+      return null;
+    }
+
+    try {
+      const parsed = JSON.parse(input) as unknown;
+      if (!parsed || typeof parsed !== 'object') {
+        return null;
+      }
+      return parsed as BackendResponse;
+    } catch {
+      return null;
+    }
+  }
+
+  private eventChannel(bridge: SocketBridgeLike): MessageChannelLike | undefined {
+    return bridge.ws ?? bridge.webrtc?.dataChannel;
+  }
 
   async checkStatus(): Promise<{ status: string; message?: string; phase?: string }> {
     try {
@@ -31,23 +97,21 @@ export class ComfyUIManager {
 
     try {
       // Use backend to start ComfyUI if MCP bridge is connected
-      const bridge = (globalThis as any).foundryMCPBridge;
-      if (bridge?.socketBridge?.isConnected()) {
+      const socketBridge = this.getSocketBridge();
+      if (socketBridge?.isConnected()) {
         return await this.startServiceWithProgress();
       } else {
         // Fallback: Check if already running and show manual start message
         const status = await this.checkStatus();
 
         if (status.status === 'running') {
-          ui.notifications?.info('ComfyUI service is already running');
+          notifyGM('info', 'ComfyUI service is already running');
           return status;
         } else {
           const helpMessage =
             'MCP backend not connected. Please ensure Claude Desktop is running with the foundry-mcp server configured, then try again.';
-          ui.notifications?.warn(helpMessage);
-          console.log(
-            `[${MODULE_ID}] Backend connection issue - check Claude Desktop MCP server configuration`
-          );
+          notifyGM('warn', helpMessage);
+          debugGM('Backend connection issue - check Claude Desktop MCP server configuration');
           return { status: 'backend_unavailable', message: helpMessage };
         }
       }
@@ -63,7 +127,7 @@ export class ComfyUIManager {
               errorMessage
             } Check the console for more details and verify your ComfyUI installation.`;
 
-      ui.notifications?.error(helpMessage);
+      notifyGM('error', helpMessage);
       console.error(`[${MODULE_ID}] Service start error:`, error);
       return { status: 'error', message: helpMessage };
     } finally {
@@ -73,7 +137,7 @@ export class ComfyUIManager {
 
   async startServiceWithProgress(): Promise<{ status: string; message?: string; phase?: string }> {
     // Show initial progress notification
-    ui.notifications?.info('Starting ComfyUI service...');
+    notifyGM('info', 'Starting ComfyUI service...');
 
     const maxWaitTime = 90000; // 90 seconds total timeout
     const pollInterval = 5000; // Poll every 5 seconds
@@ -90,7 +154,7 @@ export class ComfyUIManager {
           // Start the service in background (don't await full completion)
           this.requestBackendStartService().catch(() => {}); // Ignore errors here, we'll check status instead
           serviceStartRequested = true;
-          console.log(`[${MODULE_ID}] ComfyUI service start requested`);
+          debugGM('ComfyUI service start requested');
         }
 
         // Check current service status
@@ -104,9 +168,9 @@ export class ComfyUIManager {
               ? 'ComfyUI service is ready for AI map generation!'
               : 'ComfyUI service started successfully!';
 
-          ui.notifications?.info(successMessage);
-          console.log(
-            `[${MODULE_ID}] ${successMessage} (${Math.round((Date.now() - startTime) / 1000)}s startup time)`
+          notifyGM('info', successMessage);
+          debugGM(
+            `${successMessage} (${Math.round((Date.now() - startTime) / 1000)}s startup time)`
           );
           return status;
         }
@@ -130,7 +194,7 @@ export class ComfyUIManager {
                 message = 'ComfyUI service ready!';
                 break;
               default:
-                message = status.message || 'ComfyUI service starting...';
+                message = status.message ?? 'ComfyUI service starting...';
             }
           } else {
             // Fallback to time-based messages if no phase info
@@ -143,10 +207,10 @@ export class ComfyUIManager {
             }
           }
 
-          ui.notifications?.info(message);
+          notifyGM('info', message);
           lastNotificationTime = elapsedTime;
-          console.log(
-            `[${MODULE_ID}] ${message} (${Math.round(elapsedTime / 1000)}s elapsed, phase: ${status.phase || 'unknown'})`
+          debugGM(
+            `${message} (${Math.round(elapsedTime / 1000)}s elapsed, phase: ${status.phase ?? 'unknown'})`
           );
         }
 
@@ -170,13 +234,13 @@ export class ComfyUIManager {
         const finalMessage =
           'ComfyUI service started successfully after extended startup time! ' +
           'Future startups should be faster as models are now cached.';
-        ui.notifications?.info(finalMessage);
-        console.log(`[${MODULE_ID}] Extended startup completed - service now ready`);
+        notifyGM('info', finalMessage);
+        debugGM('Extended startup completed - service now ready');
         return finalStatus;
       }
     } catch (error) {
       // Ignore final check errors - will fall through to timeout message
-      console.log(
+      debugGM(
         `[${MODULE_ID}] Final status check failed:`,
         error instanceof Error ? error.message : 'Unknown error'
       );
@@ -188,37 +252,37 @@ export class ComfyUIManager {
       'ComfyUI service startup timed out after 90 seconds. ' +
       'The service may still be starting in the background - try checking status again in a moment. ' +
       'First-time startup with model downloads can take several minutes.';
-    ui.notifications?.warn(timeoutMessage);
-    console.log(
-      `[${MODULE_ID}] Service startup timeout - this is normal for first-time startup or slower machines`
-    );
+    notifyGM('warn', timeoutMessage);
+    debugGM('Service startup timeout - this is normal for first-time startup or slower machines');
     return { status: 'timeout', message: timeoutMessage };
   }
 
   async stopService(): Promise<{ status: string; message?: string }> {
     try {
       // Use backend to stop ComfyUI if MCP bridge is connected
-      const bridge = (globalThis as any).foundryMCPBridge;
-      if (bridge?.socketBridge?.isConnected()) {
+      const socketBridge = this.getSocketBridge();
+      if (socketBridge?.isConnected()) {
         const result = await this.requestBackendStopService();
         this.serviceStatus = result.status;
 
         if (result.status === 'stopped' || result.status === 'already_stopped') {
-          ui.notifications?.info(`ComfyUI service stopped: ${result.message}`);
+          notifyGM('info', `ComfyUI service stopped: ${result.message}`);
         } else {
-          ui.notifications?.warn(
-            `ComfyUI service could not be stopped: ${result.message || 'Unknown error'}`
+          notifyGM(
+            'warn',
+            `ComfyUI service could not be stopped: ${result.message ?? 'Unknown error'}`
           );
         }
 
         return result;
       } else {
-        ui.notifications?.warn('MCP backend not connected. Cannot stop service remotely.');
+        notifyGM('warn', 'MCP backend not connected. Cannot stop service remotely.');
         return { status: 'backend_unavailable', message: 'MCP backend not connected' };
       }
     } catch (error) {
       this.serviceStatus = 'error';
-      ui.notifications?.error(
+      notifyGM(
+        'error',
         `Failed to stop ComfyUI service: ${error instanceof Error ? error.message : 'Unknown error'}`
       );
       return { status: 'error', message: error instanceof Error ? error.message : 'Unknown error' };
@@ -231,7 +295,7 @@ export class ComfyUIManager {
     message?: string;
     phase?: string;
   }> {
-    return await this.sendBackendRequest('check-comfyui-status');
+    return this.sendBackendRequest<BackendStatus>('check-comfyui-status');
   }
 
   private async requestBackendStartService(): Promise<{
@@ -239,19 +303,22 @@ export class ComfyUIManager {
     message?: string;
     phase?: string;
   }> {
-    return await this.sendBackendRequest('start-comfyui-service');
+    return this.sendBackendRequest<BackendStatus>('start-comfyui-service');
   }
 
   private async requestBackendStopService(): Promise<{ status: string; message?: string }> {
-    return await this.sendBackendRequest('stop-comfyui-service');
+    return this.sendBackendRequest<BackendStatus>('stop-comfyui-service');
   }
 
-  private async sendBackendRequest(type: string, data: any = {}): Promise<any> {
-    return new Promise((resolve, reject) => {
-      const bridge = (globalThis as any).foundryMCPBridge;
+  private async sendBackendRequest<T extends BackendResponse>(
+    type: string,
+    data: unknown = {}
+  ): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      const bridge = this.getSocketBridge();
 
       // Fix connection check condition - use the bridge's connection state
-      if (!bridge?.socketBridge?.isConnected()) {
+      if (!bridge?.isConnected()) {
         reject(new Error('MCP backend not connected'));
         return;
       }
@@ -260,13 +327,33 @@ export class ComfyUIManager {
       const timeout = 90000; // 90 second timeout for ComfyUI startup
       let isResolved = false;
 
-      const cleanup = () => {
-        if (eventHandler) {
-          if (bridge.socketBridge?.ws) {
-            bridge.socketBridge.ws.removeEventListener('message', eventHandler);
-          } else if (bridge.socketBridge?.webrtc?.dataChannel) {
-            bridge.socketBridge.webrtc.dataChannel.removeEventListener('message', eventHandler);
+      // Create event handler function for proper cleanup
+      const eventHandler: MessageListener = (event: MessageEvent): void => {
+        const message = this.parseSocketMessage(event.data);
+        if (!message) {
+          return;
+        }
+
+        // Check for exact response match
+        if (message.requestId === requestId) {
+          if (!isResolved) {
+            isResolved = true;
+            clearTimeout(timeoutHandle);
+            cleanup();
+
+            if (typeof message.error === 'string' && message.error) {
+              reject(new Error(message.error));
+            } else {
+              resolve(message as T);
+            }
           }
+        }
+      };
+
+      const cleanup = (): void => {
+        const channel = this.eventChannel(bridge);
+        if (channel && eventHandler) {
+          channel.removeEventListener('message', eventHandler);
         }
       };
 
@@ -278,42 +365,13 @@ export class ComfyUIManager {
         }
       }, timeout);
 
-      // Create event handler function for proper cleanup
-      const eventHandler = (event: MessageEvent) => {
-        try {
-          const message = JSON.parse(event.data);
-
-          // Check for exact response match
-          if (message.requestId === requestId) {
-            if (!isResolved) {
-              isResolved = true;
-              clearTimeout(timeoutHandle);
-              cleanup();
-
-              if (message.error) {
-                reject(new Error(message.error));
-              } else {
-                resolve(message);
-              }
-            }
-          }
-        } catch (error) {
-          // Ignore parse errors for other messages
-        }
-      };
-
       // Register response handler - works for both WebSocket and WebRTC
       try {
-        // Add listener based on connection type
-        if (bridge.socketBridge.ws) {
-          // WebSocket mode
-          bridge.socketBridge.ws.addEventListener('message', eventHandler);
-        } else if (bridge.socketBridge.webrtc?.dataChannel) {
-          // WebRTC mode
-          bridge.socketBridge.webrtc.dataChannel.addEventListener('message', eventHandler);
-        } else {
+        const channel = this.eventChannel(bridge);
+        if (!channel) {
           throw new Error('No active connection (neither WebSocket nor WebRTC)');
         }
+        channel.addEventListener('message', eventHandler);
       } catch (error) {
         isResolved = true;
         clearTimeout(timeoutHandle);
@@ -333,10 +391,9 @@ export class ComfyUIManager {
           data,
         };
 
-        bridge.socketBridge.sendMessage(request);
+        bridge.sendMessage(request);
 
-        // Log request for debugging
-        console.log(`[${MODULE_ID}] Sent backend request:`, { type, requestId });
+        debugGM('Sent backend request', { type, requestId });
       } catch (error) {
         if (!isResolved) {
           isResolved = true;
@@ -359,14 +416,18 @@ export class ComfyUIManager {
   /**
    * Generate a map using ComfyUI
    */
-  async generateMap(data: { prompt: string; size?: string; grid_size?: number }): Promise<any> {
+  async generateMap(data: {
+    prompt: string;
+    size?: string;
+    grid_size?: number;
+  }): Promise<BackendResponse> {
     try {
-      const bridge = (globalThis as any).foundryMCPBridge;
-      if (!bridge?.socketBridge?.isConnected()) {
+      const socketBridge = this.getSocketBridge();
+      if (!socketBridge?.isConnected()) {
         return { success: false, error: 'Backend not connected' };
       }
 
-      return await this.sendBackendRequest('generate-map-request', data);
+      return await this.sendBackendRequest<BackendResponse>('generate-map-request', data);
     } catch (error) {
       return {
         success: false,
@@ -378,14 +439,14 @@ export class ComfyUIManager {
   /**
    * Check status of a map generation job
    */
-  async checkMapStatus(data: { job_id: string }): Promise<any> {
+  async checkMapStatus(data: { job_id: string }): Promise<BackendResponse> {
     try {
-      const bridge = (globalThis as any).foundryMCPBridge;
-      if (!bridge?.socketBridge?.isConnected()) {
+      const socketBridge = this.getSocketBridge();
+      if (!socketBridge?.isConnected()) {
         return { success: false, error: 'Backend not connected' };
       }
 
-      return await this.sendBackendRequest('check-map-status-request', data);
+      return await this.sendBackendRequest<BackendResponse>('check-map-status-request', data);
     } catch (error) {
       return {
         success: false,
@@ -397,14 +458,14 @@ export class ComfyUIManager {
   /**
    * Cancel a map generation job
    */
-  async cancelMapJob(data: { job_id: string }): Promise<any> {
+  async cancelMapJob(data: { job_id: string }): Promise<BackendResponse> {
     try {
-      const bridge = (globalThis as any).foundryMCPBridge;
-      if (!bridge?.socketBridge?.isConnected()) {
+      const socketBridge = this.getSocketBridge();
+      if (!socketBridge?.isConnected()) {
         return { success: false, error: 'Backend not connected' };
       }
 
-      return await this.sendBackendRequest('cancel-map-job-request', data);
+      return await this.sendBackendRequest<BackendResponse>('cancel-map-job-request', data);
     } catch (error) {
       return {
         success: false,

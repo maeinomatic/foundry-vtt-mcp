@@ -224,7 +224,7 @@ export class SceneTools {
       dimensions: {
         width: sceneData.width,
         height: sceneData.height,
-        padding: sceneData.padding,
+        ...(sceneData.padding !== undefined ? { padding: sceneData.padding } : {}),
       },
       hasBackground: !!sceneData.background,
       navigation: sceneData.navigation ?? false,
@@ -278,7 +278,7 @@ export class SceneTools {
           width: token.width,
           height: token.height,
         },
-        actorId: token.actorId,
+        ...(token.actorId ? { actorId: token.actorId } : {}),
         disposition: this.getDispositionName(token.disposition),
         hidden: token.hidden,
         hasImage: !!token.img,

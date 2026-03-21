@@ -1,11 +1,100 @@
 // Campaign Dashboard Interactive Hooks
 // Implements clickable status toggles using Foundry's native hook system
 
+type CampaignStatus = 'not_started' | 'in_progress' | 'completed' | 'skipped';
+
+type StatusFlags = Record<string, CampaignStatus>;
+
+type EntryLike = {
+  name?: string;
+  parent?: EntryLike;
+  getFlag: (scope: string, key: string) => unknown;
+  setFlag: (scope: string, key: string, value: unknown) => Promise<unknown>;
+};
+
+type AppLike = {
+  _state?: number;
+  closing?: boolean;
+  object?: {
+    name?: string;
+    parent?: { name?: string };
+  } & Partial<EntryLike>;
+  document?: {
+    parent?: EntryLike;
+  } & Partial<EntryLike>;
+};
+
 export class CampaignHooks {
   private isRegistered: boolean = false;
 
-  constructor(_bridge: any) {
+  constructor(_bridge: unknown) {
     // Bridge not needed for direct Foundry flag approach
+  }
+
+  private toJQueryHtml(input: unknown): JQuery<HTMLElement> | null {
+    if (input instanceof HTMLElement) {
+      return $(input);
+    }
+
+    if (input && typeof input === 'object') {
+      const record = input as { jquery?: unknown; find?: unknown };
+      if (typeof record.jquery === 'string' && typeof record.find === 'function') {
+        return input as JQuery<HTMLElement>;
+      }
+    }
+
+    return null;
+  }
+
+  private isEntryLike(value: unknown): value is EntryLike {
+    if (!value || typeof value !== 'object') {
+      return false;
+    }
+
+    const entry = value as { getFlag?: unknown; setFlag?: unknown };
+    return typeof entry.getFlag === 'function' && typeof entry.setFlag === 'function';
+  }
+
+  private isCampaignStatus(value: unknown): value is CampaignStatus {
+    return (
+      value === 'not_started' ||
+      value === 'in_progress' ||
+      value === 'completed' ||
+      value === 'skipped'
+    );
+  }
+
+  private parseStatusFlags(value: unknown): StatusFlags {
+    if (!value || typeof value !== 'object') {
+      return {};
+    }
+
+    const flags: StatusFlags = {};
+    for (const [key, status] of Object.entries(value as Record<string, unknown>)) {
+      if (this.isCampaignStatus(status)) {
+        flags[key] = status;
+      }
+    }
+
+    return flags;
+  }
+
+  private getEntryFromApp(app: AppLike): EntryLike | null {
+    let entry: unknown = app.object;
+
+    if (!this.isEntryLike(entry) && app.document) {
+      entry = app.document.parent ?? app.document;
+    }
+
+    if (this.isEntryLike(entry) && entry.parent) {
+      entry = entry.parent;
+    }
+
+    if (!this.isEntryLike(entry) && app.document?.parent) {
+      entry = app.document.parent;
+    }
+
+    return this.isEntryLike(entry) ? entry : null;
   }
 
   /**
@@ -24,7 +113,7 @@ export class CampaignHooks {
     ];
 
     hookNames.forEach(hookName => {
-      Hooks.on(hookName, (app: any, html: any, data: any) => {
+      Hooks.on(hookName, (app: unknown, html: unknown, data: unknown) => {
         this.onRenderJournalSheet(app, html, data);
       });
     });
@@ -47,20 +136,22 @@ export class CampaignHooks {
   /**
    * Handle journal sheet rendering to add interactive elements
    */
-  private onRenderJournalSheet(app: any, html: any, _data: any): void {
+  private onRenderJournalSheet(app: unknown, html: unknown, _data: unknown): void {
     try {
+      const typedApp = (app ?? {}) as AppLike;
+
       // Extra defensive checks before processing
-      if (!app || !html || app._state === -1) {
+      if (!app || !html || typedApp._state === -1) {
         return;
       }
 
       // Small delay to avoid race condition with Foundry's internal DOM manipulation
       setTimeout(() => {
         // Double-check the app is still valid after delay
-        if (!app || app._state === -1 || app.closing) {
+        if (!app || typedApp._state === -1 || typedApp.closing) {
           return;
         }
-        this.processJournalRender(app, html, _data);
+        this.processJournalRender(typedApp, html, _data);
       }, 50);
     } catch (error) {
       console.error('Error in journal sheet render handler:', error);
@@ -70,7 +161,7 @@ export class CampaignHooks {
   /**
    * Process journal render after DOM is stable
    */
-  private processJournalRender(app: any, html: any, _data: any): void {
+  private processJournalRender(app: AppLike, html: unknown, _data: unknown): void {
     try {
       // Defensive checks to prevent null errors during journal close/destruction
       if (!app || !html) return;
@@ -81,7 +172,10 @@ export class CampaignHooks {
       }
 
       // Convert html to jQuery if it isn't already
-      const $html = html.jquery ? html : $(html);
+      const $html = this.toJQueryHtml(html);
+      if (!$html) {
+        return;
+      }
 
       // Additional DOM validation - ensure the HTML element exists and is connected
       if (!$html[0]?.isConnected) {
@@ -89,8 +183,9 @@ export class CampaignHooks {
       }
 
       // Only process if this looks like a campaign dashboard
+      const entryName = app.object?.name ?? app.object?.parent?.name ?? '';
       const isCampaignDashboard =
-        (app.object?.name || app.object?.parent?.name || '')?.includes('Campaign Dashboard') ||
+        entryName.includes('Campaign Dashboard') ||
         $html.find('.campaign-status-toggle').length > 0;
 
       if (!isCampaignDashboard) {
@@ -98,27 +193,18 @@ export class CampaignHooks {
       }
 
       // Try different ways to get the journal entry
-      let entry = app.object;
-      if (!entry && app.document) {
-        entry = app.document.parent || app.document;
-      }
-      if (entry?.parent) {
-        entry = entry.parent; // JournalEntryPage -> JournalEntry
-      }
-      if (!entry && app.document?.parent) {
-        entry = app.document.parent;
-      }
+      const entry = this.getEntryFromApp(app);
 
       // Early return if we can't get a valid entry to save flags to
-      if (!entry || typeof entry.getFlag !== 'function') {
+      if (!entry) {
         return;
       }
 
       // Load previously saved status flags (if any) for this entry
-      const statusFlags = entry.getFlag('world', 'campaignStatus') || {};
+      const statusFlags = this.parseStatusFlags(entry.getFlag('world', 'campaignStatus'));
 
       // Find all campaign status toggle elements with defensive error handling
-      let statusToggles;
+      let statusToggles: JQuery<HTMLElement>;
       try {
         statusToggles = $html.find('.campaign-status-toggle');
       } catch (error) {
@@ -133,18 +219,20 @@ export class CampaignHooks {
       // Set initial state of each status toggle element based on saved flags
       statusToggles.each((_index: number, element: HTMLElement) => {
         const $element = $(element);
-        const campaignId = $element.data('campaign-id');
-        const partId = $element.data('part-id');
+        const campaignIdRaw: unknown = $element.data('campaign-id');
+        const partIdRaw: unknown = $element.data('part-id');
 
-        if (!campaignId || !partId) {
+        if (typeof campaignIdRaw !== 'string' || typeof partIdRaw !== 'string') {
           console.warn('[Campaign Status] Toggle missing data attributes:', element);
           return;
         }
 
+        const campaignId = campaignIdRaw;
+        const partId = partIdRaw;
         const flagKey = `${campaignId}-${partId}`;
         const savedStatus = statusFlags[flagKey];
 
-        if (savedStatus) {
+        if (savedStatus && this.isCampaignStatus(savedStatus)) {
           // Update element to match saved status
           this.updateToggleVisual($element, savedStatus);
         }
@@ -152,7 +240,7 @@ export class CampaignHooks {
 
       // Attach click handlers to each toggle
       statusToggles.on('click', (event: JQuery.ClickEvent) => {
-        this.onStatusToggleClick(event, entry, statusFlags);
+        void this.onStatusToggleClick(event, entry, statusFlags);
       });
     } catch (error) {
       console.error('Error setting up campaign dashboard interactivity:', error);
@@ -164,21 +252,29 @@ export class CampaignHooks {
    */
   private async onStatusToggleClick(
     event: JQuery.ClickEvent,
-    entry: any,
-    statusFlags: any
+    entry: EntryLike,
+    statusFlags: StatusFlags
   ): Promise<void> {
     try {
       event.preventDefault();
       event.stopPropagation();
 
-      const target = $(event.currentTarget);
-      const campaignId = target.data('campaign-id');
-      const partId = target.data('part-id');
+      const currentTarget: unknown = event.currentTarget;
+      if (!(currentTarget instanceof HTMLElement)) {
+        return;
+      }
 
-      if (!campaignId || !partId) {
+      const target = $(currentTarget);
+      const campaignIdRaw: unknown = target.data('campaign-id');
+      const partIdRaw: unknown = target.data('part-id');
+
+      if (typeof campaignIdRaw !== 'string' || typeof partIdRaw !== 'string') {
         console.warn('[Campaign Status] Click on toggle missing data attributes');
         return;
       }
+
+      const campaignId = campaignIdRaw;
+      const partId = partIdRaw;
 
       // Only allow GM to modify campaign progress
       if (!game.user?.isGM) {
@@ -217,7 +313,7 @@ export class CampaignHooks {
   /**
    * Get current status from toggle element
    */
-  private getCurrentStatus(toggle: JQuery): string {
+  private getCurrentStatus(toggle: JQuery<HTMLElement>): CampaignStatus {
     if (toggle.hasClass('not-started')) return 'not_started';
     if (toggle.hasClass('in-progress')) return 'in_progress';
     if (toggle.hasClass('completed')) return 'completed';
@@ -228,8 +324,8 @@ export class CampaignHooks {
   /**
    * Get next status in cycle
    */
-  private getNextStatus(current: string): string {
-    const cycle = ['not_started', 'in_progress', 'completed', 'skipped'];
+  private getNextStatus(current: CampaignStatus): CampaignStatus {
+    const cycle: CampaignStatus[] = ['not_started', 'in_progress', 'completed', 'skipped'];
     const currentIndex = cycle.indexOf(current);
     const nextIndex = (currentIndex + 1) % cycle.length;
     return cycle[nextIndex];
@@ -238,7 +334,7 @@ export class CampaignHooks {
   /**
    * Update toggle visual appearance
    */
-  private updateToggleVisual(toggle: JQuery, newStatus: string): void {
+  private updateToggleVisual(toggle: JQuery<HTMLElement>, newStatus: CampaignStatus): void {
     // Remove all status classes
     toggle.removeClass('not-started in-progress completed skipped');
 
@@ -257,7 +353,7 @@ export class CampaignHooks {
   /**
    * Get status icon
    */
-  private getStatusIcon(status: string): string {
+  private getStatusIcon(status: CampaignStatus): string {
     const icons = {
       not_started: '⚪',
       in_progress: '🔄',
@@ -270,7 +366,7 @@ export class CampaignHooks {
   /**
    * Format status for display
    */
-  private formatStatus(status: string): string {
+  private formatStatus(status: CampaignStatus): string {
     return status.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
   }
 }

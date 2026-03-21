@@ -234,7 +234,8 @@ export class DSA5CharacterCreator {
       }
 
       // Prepare character data with customizations
-      const characterData = this.prepareCharacterData(characterName, customization);
+      const sanitizedCustomization = this.sanitizeCustomization(customization);
+      const characterData = this.prepareCharacterData(characterName, sanitizedCustomization);
 
       // Create the character actor in Foundry
       const result = (await this.foundryClient.query(
@@ -259,7 +260,7 @@ export class DSA5CharacterCreator {
         result,
         archetypeData,
         characterName,
-        customization
+        sanitizedCustomization
       );
     } catch (error) {
       return this.errorHandler.handleToolError(
@@ -431,6 +432,30 @@ export class DSA5CharacterCreator {
     return data;
   }
 
+  private sanitizeCustomization(customization: unknown): Dsa5Customization | undefined {
+    if (!customization || typeof customization !== 'object') {
+      return undefined;
+    }
+
+    const source = customization as Record<string, unknown>;
+    const result: Dsa5Customization = {};
+
+    if (typeof source.age === 'number') result.age = source.age;
+    if (typeof source.biography === 'string') result.biography = source.biography;
+    if (source.gender === 'male' || source.gender === 'female' || source.gender === 'diverse') {
+      result.gender = source.gender;
+    }
+    if (typeof source.eyeColor === 'string') result.eyeColor = source.eyeColor;
+    if (typeof source.hairColor === 'string') result.hairColor = source.hairColor;
+    if (typeof source.height === 'number') result.height = source.height;
+    if (typeof source.weight === 'number') result.weight = source.weight;
+    if (typeof source.species === 'string') result.species = source.species;
+    if (typeof source.culture === 'string') result.culture = source.culture;
+    if (typeof source.profession === 'string') result.profession = source.profession;
+
+    return Object.keys(result).length > 0 ? result : undefined;
+  }
+
   /**
    * Format character creation response
    */
@@ -458,7 +483,8 @@ export class DSA5CharacterCreator {
         details.push(`**Biography:** ${customization.biography.substring(0, 100)}...`);
     }
 
-    const errorInfo = result.errors?.length > 0 ? `\n⚠️ Issues: ${result.errors.join(', ')}` : '';
+    const errors = result.errors ?? [];
+    const errorInfo = errors.length > 0 ? `\n⚠️ Issues: ${errors.join(', ')}` : '';
 
     return {
       summary,

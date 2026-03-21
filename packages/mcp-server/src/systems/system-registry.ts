@@ -5,7 +5,7 @@
  * of game system support without modifying core files.
  */
 
-import { SystemAdapter, SystemId } from './types.js';
+import { SystemAdapter, SystemId, SystemMetadata } from './types.js';
 import { Logger } from '../logger.js';
 
 /**

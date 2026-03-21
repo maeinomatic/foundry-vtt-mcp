@@ -1,8 +1,70 @@
 import { MODULE_ID, DEFAULT_CONFIG } from './constants.js';
 import type { BridgeConfig } from './socket-bridge.js';
+import { debugGM } from './gm-notifications.js';
+
+type ServiceStatus = {
+  status?: string;
+  message?: string;
+};
+
+type FormDataLike = Record<string, unknown>;
+
+type DataAccessLike = {
+  rebuildEnhancedCreatureIndex?: () => Promise<unknown>;
+};
+
+type ComfyUIManagerLike = {
+  checkStatus: () => Promise<ServiceStatus>;
+  startService: () => Promise<ServiceStatus>;
+  stopService: () => Promise<ServiceStatus>;
+};
+
+type FoundryMCPBridgeLike = {
+  dataAccess?: DataAccessLike;
+  comfyuiManager?: ComfyUIManagerLike;
+  start?: () => Promise<void> | void;
+  stop?: () => Promise<void> | void;
+  restart?: () => Promise<void> | void;
+};
+
+type SettingDefinition = {
+  hint?: string;
+  default?: unknown;
+};
+
+type GameSettingsLike = {
+  settings?: {
+    get: (key: string) => unknown;
+  };
+};
 
 export class ModuleSettings {
   private moduleId: string = MODULE_ID;
+
+  private registerMenu(key: string, config: Record<string, unknown>): void {
+    const settingsApi = game.settings as unknown as {
+      registerMenu: (
+        moduleId: string,
+        menuKey: string,
+        menuConfig: Record<string, unknown>
+      ) => void;
+    };
+    settingsApi.registerMenu(this.moduleId, key, config);
+  }
+
+  private getBridge(): FoundryMCPBridgeLike | undefined {
+    const root = window as unknown as { foundryMCPBridge?: FoundryMCPBridgeLike };
+    return root.foundryMCPBridge;
+  }
+
+  private getSettingDefinition(key: string): SettingDefinition | null {
+    const settingsRegistry = game.settings as unknown as GameSettingsLike;
+    const setting = settingsRegistry.settings?.get(`${this.moduleId}.${key}`);
+    if (!setting || typeof setting !== 'object') {
+      return null;
+    }
+    return setting as SettingDefinition;
+  }
 
   /**
    * Register all module settings with Foundry
@@ -13,85 +75,103 @@ export class ModuleSettings {
     // ============================================================================
 
     // Enhanced Creature Index submenu
-    (game.settings as any).registerMenu(this.moduleId, 'enhancedIndexMenu', {
+    this.registerMenu('enhancedIndexMenu', {
       name: 'Enhanced Creature Index',
       label: 'Configure Enhanced Index',
       hint: 'The Enhanced Creature Index pre-computes creature statistics for instant filtering by Challenge Rating, creature type, and abilities. This enables AI models to quickly find creatures matching specific criteria without loading every compendium entry.',
       icon: 'fas fa-search-plus',
       type: class extends FormApplication {
-        static get defaultOptions() {
-          return foundry.utils.mergeObject(super.defaultOptions, {
+        /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return */
+        static get defaultOptions(): FormApplicationOptions {
+          const baseOptions = super.defaultOptions as FormApplicationOptions;
+          return {
+            ...baseOptions,
             title: 'Enhanced Creature Index Settings',
             template: `modules/${MODULE_ID}/templates/enhanced-index-menu.html`,
             width: 500,
             height: 'auto',
             resizable: false,
             closeOnSubmit: false,
-          } as any);
-        }
-
-        getData(): any {
-          return {
-            enableEnhancedCreatureIndex: game.settings.get(
-              MODULE_ID,
-              'enableEnhancedCreatureIndex'
-            ),
-            autoRebuildIndex: game.settings.get(MODULE_ID, 'autoRebuildIndex'),
           };
         }
+        /* eslint-enable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return */
 
-        activateListeners(html: JQuery) {
+        getData(
+          _options?: Partial<FormApplicationOptions>
+        ): ReturnType<FormApplication['getData']> {
+          return {
+            enableEnhancedCreatureIndex:
+              game.settings.get(MODULE_ID, 'enableEnhancedCreatureIndex') === true,
+            autoRebuildIndex: game.settings.get(MODULE_ID, 'autoRebuildIndex') === true,
+          } as unknown as ReturnType<FormApplication['getData']>;
+        }
+
+        activateListeners(html: JQuery<HTMLElement>): void {
+          // FormApplication base types are loosely typed in Foundry declarations.
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
           super.activateListeners(html);
-          html.find('.rebuild-index-btn').click(() => {
-            const bridge = (globalThis as any).foundryMCPBridge;
+          html.find('.rebuild-index-btn').on('click', () => {
+            const bridge = (window as unknown as { foundryMCPBridge?: FoundryMCPBridgeLike })
+              .foundryMCPBridge;
             if (bridge?.dataAccess?.rebuildEnhancedCreatureIndex) {
               ui.notifications?.info('Rebuilding enhanced creature index...');
-              bridge.dataAccess.rebuildEnhancedCreatureIndex();
+              void bridge.dataAccess.rebuildEnhancedCreatureIndex();
             }
           });
         }
 
-        async _updateObject(_event: Event, formData: any) {
+        async _updateObject(_event: Event, formData: FormDataLike): Promise<void> {
           await game.settings.set(
             MODULE_ID,
             'enableEnhancedCreatureIndex',
-            formData.enableEnhancedCreatureIndex
+            formData.enableEnhancedCreatureIndex === true
           );
-          await game.settings.set(MODULE_ID, 'autoRebuildIndex', formData.autoRebuildIndex);
+          await game.settings.set(
+            MODULE_ID,
+            'autoRebuildIndex',
+            formData.autoRebuildIndex === true
+          );
         }
       },
       restricted: true,
     });
 
     // Map Generation Service submenu
-    (game.settings as any).registerMenu(this.moduleId, 'mapGenerationSettings', {
+    this.registerMenu('mapGenerationSettings', {
       name: 'Map Generation Service Configuration',
       label: 'Configure Map Generation',
       hint: 'Configure your map generation service for AI-powered battlemap creation. Currently supports ComfyUI installations with plans for future cloud services.',
       icon: 'fas fa-cogs',
       type: class extends FormApplication {
-        static get defaultOptions() {
-          return foundry.utils.mergeObject(super.defaultOptions, {
+        /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return */
+        static get defaultOptions(): FormApplicationOptions {
+          const baseOptions = super.defaultOptions as FormApplicationOptions;
+          return {
+            ...baseOptions,
             title: 'Map Generation Service Settings',
             template: `modules/${MODULE_ID}/templates/comfyui-settings.html`,
             width: 500,
             height: 'auto',
             resizable: false,
             closeOnSubmit: false,
-          } as any);
+          };
         }
+        /* eslint-enable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return */
 
-        getData(): any {
+        getData(
+          _options?: Partial<FormApplicationOptions>
+        ): ReturnType<FormApplication['getData']> {
           return {
-            autoStartService: game.settings.get(MODULE_ID, 'mapGenAutoStart') || true,
-            mapGenQuality: game.settings.get(MODULE_ID, 'mapGenQuality') || 'low',
+            autoStartService: game.settings.get(MODULE_ID, 'mapGenAutoStart') !== false,
+            mapGenQuality: (game.settings.get(MODULE_ID, 'mapGenQuality') as string) ?? 'low',
             connectionStatus: this.getConnectionStatus(),
             connectionStatusText: this.getConnectionStatusText(),
-          };
+          } as unknown as ReturnType<FormApplication['getData']>;
         }
 
         getConnectionStatus(): string {
-          const bridge = (globalThis as any).foundryMCPBridge;
+          const bridge = (window as unknown as { foundryMCPBridge?: FoundryMCPBridgeLike })
+            .foundryMCPBridge;
           return bridge?.comfyuiManager ? 'unknown' : 'stopped';
         }
 
@@ -99,72 +179,79 @@ export class ModuleSettings {
           return 'Click "Check Status" to verify service';
         }
 
-        activateListeners(html: JQuery) {
+        activateListeners(html: JQuery<HTMLElement>): void {
+          // FormApplication base types are loosely typed in Foundry declarations.
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
           super.activateListeners(html);
 
           // Service control buttons
-          html.find('#check-status-btn').click(async () => {
-            await this.checkServiceStatus();
+          html.find('#check-status-btn').on('click', () => {
+            void this.checkServiceStatus();
           });
 
-          html.find('#start-service-btn').click(async () => {
-            await this.startService();
+          html.find('#start-service-btn').on('click', () => {
+            void this.startService();
           });
 
-          html.find('#stop-service-btn').click(async () => {
-            await this.stopService();
+          html.find('#stop-service-btn').on('click', () => {
+            void this.stopService();
           });
         }
 
-        async checkServiceStatus() {
-          const bridge = (globalThis as any).foundryMCPBridge;
+        async checkServiceStatus(): Promise<void> {
+          const bridge = (window as unknown as { foundryMCPBridge?: FoundryMCPBridgeLike })
+            .foundryMCPBridge;
           if (bridge?.comfyuiManager) {
             try {
               const status = await bridge.comfyuiManager.checkStatus();
               this.updateStatusDisplay(status);
             } catch (error) {
-              console.error('Status check failed:', error);
+              debugGM('Status check failed', error);
               this.updateStatusDisplay({ status: 'error', message: 'Status check failed' });
             }
           }
         }
 
-        async startService() {
-          const bridge = (globalThis as any).foundryMCPBridge;
+        async startService(): Promise<void> {
+          const bridge = (window as unknown as { foundryMCPBridge?: FoundryMCPBridgeLike })
+            .foundryMCPBridge;
           if (bridge?.comfyuiManager) {
             try {
               const result = await bridge.comfyuiManager.startService();
               this.updateStatusDisplay(result);
             } catch (error) {
-              console.error('Service start failed:', error);
+              debugGM('Service start failed', error);
               this.updateStatusDisplay({ status: 'error', message: 'Service start failed' });
             }
           }
         }
 
-        async stopService() {
-          const bridge = (globalThis as any).foundryMCPBridge;
+        async stopService(): Promise<void> {
+          const bridge = (window as unknown as { foundryMCPBridge?: FoundryMCPBridgeLike })
+            .foundryMCPBridge;
           if (bridge?.comfyuiManager) {
             try {
               const result = await bridge.comfyuiManager.stopService();
               this.updateStatusDisplay(result);
             } catch (error) {
-              console.error('Service stop failed:', error);
+              debugGM('Service stop failed', error);
               this.updateStatusDisplay({ status: 'error', message: 'Service stop failed' });
             }
           }
         }
 
-        updateStatusDisplay(status: any) {
-          const statusElement = this.element.find('#connection-status');
-          const statusText = this.element.find('#status-text');
+        updateStatusDisplay(status: ServiceStatus): void {
+          const root = this.element as unknown as JQuery<HTMLElement>;
+          const statusElement = root.find('#connection-status');
+          const statusText = root.find('#status-text');
+          const statusValue = status.status ?? 'unknown';
 
           // Remove all status classes
           statusElement.removeClass('running stopped starting error unknown');
 
           // Add current status class
-          statusElement.addClass(status.status);
-          statusText.text(this.getStatusText(status.status));
+          statusElement.addClass(statusValue);
+          statusText.text(this.getStatusText(statusValue));
         }
 
         getStatusText(status: string): string {
@@ -175,12 +262,16 @@ export class ModuleSettings {
             error: 'Service Error',
             unknown: 'Status Unknown',
           };
-          return statusMap[status] || 'Unknown';
+          return statusMap[status] ?? 'Unknown';
         }
 
-        async _updateObject(_event: Event, formData: any) {
-          await game.settings.set(MODULE_ID, 'mapGenAutoStart', formData.autoStartService);
-          await game.settings.set(MODULE_ID, 'mapGenQuality', formData.mapGenQuality);
+        async _updateObject(_event: Event, formData: FormDataLike): Promise<void> {
+          await game.settings.set(MODULE_ID, 'mapGenAutoStart', formData.autoStartService === true);
+          await game.settings.set(
+            MODULE_ID,
+            'mapGenQuality',
+            typeof formData.mapGenQuality === 'string' ? formData.mapGenQuality : 'low'
+          );
           ui.notifications?.info('Map generation service settings saved successfully');
         }
       },
@@ -389,7 +480,7 @@ export class ModuleSettings {
   /**
    * Handle roll states setting changes - fires on all clients for world-scoped settings
    */
-  private onRollStatesChanged(_newValue: any): void {
+  private onRollStatesChanged(_newValue: unknown): void {
     // No action needed - ChatMessage.update() handles state synchronization automatically
   }
 
@@ -403,12 +494,12 @@ export class ModuleSettings {
         : `❌ Disconnected - Use connection panel to connect`;
 
       // Update the hint for the enabled setting to show status
-      const enabledSetting = (game.settings as any).settings.get(`${this.moduleId}.enabled`);
-      if (enabledSetting) {
+      const enabledSetting = this.getSettingDefinition('enabled');
+      if (enabledSetting?.hint) {
         enabledSetting.hint = `${enabledSetting.hint.split(' |')[0]} | Status: ${statusText}`;
       }
     } catch (error) {
-      console.warn(`[${this.moduleId}] Failed to update status display:`, error);
+      debugGM('Failed to update status display', error);
     }
   }
 
@@ -416,12 +507,12 @@ export class ModuleSettings {
    * Get current bridge configuration from settings
    */
   getBridgeConfig(): BridgeConfig {
-    const connectionType = this.getSetting('connectionType');
+    const connectionType = this.getSetting<string>('connectionType');
 
     return {
-      enabled: this.getSetting('enabled'),
-      serverHost: this.getSetting('serverHost'),
-      serverPort: this.getSetting('serverPort'),
+      enabled: this.getSetting<boolean>('enabled'),
+      serverHost: this.getSetting<string>('serverHost'),
+      serverPort: this.getSetting<number>('serverPort'),
       namespace: '/foundry-mcp', // Fixed namespace - no user configuration needed
       reconnectAttempts: DEFAULT_CONFIG.RECONNECT_ATTEMPTS, // Use sensible default
       reconnectDelay: DEFAULT_CONFIG.RECONNECT_DELAY, // Use sensible default
@@ -434,21 +525,21 @@ export class ModuleSettings {
   /**
    * Get a specific setting value
    */
-  getSetting(key: string): any {
-    return game.settings.get(this.moduleId, key);
+  getSetting<T = unknown>(key: string): T {
+    return game.settings.get(this.moduleId, key) as T;
   }
 
   /**
    * Set a specific setting value
    */
-  async setSetting(key: string, value: any): Promise<any> {
+  async setSetting(key: string, value: unknown): Promise<unknown> {
     return game.settings.set(this.moduleId, key, value);
   }
 
   /**
    * Get all settings as an object
    */
-  getAllSettings(): Record<string, any> {
+  getAllSettings(): Record<string, unknown> {
     const settingKeys = [
       // Basic Settings
       'enabled',
@@ -468,7 +559,7 @@ export class ModuleSettings {
       'heartbeatInterval',
     ];
 
-    const settings: Record<string, any> = {};
+    const settings: Record<string, unknown> = {};
     for (const key of settingKeys) {
       settings[key] = this.getSetting(key);
     }
@@ -482,22 +573,22 @@ export class ModuleSettings {
   validateSettings(): { valid: boolean; errors: string[] } {
     const errors: string[] = [];
 
-    const host = this.getSetting('serverHost');
+    const host = this.getSetting<string>('serverHost');
     if (!host || typeof host !== 'string' || host.trim().length === 0) {
       errors.push('Server host cannot be empty');
     }
 
-    const port = this.getSetting('serverPort');
+    const port = this.getSetting<number>('serverPort');
     if (!port || typeof port !== 'number' || port < 1024 || port > 65535) {
       errors.push('Server port must be between 1024 and 65535');
     }
 
-    const maxActors = this.getSetting('maxActorsPerRequest');
+    const maxActors = this.getSetting<number>('maxActorsPerRequest');
     if (!maxActors || typeof maxActors !== 'number' || maxActors < 1 || maxActors > 10) {
       errors.push('Max actors per request must be between 1 and 10');
     }
 
-    const heartbeat = this.getSetting('heartbeatInterval');
+    const heartbeat = this.getSetting<number>('heartbeatInterval');
     if (!heartbeat || typeof heartbeat !== 'number' || heartbeat < 10 || heartbeat > 120) {
       errors.push('Heartbeat interval must be between 10 and 120 seconds');
     }
@@ -513,11 +604,12 @@ export class ModuleSettings {
    */
   private onEnabledChange(enabled: boolean): void {
     // Trigger bridge state change through global event
-    if (window.foundryMCPBridge) {
+    const bridge = this.getBridge();
+    if (bridge) {
       if (enabled) {
-        window.foundryMCPBridge.start?.();
+        void bridge.start?.();
       } else {
-        window.foundryMCPBridge.stop?.();
+        void bridge.stop?.();
       }
     }
   }
@@ -527,8 +619,9 @@ export class ModuleSettings {
    */
   private onConnectionChange(): void {
     // If bridge is running, restart it with new settings
-    if (window.foundryMCPBridge && this.getSetting('enabled')) {
-      window.foundryMCPBridge.restart?.();
+    const bridge = this.getBridge();
+    if (bridge && this.getSetting<boolean>('enabled')) {
+      void bridge.restart?.();
     }
   }
 
@@ -543,8 +636,8 @@ export class ModuleSettings {
     maxActorsPerRequest: number;
   } {
     return {
-      allowWriteOperations: this.getSetting('allowWriteOperations'),
-      maxActorsPerRequest: this.getSetting('maxActorsPerRequest'),
+      allowWriteOperations: this.getSetting<boolean>('allowWriteOperations'),
+      maxActorsPerRequest: this.getSetting<number>('maxActorsPerRequest'),
     };
   }
 
@@ -553,7 +646,7 @@ export class ModuleSettings {
    */
   isWriteOperationAllowed(_operation?: string): boolean {
     // Simplified - single permission covers all write operations
-    return this.getSetting('allowWriteOperations');
+    return this.getSetting<boolean>('allowWriteOperations');
   }
 
   migrateSettings(_fromVersion: string, _toVersion: string): void {
@@ -586,7 +679,7 @@ export class ModuleSettings {
 
     for (const key of settingKeys) {
       // Get the default value from the setting registration
-      const setting = (game.settings as any).settings.get(`${this.moduleId}.${key}`);
+      const setting = this.getSettingDefinition(key);
       if (setting && 'default' in setting) {
         await this.setSetting(key, setting.default);
       }

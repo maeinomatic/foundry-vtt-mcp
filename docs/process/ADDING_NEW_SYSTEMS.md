@@ -2,9 +2,32 @@
 
 This guide explains how to add support for new game systems (like DSA5, Call of Cthulhu, etc.) to the Foundry VTT MCP integration using the Registry pattern introduced in v0.6.0.
 
+## Architecture Prerequisite
+
+Before implementing a new system, read and follow:
+
+- [MCP_ADAPTER_ARCHITECTURE.md](MCP_ADAPTER_ARCHITECTURE.md)
+
+This guide is implementation-focused, while the architecture document defines
+the required boundaries for MCP behavior.
+
+Mandatory rule:
+
+- System-specific logic must be implemented in adapters/builders, not in core
+  MCP tool orchestration files.
+
 ## Overview
 
 The v0.6.0 refactor introduced a modular architecture that allows adding new game systems **without editing core files**. You create three files for your system, register the adapter, and you're done!
+
+## Pre-Flight Checklist
+
+Before coding, confirm all of the following:
+
+1. Your system ID can be detected and propagated end-to-end (no "other" remap).
+2. Unsupported capabilities return explicit structured errors.
+3. No core tool file needs new `if (system === ...)` branches.
+4. Filter schemas and criteria formatting are owned by the system adapter.
 
 ## Architecture
 

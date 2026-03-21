@@ -9,6 +9,17 @@ This roadmap focuses on build/test/dependency hygiene while keeping the current 
 3. Improve confidence in changes with real tests and CI gates.
 4. Reduce security and maintenance risk from outdated dependencies.
 5. Keep build-tool decisions (for example optional Vite spikes) as explicit, test-driven decisions.
+6. Preserve MCP-first adapter boundaries across all system integrations.
+
+## Architecture Guardrail
+
+Architecture source of truth:
+
+- [MCP_ADAPTER_ARCHITECTURE.md](MCP_ADAPTER_ARCHITECTURE.md)
+
+Roadmap work should avoid reintroducing system-specific branches in core tool
+or utility layers. If work requires game-specific behavior, implement it in
+system adapters and route through registry dispatch.
 
 ## Current Baseline
 

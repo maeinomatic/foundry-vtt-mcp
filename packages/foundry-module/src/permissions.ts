@@ -23,6 +23,16 @@ export interface PermissionCheck {
   warnings?: string[] | undefined;
 }
 
+type OperationParameters = Record<string, unknown>;
+
+type ValidatedOperationParameters = {
+  creatureType?: string;
+  quantity?: number;
+  customNames?: string[];
+  actorIds?: string[];
+  placement?: 'random' | 'grid' | 'center';
+} & OperationParameters;
+
 export class PermissionManager {
   private moduleId: string = MODULE_ID;
 
@@ -143,10 +153,10 @@ export class PermissionManager {
    */
   validateOperationParameters(
     operationName: string,
-    parameters: any
-  ): { valid: boolean; errors: string[]; sanitized?: any } {
+    parameters: OperationParameters
+  ): { valid: boolean; errors: string[]; sanitized?: ValidatedOperationParameters } {
     const errors: string[] = [];
-    const sanitized = { ...parameters };
+    const sanitized: ValidatedOperationParameters = { ...parameters };
 
     switch (operationName) {
       case 'createActor':
@@ -154,16 +164,28 @@ export class PermissionManager {
           errors.push('creatureType is required and must be a string');
         }
 
-        if (sanitized.quantity) {
-          const quantity = parseInt(sanitized.quantity);
-          if (isNaN(quantity) || quantity < 1 || quantity > 10) {
+        if (sanitized.quantity !== undefined) {
+          const rawQuantity = sanitized.quantity;
+          const quantity =
+            typeof rawQuantity === 'number'
+              ? rawQuantity
+              : typeof rawQuantity === 'string'
+                ? Number.parseInt(rawQuantity, 10)
+                : Number.NaN;
+
+          if (Number.isNaN(quantity) || quantity < 1 || quantity > 10) {
             errors.push('quantity must be a number between 1 and 10');
           } else {
             sanitized.quantity = quantity;
           }
         }
 
-        if (sanitized.customNames && !Array.isArray(sanitized.customNames)) {
+        if (sanitized.customNames !== undefined && !Array.isArray(sanitized.customNames)) {
+          errors.push('customNames must be an array of strings');
+        } else if (
+          Array.isArray(sanitized.customNames) &&
+          sanitized.customNames.some(name => typeof name !== 'string')
+        ) {
           errors.push('customNames must be an array of strings');
         }
         break;
@@ -172,12 +194,17 @@ export class PermissionManager {
         if (
           !sanitized.actorIds ||
           !Array.isArray(sanitized.actorIds) ||
-          sanitized.actorIds.length === 0
+          sanitized.actorIds.length === 0 ||
+          sanitized.actorIds.some(id => typeof id !== 'string')
         ) {
           errors.push('actorIds must be a non-empty array');
         }
 
-        if (sanitized.placement && !['random', 'grid', 'center'].includes(sanitized.placement)) {
+        if (
+          sanitized.placement !== undefined &&
+          (typeof sanitized.placement !== 'string' ||
+            !['random', 'grid', 'center'].includes(sanitized.placement))
+        ) {
           errors.push('placement must be one of: random, grid, center');
         }
         break;
@@ -187,11 +214,16 @@ export class PermissionManager {
         break;
     }
 
-    return {
+    const result: { valid: boolean; errors: string[]; sanitized?: ValidatedOperationParameters } = {
       valid: errors.length === 0,
       errors,
-      sanitized: errors.length === 0 ? sanitized : undefined,
     };
+
+    if (errors.length === 0) {
+      result.sanitized = sanitized;
+    }
+
+    return result;
   }
 
   /**
@@ -201,14 +233,15 @@ export class PermissionManager {
     string,
     { operation: WriteOperation; allowed: boolean; reason?: string }
   > {
-    const status: Record<string, any> = {};
+    const status: Record<string, { operation: WriteOperation; allowed: boolean; reason?: string }> =
+      {};
 
     for (const [key, operation] of Object.entries(this.writeOperations)) {
       const check = this.checkWritePermission(key);
       status[key] = {
         operation,
         allowed: check.allowed,
-        reason: check.reason,
+        ...(check.reason ? { reason: check.reason } : {}),
       };
     }
 
@@ -237,8 +270,8 @@ export class PermissionManager {
 
     return {
       user: {
-        name: game.user?.name || 'Unknown',
-        isGM: game.user?.isGM || false,
+        name: game.user?.name ?? 'Unknown',
+        isGM: game.user?.isGM ?? false,
       },
       settings,
       operations,
@@ -248,7 +281,11 @@ export class PermissionManager {
   /**
    * Log permission check for audit purposes
    */
-  auditPermissionCheck(_operationName: string, _result: PermissionCheck, _parameters?: any): void {
+  auditPermissionCheck(
+    _operationName: string,
+    _result: PermissionCheck,
+    _parameters?: OperationParameters
+  ): void {
     // Permission audit logging removed for production release
     // Previously logged permission checks for security auditing
   }

@@ -7,11 +7,12 @@
 
 import { FoundryClient } from '../foundry-client.js';
 import { Logger } from '../logger.js';
+import type { SystemId } from '../systems/types.js';
 
 /**
  * Supported game systems
  */
-export type GameSystem = 'dnd5e' | 'pf2e' | 'other';
+export type GameSystem = SystemId;
 
 /**
  * Cache for system detection (avoid repeated queries)
@@ -37,6 +38,9 @@ const toNumber = (value: unknown): number | undefined => {
   return undefined;
 };
 
+const toStringValue = (value: unknown): string | undefined =>
+  typeof value === 'string' ? value : undefined;
+
 /**
  * Detect the active Foundry game system
  * Results are cached to avoid repeated queries
@@ -57,10 +61,8 @@ export async function detectGameSystem(
 
     cachedSystemId = systemId;
 
-    if (systemId === 'dnd5e') {
-      cachedSystem = 'dnd5e';
-    } else if (systemId === 'pf2e') {
-      cachedSystem = 'pf2e';
+    if (systemId === 'dnd5e' || systemId === 'pf2e' || systemId === 'dsa5') {
+      cachedSystem = systemId;
     } else {
       cachedSystem = 'other';
     }
@@ -131,6 +133,38 @@ export const SystemPaths = {
     challengeRating: null,
     legendaryActions: null,
   },
+  dsa5: {
+    // DSA5 specific paths
+    level: 'system.details.experience.total',
+    creatureType: 'system.details.species.value',
+    size: 'system.status.size.value',
+    alignment: null,
+    rarity: null,
+    traits: null,
+    hitPoints: 'system.status.wounds.current',
+    armorClass: null,
+    abilities: 'system.characteristics',
+    skills: null,
+    perception: null,
+    saves: null,
+    challengeRating: null,
+    legendaryActions: null,
+    spells: null,
+  },
+  other: {
+    challengeRating: null,
+    creatureType: null,
+    size: null,
+    alignment: null,
+    level: null,
+    hitPoints: null,
+    armorClass: null,
+    abilities: null,
+    skills: null,
+    spells: null,
+    legendaryActions: null,
+    legendaryResistances: null,
+  },
 } as const;
 
 /**
@@ -138,14 +172,19 @@ export const SystemPaths = {
  */
 export function getSystemPaths(
   system: GameSystem
-): typeof SystemPaths.dnd5e | typeof SystemPaths.pf2e {
+):
+  | typeof SystemPaths.dnd5e
+  | typeof SystemPaths.pf2e
+  | typeof SystemPaths.dsa5
+  | typeof SystemPaths.other {
   if (system === 'dnd5e') {
     return SystemPaths.dnd5e;
   } else if (system === 'pf2e') {
     return SystemPaths.pf2e;
+  } else if (system === 'dsa5') {
+    return SystemPaths.dsa5;
   }
-  // Default to dnd5e paths for unknown systems (best effort)
-  return SystemPaths.dnd5e;
+  return SystemPaths.other;
 }
 
 /**
@@ -192,6 +231,10 @@ export function getCreatureLevel(actorData: unknown, system: GameSystem): number
     const level = extractSystemValue(actorData, paths.level);
     const levelNumber = toNumber(level);
     if (levelNumber !== undefined) return levelNumber;
+  } else if (system === 'dsa5') {
+    const level = extractSystemValue(actorData, paths.level);
+    const levelNumber = toNumber(level);
+    if (levelNumber !== undefined) return levelNumber;
   }
 
   return undefined;
@@ -206,11 +249,13 @@ export function getCreatureType(
 ): string | string[] | undefined {
   if (system === 'dnd5e') {
     // D&D 5e: Single creature type string
-    return extractSystemValue(actorData, SystemPaths.dnd5e.creatureType);
+    return toStringValue(extractSystemValue(actorData, SystemPaths.dnd5e.creatureType));
   } else if (system === 'pf2e') {
     // PF2e: Array of traits
     const traits = extractSystemValue(actorData, SystemPaths.pf2e.traits);
     return Array.isArray(traits) ? traits : undefined;
+  } else if (system === 'dsa5') {
+    return toStringValue(extractSystemValue(actorData, SystemPaths.dsa5.creatureType));
   }
 
   return undefined;
@@ -230,6 +275,16 @@ export function hasSpellcasting(actorData: unknown, system: GameSystem): boolean
     const spellcasting = extractSystemValue(actorData, 'system.spellcasting');
     const spellcastingRecord = asRecord(spellcasting);
     return Boolean(spellcastingRecord && Object.keys(spellcastingRecord).length > 0);
+  } else if (system === 'dsa5') {
+    const tradition = extractSystemValue(actorData, 'system.tradition');
+    const traditionRecord = asRecord(tradition);
+    if (traditionRecord && (traditionRecord.magical || traditionRecord.clerical)) {
+      return true;
+    }
+
+    const astralMax = toNumber(extractSystemValue(actorData, 'system.status.astralenergy.max'));
+    const karmaMax = toNumber(extractSystemValue(actorData, 'system.status.karmaenergy.max'));
+    return (astralMax ?? 0) > 0 || (karmaMax ?? 0) > 0;
   }
 
   return false;
@@ -240,7 +295,7 @@ export function hasSpellcasting(actorData: unknown, system: GameSystem): boolean
  */
 export function formatSystemError(system: GameSystem, systemId: string | null): string {
   if (system === 'other') {
-    return `This tool currently supports D&D 5e and Pathfinder 2e. Your world uses system: "${systemId ?? 'unknown'}". Please use a supported system or request support for additional systems.`;
+    return `This tool currently supports D&D 5e, Pathfinder 2e, and DSA5. Your world uses system: "${systemId ?? 'unknown'}". Please use a supported system or request support for additional systems.`;
   }
   return 'Unknown system error';
 }

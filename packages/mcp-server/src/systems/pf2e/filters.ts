@@ -112,11 +112,12 @@ export function matchesPF2eFilters(creature: unknown, filters: PF2eFilters): boo
 
   // Creature Type filter (checks traits array)
   if (filters.creatureType) {
+    const creatureTypeFilter = filters.creatureType.toLowerCase();
     const traits = systemData?.traits;
     if (!Array.isArray(traits)) return false;
 
     const hasType = traits.some(
-      trait => toStringValue(trait)?.toLowerCase() === filters.creatureType.toLowerCase()
+      trait => toStringValue(trait)?.toLowerCase() === creatureTypeFilter
     );
     if (!hasType) return false;
   }

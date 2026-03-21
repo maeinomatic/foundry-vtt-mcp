@@ -6,7 +6,7 @@ import { FoundryClient } from '../foundry-client.js';
 import { ErrorHandler } from '../utils/error-handler.js';
 import { Logger } from '../logger.js';
 import { CampaignPartTypeSchema } from '@foundry-mcp/shared';
-import type { CampaignStructure, CampaignPart } from '@foundry-mcp/shared';
+import type { CampaignStructure, CampaignPart, CampaignSubPart } from '@foundry-mcp/shared';
 
 type CampaignTemplateType =
   | 'five-part-adventure'
@@ -144,7 +144,7 @@ export class CampaignManagementTools {
    */
   async handleCreateCampaignDashboard(args: unknown): Promise<unknown> {
     try {
-      const requestSchema: z.ZodType<CampaignDashboardRequest> = z.object({
+      const requestSchema = z.object({
         campaignTitle: z.string().min(1, 'Campaign title is required'),
         campaignDescription: z.string().min(1, 'Campaign description is required'),
         template: z.enum([
@@ -177,7 +177,25 @@ export class CampaignManagementTools {
         defaultLocation: z.string().optional(),
       });
 
-      const request = requestSchema.parse(args);
+      const parsedRequest = requestSchema.parse(args);
+      const sanitizedCustomParts = parsedRequest.customParts?.map(part => ({
+        title: part.title,
+        description: part.description,
+        type: part.type,
+        levelStart: part.levelStart,
+        levelEnd: part.levelEnd,
+        ...(part.subParts ? { subParts: part.subParts } : {}),
+      }));
+      const request: CampaignDashboardRequest = {
+        campaignTitle: parsedRequest.campaignTitle,
+        campaignDescription: parsedRequest.campaignDescription,
+        template: parsedRequest.template,
+        ...(sanitizedCustomParts ? { customParts: sanitizedCustomParts } : {}),
+        ...(parsedRequest.defaultQuestGiver
+          ? { defaultQuestGiver: parsedRequest.defaultQuestGiver }
+          : {}),
+        ...(parsedRequest.defaultLocation ? { defaultLocation: parsedRequest.defaultLocation } : {}),
+      };
 
       // Generate campaign structure based on template
       const campaignStructure = this.generateCampaignStructure(request);
@@ -242,14 +260,18 @@ export class CampaignManagementTools {
         type: part.type,
         status: 'not_started' as const,
         dependencies: index > 0 ? [`${campaignId}-part-${index}`] : [],
-        subParts: part.subParts?.map((subPart: CustomSubPartRequest, subIndex: number) => ({
-          id: `${campaignId}-part-${index + 1}-sub-${subIndex + 1}`,
-          title: subPart.title,
-          description: subPart.description,
-          type: 'sub_part' as const,
-          status: 'not_started' as const,
-          createdAt: timestamp,
-        })),
+        ...(part.subParts
+          ? {
+              subParts: part.subParts.map((subPart: CustomSubPartRequest, subIndex: number) => ({
+                id: `${campaignId}-part-${index + 1}-sub-${subIndex + 1}`,
+                title: subPart.title,
+                description: subPart.description,
+                type: 'sub_part' as const,
+                status: 'not_started' as const,
+                createdAt: timestamp,
+              })),
+            }
+          : {}),
         ...(request.defaultQuestGiver && {
           questGiver: {
             id: `npc-${request.defaultQuestGiver.toLowerCase().replace(/\s+/g, '-')}`,
@@ -437,14 +459,18 @@ export class CampaignManagementTools {
       type: 'main_part' as const,
       status: 'not_started' as const,
       dependencies: index > 0 ? [`${campaignId}-part-${index}`] : [],
-      subParts: part.subParts?.map((subPart: TemplateSubPart, subIndex: number) => ({
-        id: `${campaignId}-part-${index + 1}-sub-${subIndex + 1}`,
-        title: subPart.title,
-        description: subPart.description,
-        type: 'sub_part' as const,
-        status: 'not_started' as const,
-        createdAt: timestamp,
-      })),
+      ...(part.subParts
+        ? {
+            subParts: part.subParts.map((subPart: TemplateSubPart, subIndex: number) => ({
+              id: `${campaignId}-part-${index + 1}-sub-${subIndex + 1}`,
+              title: subPart.title,
+              description: subPart.description,
+              type: 'sub_part' as const,
+              status: 'not_started' as const,
+              createdAt: timestamp,
+            })),
+          }
+        : {}),
       ...(defaultQuestGiver && {
         questGiver: {
           id: `npc-${defaultQuestGiver.toLowerCase().replace(/\s+/g, '-')}`,
@@ -597,7 +623,7 @@ export class CampaignManagementTools {
     if (part.subParts && part.subParts.length > 0) {
       html += `\n    <div class="sub-parts">`;
       html += `\n      <h4>Sub-Parts:</h4>`;
-      part.subParts.forEach((subPart: CampaignPart, subIndex: number) => {
+      part.subParts.forEach((subPart: CampaignSubPart, subIndex: number) => {
         const subStatusTracker = this.generateStatusTracker(subPart, campaign.id);
         html += `\n      <p><strong>${partNumber}.${subIndex + 1}: ${subPart.title}</strong> - Status: ${subStatusTracker}</p>`;
         if (subPart.journalId) {
@@ -629,7 +655,10 @@ export class CampaignManagementTools {
   /**
    * Generate interactive status toggle element for Foundry hook system
    */
-  private generateStatusTracker(part: CampaignPart, campaignId: string): string {
+  private generateStatusTracker(
+    part: Pick<CampaignPart, 'id' | 'status'>,
+    campaignId: string
+  ): string {
     const statusIcon = this.getStatusIcon(part.status);
     const statusDisplay = this.formatStatus(part.status);
     const statusClass = part.status.replace('_', '-'); // Convert to CSS class format
@@ -672,7 +701,7 @@ export class CampaignManagementTools {
     campaign.parts.forEach((part: CampaignPart) => {
       if (part.subParts && part.subParts.length > 0) {
         total += part.subParts.length;
-        completed += part.subParts.filter((sp: CampaignPart) => sp.status === 'completed').length;
+        completed += part.subParts.filter((sp: CampaignSubPart) => sp.status === 'completed').length;
       } else {
         total += 1;
         if (part.status === 'completed') completed += 1;

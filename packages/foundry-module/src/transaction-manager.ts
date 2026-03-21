@@ -4,8 +4,8 @@ export interface TransactionAction {
   type: 'create' | 'update' | 'delete';
   entityType: 'Actor' | 'Token' | 'Scene' | 'Item';
   entityId?: string;
-  originalData?: any;
-  newData?: any;
+  originalData?: unknown;
+  newData?: unknown;
   rollbackAction?: () => Promise<void>;
 }
 
@@ -23,11 +23,25 @@ export class TransactionManager {
   private activeTransactions: Map<string, Transaction> = new Map();
   private transactionHistory: Transaction[] = [];
 
+  private getRandomId(): string {
+    const randomIdFn = (
+      foundry as unknown as {
+        utils?: {
+          randomID?: () => string;
+        };
+      }
+    ).utils?.randomID;
+
+    return typeof randomIdFn === 'function'
+      ? randomIdFn()
+      : `tx-${Math.random().toString(36).slice(2, 10)}`;
+  }
+
   /**
    * Start a new transaction
    */
   startTransaction(description: string): string {
-    const transactionId = foundry.utils.randomID();
+    const transactionId = this.getRandomId();
     const transaction: Transaction = {
       id: transactionId,
       timestamp: new Date(),
@@ -134,7 +148,7 @@ export class TransactionManager {
         await this.rollbackDelete(action);
         break;
       default:
-        throw new Error(`Unknown action type: ${action.type}`);
+        throw new Error('Unknown action type');
     }
   }
 
@@ -147,23 +161,42 @@ export class TransactionManager {
     }
 
     switch (action.entityType) {
-      case 'Actor':
-        const actor = game.actors.get(action.entityId);
+      case 'Actor': {
+        const actorCollection = game.actors as
+          | {
+              get: (id: string) => unknown;
+            }
+          | undefined;
+        const actorRaw = actorCollection?.get(action.entityId);
+        const actor =
+          actorRaw && typeof actorRaw === 'object'
+            ? (actorRaw as { delete?: () => Promise<unknown> })
+            : null;
         if (actor) {
-          await actor.delete();
+          await actor.delete?.();
         }
         break;
+      }
 
-      case 'Token':
+      case 'Token': {
         // Find token in current scene
-        const scene = (game.scenes as any).current;
+        const scene = (game.scenes as { current?: unknown } | undefined)?.current;
+        const typedScene =
+          scene && typeof scene === 'object'
+            ? (scene as { tokens?: { get?: (id: string) => unknown } })
+            : null;
         if (scene) {
-          const token = scene.tokens.get(action.entityId);
+          const tokenRaw = typedScene?.tokens?.get?.(action.entityId);
+          const token =
+            tokenRaw && typeof tokenRaw === 'object'
+              ? (tokenRaw as { delete?: () => Promise<unknown> })
+              : null;
           if (token) {
-            await token.delete();
+            await token.delete?.();
           }
         }
         break;
+      }
 
       default:
         throw new Error(`Rollback not implemented for entity type: ${action.entityType}`);
@@ -179,12 +212,22 @@ export class TransactionManager {
     }
 
     switch (action.entityType) {
-      case 'Actor':
-        const actor = game.actors.get(action.entityId);
+      case 'Actor': {
+        const actorCollection = game.actors as
+          | {
+              get: (id: string) => unknown;
+            }
+          | undefined;
+        const actorRaw = actorCollection?.get(action.entityId);
+        const actor =
+          actorRaw && typeof actorRaw === 'object'
+            ? (actorRaw as { update?: (data: Record<string, unknown>) => Promise<unknown> })
+            : null;
         if (actor) {
-          await actor.update(action.originalData);
+          await actor.update?.(action.originalData as Record<string, unknown>);
         }
         break;
+      }
 
       default:
         throw new Error(`Rollback not implemented for entity type: ${action.entityType}`);
@@ -201,7 +244,11 @@ export class TransactionManager {
 
     switch (action.entityType) {
       case 'Actor':
-        await Actor.create(action.originalData);
+        await (
+          Actor as unknown as {
+            create: (data: Record<string, unknown>) => Promise<unknown>;
+          }
+        ).create(action.originalData as Record<string, unknown>);
         break;
 
       default:

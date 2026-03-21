@@ -21,7 +21,7 @@ interface BackendComfyUIHandlers {
 }
 
 interface MCPMessage {
-  type?: string;
+  type: string;
   id?: string;
   offer?: RTCSessionDescriptionInit;
   data?: unknown;
@@ -35,12 +35,23 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
 
 function asMessage(value: unknown): MCPMessage {
   const record = asRecord(value);
-  return {
-    type: typeof record?.type === 'string' ? record.type : undefined,
-    id: typeof record?.id === 'string' ? record.id : undefined,
-    offer: record?.offer as RTCSessionDescriptionInit | undefined,
-    data: record?.data,
+  const message: MCPMessage = {
+    type: typeof record?.type === 'string' ? record.type : 'unknown',
   };
+
+  if (typeof record?.id === 'string') {
+    message.id = record.id;
+  }
+
+  if (record?.offer && typeof record.offer === 'object') {
+    message.offer = record.offer as RTCSessionDescriptionInit;
+  }
+
+  if ('data' in (record ?? {})) {
+    message.data = record?.data;
+  }
+
+  return message;
 }
 
 export class FoundryConnector {
@@ -108,13 +119,18 @@ export class FoundryConnector {
     });
 
     // Start WebRTC signaling server
+    const webrtcServer = this.webrtcSignalingServer;
+    if (!webrtcServer) {
+      throw new Error('WebRTC signaling server not initialized');
+    }
+
     await new Promise<void>((resolve, reject) => {
-      this.webrtcSignalingServer.listen(WEBRTC_PORT, '0.0.0.0', () => {
+      webrtcServer.listen(WEBRTC_PORT, '0.0.0.0', () => {
         this.logger.info(`WebRTC signaling server listening on port ${WEBRTC_PORT}`);
         console.error(`[WebRTC] Server started on 0.0.0.0:${WEBRTC_PORT}`);
         resolve();
       });
-      this.webrtcSignalingServer.on('error', (error: Error) => {
+      webrtcServer.on('error', (error: Error) => {
         this.logger.error('Failed to start WebRTC signaling server', error);
         console.error(`[WebRTC] Server error:`, error);
         reject(error);
@@ -190,14 +206,19 @@ export class FoundryConnector {
     });
 
     // Start the HTTP server
+    const httpServer = this.httpServer;
+    if (!httpServer) {
+      throw new Error('HTTP server not initialized');
+    }
+
     await new Promise<void>((resolve, reject) => {
-      this.httpServer.listen(this.config.port, () => {
+      httpServer.listen(this.config.port, () => {
         this.isStarted = true;
         this.logger.info('Foundry connector listening', { port: this.config.port });
         resolve();
       });
 
-      this.httpServer.on('error', (error: Error) => {
+      httpServer.on('error', (error: Error) => {
         this.logger.error('Failed to start Foundry connector', error);
         reject(error);
       });
@@ -229,8 +250,9 @@ export class FoundryConnector {
     }
 
     if (this.httpServer) {
+      const serverToClose = this.httpServer;
       await new Promise<void>(resolve => {
-        this.httpServer.close(() => {
+        serverToClose.close(() => {
           resolve();
         });
       });
@@ -270,7 +292,7 @@ export class FoundryConnector {
       return;
     }
 
-    if (message.type === 'pong') {
+    if (message.type === 'pong' && message.id) {
       const pending = this.pendingQueries.get(message.id);
       if (pending) {
         clearTimeout(pending.timeout);

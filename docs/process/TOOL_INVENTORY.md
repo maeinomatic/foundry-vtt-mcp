@@ -1,5 +1,16 @@
 # Complete MCP Tool Inventory
 
+## Architecture Alignment
+
+When adding or changing tools described in this inventory, follow:
+
+- [MCP_ADAPTER_ARCHITECTURE.md](MCP_ADAPTER_ARCHITECTURE.md)
+
+Interpretation rule for this inventory:
+
+- Missing capabilities should be implemented through adapter capabilities and
+  registry routing, not by adding system-specific branching in core tool files.
+
 ## Current Status Audit (2026-03-20)
 
 This file contains useful historical branch comparison notes, but it is not fully up to date for current master.

@@ -15,11 +15,11 @@
       "url": "https://github.com/adambdooley"
     }
   ],
-  "url": "https://github.com/adambdooley/foundry-vtt-mcp",
-  "bugs": "https://github.com/adambdooley/foundry-vtt-mcp/issues",
-  "changelog": "https://github.com/adambdooley/foundry-vtt-mcp/releases",
-  "readme": "https://github.com/adambdooley/foundry-vtt-mcp/blob/master/README.md",
-  "license": "https://github.com/adambdooley/foundry-vtt-mcp/blob/master/LICENSE",
+  "url": "https://github.com/maeinomatic/foundry-vtt-mcp",
+  "bugs": "https://github.com/maeinomatic/foundry-vtt-mcp/issues",
+  "changelog": "https://github.com/maeinomatic/foundry-vtt-mcp/releases",
+  "readme": "https://github.com/maeinomatic/foundry-vtt-mcp/blob/master/README.md",
+  "license": "https://github.com/maeinomatic/foundry-vtt-mcp/blob/master/LICENSE",
   "esmodules": [
     "dist/main.js"
   ],
@@ -35,8 +35,8 @@
     }
   ],
   "socket": true,
-  "manifest": "https://raw.githubusercontent.com/adambdooley/foundry-vtt-mcp/master/packages/foundry-module/module.json",
-  "download": "https://github.com/adambdooley/foundry-vtt-mcp/releases/latest/download/foundry-vtt-mcp.zip",
+  "manifest": "https://raw.githubusercontent.com/maeinomatic/foundry-vtt-mcp/master/packages/foundry-module/module.json",
+  "download": "https://github.com/maeinomatic/foundry-vtt-mcp/releases/latest/download/foundry-vtt-mcp.zip",
   "protected": false,
   "coreTranslation": false,
   "library": false,

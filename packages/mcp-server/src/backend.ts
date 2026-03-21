@@ -167,14 +167,16 @@ type UnknownRecord = Record<string, unknown>;
 
 interface MapGenerationParams {
   prompt: string;
-  scene_name: string;
-  size: string;
+  scene_name?: string;
+  size: 'small' | 'medium' | 'large';
   grid_size: number;
-  quality: string;
+  quality?: 'low' | 'medium' | 'high';
 }
 
 interface QueueJob {
   id: string;
+  created_at?: number;
+  started_at?: number;
   status?: string;
   progress_percent?: number;
   current_stage?: string;
@@ -186,7 +188,7 @@ interface QueueJob {
 
 interface MapGenerationQueue {
   createJob(input: { params: MapGenerationParams }): Promise<QueueJob>;
-  getJob(jobId: string): Promise<QueueJob | null>;
+  getJob(jobId: string): Promise<QueueJob | undefined>;
   markJobStarted(jobId: string): Promise<void>;
   updateJobProgress(jobId: string, progress: number, stage: string): Promise<void>;
   markJobComplete(jobId: string, result: UnknownRecord): Promise<void>;
@@ -195,10 +197,7 @@ interface MapGenerationQueue {
 }
 
 interface ComfyUIClientLike {
-  config?: {
-    autoStart?: boolean;
-  };
-  checkInstallation?(): Promise<boolean>;
+  checkInstallation?(): boolean;
   checkHealth(): Promise<{ available?: boolean }>;
   startService(): Promise<unknown>;
   getSizePixels(size: string): number;
@@ -206,7 +205,7 @@ interface ComfyUIClientLike {
     prompt: string;
     width: number;
     height: number;
-    quality: string;
+    quality?: 'low' | 'medium' | 'high';
   }): Promise<{ prompt_id: string }>;
   getJobStatus(promptId: string): Promise<string>;
   getJobImages(promptId: string): Promise<string[]>;
@@ -222,7 +221,7 @@ interface ComfyUIClientLike {
 interface FoundryMessenger {
   sendMessage(message: UnknownRecord): void;
   broadcastMessage(message: UnknownRecord): void;
-  query(method: string, params?: UnknownRecord): Promise<UnknownRecord>;
+  query(method: string, params?: UnknownRecord): Promise<unknown>;
   getConnectionType?(): 'websocket' | 'webrtc' | null;
 }
 
@@ -246,6 +245,23 @@ function asString(value: unknown, fallback: string): string {
 
 function asNumber(value: unknown, fallback: number): number {
   return typeof value === 'number' ? value : fallback;
+}
+
+function asSize(value: unknown, fallback: 'small' | 'medium' | 'large'): 'small' | 'medium' | 'large' {
+  if (value === 'small' || value === 'medium' || value === 'large') {
+    return value;
+  }
+  return fallback;
+}
+
+function asQuality(
+  value: unknown,
+  fallback: 'low' | 'medium' | 'high'
+): 'low' | 'medium' | 'high' {
+  if (value === 'low' || value === 'medium' || value === 'high') {
+    return value;
+  }
+  return fallback;
 }
 
 function acquireLock(): boolean {
@@ -639,9 +655,9 @@ async function handleGenerateMapRequest(
     const params: MapGenerationParams = {
       prompt: data.prompt.trim(),
       scene_name: data.scene_name.trim(),
-      size: asString(data.size, 'medium'),
+      size: asSize(data.size, 'medium'),
       grid_size: asNumber(data.grid_size, 70),
-      quality: asString(data.quality, 'low'),
+      quality: asQuality(data.quality, 'low'),
     };
 
     // Create job using mapgen's JobQueue
@@ -865,7 +881,7 @@ async function processMapGenerationInBackend(
         prompt: job.params.prompt,
         width: sizePixels,
         height: sizePixels,
-        quality: job.params.quality,
+        quality: job.params.quality ?? 'low',
       });
       await fs2.appendFile(
         processDebugLog,
@@ -1089,10 +1105,11 @@ async function processMapGenerationInBackend(
 
     let uploadResult: UnknownRecord;
     try {
-      uploadResult = await foundryClient.query('foundry-mcp-bridge.upload-generated-map', {
+      const uploadResponse = await foundryClient.query('foundry-mcp-bridge.upload-generated-map', {
         filename,
         imageData: base64Image,
       });
+      uploadResult = asRecord(uploadResponse);
 
       await debugLog(`Upload query completed - success: ${String(uploadResult.success)}`);
       await debugLog(`Full uploadResult: ${JSON.stringify(uploadResult)}`);
@@ -1171,7 +1188,7 @@ async function processMapGenerationInBackend(
     // Mark job as complete with full result data
     await jobQueue.updateJobProgress(jobId, 100, 'Complete');
     await jobQueue.markJobComplete(jobId, {
-      generation_time_ms: Date.now() - (job.started_at || job.created_at),
+      generation_time_ms: Date.now() - (job.started_at ?? job.created_at ?? Date.now()),
       image_url: webPath,
       foundry_scene_payload: sceneData,
     });
@@ -1296,9 +1313,8 @@ async function startBackend(): Promise<void> {
     logger.info('Map generation backend components initialized (ComfyUI on localhost:31411)');
 
     // Auto-start ComfyUI if installed and autoStart is enabled
-    if (mapGenerationComfyUIClient?.config?.autoStart) {
-      const isInstalled = await (mapGenerationComfyUIClient.checkInstallation?.() ??
-        Promise.resolve(false));
+    if (mapGenerationComfyUIClient?.checkInstallation) {
+      const isInstalled = mapGenerationComfyUIClient.checkInstallation?.() ?? false;
       if (isInstalled) {
         logger.info('Auto-starting ComfyUI service...');
         try {

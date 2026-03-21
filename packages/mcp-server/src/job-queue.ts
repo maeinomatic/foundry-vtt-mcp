@@ -144,7 +144,7 @@ export class JobQueue {
           jobId: existingJobId,
           status: existingJob.status,
         });
-        return existingJob;
+        return Promise.resolve(existingJob);
       }
     }
 

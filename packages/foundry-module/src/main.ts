@@ -4,7 +4,108 @@ import { QueryHandlers } from './queries.js';
 import { ModuleSettings } from './settings.js';
 import { CampaignHooks } from './campaign-hooks.js';
 import { ComfyUIManager } from './comfyui-manager.js';
+import { debugGM } from './gm-notifications.js';
 // Connection control now handled through settings menu
+
+type FileBrowseResult = { files: string[] };
+
+type FilePickerImplementation = {
+  browse: (source: string, target: string) => Promise<FileBrowseResult>;
+};
+
+type FoundryApplications = {
+  applications?: {
+    apps?: {
+      FilePicker?: {
+        implementation?: FilePickerImplementation;
+      };
+    };
+  };
+};
+
+type RollButtonMessageData = {
+  type?: unknown;
+  buttonId?: unknown;
+  messageId?: unknown;
+  userId?: unknown;
+  rollLabel?: unknown;
+  rollState?: {
+    rolledBy?: unknown;
+  };
+};
+
+type RollButtonsMap = Record<string, { rolled?: boolean }>;
+
+type DataAccessLike = {
+  rebuildEnhancedCreatureIndex?: () => Promise<unknown>;
+  updateRollButtonMessage?: (
+    buttonId: string,
+    userId: string,
+    rollLabel: string
+  ) => Promise<unknown>;
+  saveRollState?: (buttonId: string, rolledBy: string) => Promise<unknown>;
+  attachRollButtonHandlers?: (html: JQuery<HTMLElement>) => void;
+  ensureButtonStatesForMessage?: (html: JQuery<HTMLElement>) => void;
+};
+
+type FoundryMCPGlobals = {
+  foundryMCPBridge?: FoundryMCPBridge & {
+    dataAccess?: DataAccessLike;
+  };
+  foundryMCPDebug?: {
+    bridge: unknown;
+    getStatus: () => unknown;
+    start: () => Promise<void>;
+    stop: () => Promise<void>;
+    restart: () => Promise<void>;
+  };
+};
+
+type ChatMessageLike = {
+  getFlag?: (scope: string, key: string) => unknown;
+};
+
+function asRollButtonMessageData(input: unknown): RollButtonMessageData | null {
+  if (!input || typeof input !== 'object') {
+    return null;
+  }
+
+  const data = input as Record<string, unknown>;
+  const parsed: RollButtonMessageData = {};
+
+  if ('type' in data) parsed.type = data.type;
+  if ('buttonId' in data) parsed.buttonId = data.buttonId;
+  if ('messageId' in data) parsed.messageId = data.messageId;
+  if ('userId' in data) parsed.userId = data.userId;
+  if ('rollLabel' in data) parsed.rollLabel = data.rollLabel;
+
+  if (data.rollState && typeof data.rollState === 'object') {
+    const rollState = data.rollState as Record<string, unknown>;
+    parsed.rollState = { rolledBy: rollState.rolledBy };
+  }
+
+  return parsed;
+}
+
+function asRollButtonsMap(value: unknown): RollButtonsMap {
+  if (!value || typeof value !== 'object') {
+    return {};
+  }
+
+  const result: RollButtonsMap = {};
+  for (const [key, data] of Object.entries(value as Record<string, unknown>)) {
+    if (!data || typeof data !== 'object') {
+      continue;
+    }
+
+    const buttonData = data as Record<string, unknown>;
+    result[key] = {
+      ...(typeof buttonData.rolled === 'boolean' ? { rolled: buttonData.rolled } : {}),
+    };
+  }
+
+  return result;
+}
 
 /**
  * Main Foundry MCP Bridge Module Class
@@ -27,19 +128,31 @@ class FoundryMCPBridge {
     this.comfyuiManager = new ComfyUIManager();
   }
 
+  private log(message: string, details?: unknown): void {
+    if (details === undefined) {
+      debugGM(message);
+      return;
+    }
+    debugGM(message, details);
+  }
+
+  public getDataAccess(): DataAccessLike | undefined {
+    return this.queryHandlers.dataAccess as unknown as DataAccessLike;
+  }
+
   /**
    * Check if current user is a GM (silent check for security)
    */
   private isGMUser(): boolean {
-    return game.user?.isGM || false;
+    return game.user?.isGM ?? false;
   }
 
   /**
    * Initialize the module during Foundry's init hook
    */
-  async initialize(): Promise<void> {
+  initialize(): void {
     try {
-      console.log(`[${MODULE_ID}] Initializing Foundry MCP Bridge...`);
+      this.log('Initializing Foundry MCP Bridge...');
 
       // Register module settings
       this.settings.registerSettings();
@@ -51,12 +164,15 @@ class FoundryMCPBridge {
       this.campaignHooks.register();
 
       // Expose data access globally for settings UI
-      (window as any).foundryMCPBridge.dataAccess = this.queryHandlers.dataAccess;
+      const bridgeWindow = window as unknown as FoundryMCPGlobals;
+      if (bridgeWindow.foundryMCPBridge) {
+        bridgeWindow.foundryMCPBridge.dataAccess = this.queryHandlers.dataAccess;
+      }
 
       this.isInitialized = true;
-      console.log(`[${MODULE_ID}] Module initialized successfully`);
+      this.log('Module initialized successfully');
     } catch (error) {
-      console.error(`[${MODULE_ID}] Failed to initialize:`, error);
+      this.log('Failed to initialize', error);
       ui.notifications.error('Failed to initialize Foundry MCP Bridge');
       throw error;
     }
@@ -69,25 +185,25 @@ class FoundryMCPBridge {
     try {
       // SECURITY: Silent GM-only check - non-GM users get no access and no messages
       if (!this.isGMUser()) {
-        console.log(`[${MODULE_ID}] Module ready (user access restricted)`);
+        this.log('Module ready (user access restricted)');
         return;
       }
 
-      console.log(`[${MODULE_ID}] Foundry ready, checking bridge status...`);
+      this.log('Foundry ready, checking bridge status...');
 
       // Connection control now handled through settings menu
 
       // Validate settings
       const validation = this.settings.validateSettings();
       if (!validation.valid) {
-        console.warn(`[${MODULE_ID}] Invalid settings:`, validation.errors);
+        this.log('Invalid settings', validation.errors);
         ui.notifications.warn(
           `MCP Bridge settings validation failed: ${validation.errors.join(', ')}`
         );
       }
 
       // Auto-connect when enabled (always automatic)
-      const enabled = this.settings.getSetting('enabled');
+      const enabled = this.settings.getSetting('enabled') === true;
 
       if (enabled) {
         await this.start();
@@ -98,12 +214,12 @@ class FoundryMCPBridge {
 
       // Start ComfyUI startup monitoring if module is enabled
       if (enabled) {
-        await this.startComfyUIMonitoring();
+        this.startComfyUIMonitoring();
       }
 
-      console.log(`[${MODULE_ID}] Module ready`);
+      this.log('Module ready');
     } catch (error) {
-      console.error(`[${MODULE_ID}] Failed during ready:`, error);
+      this.log('Failed during ready', error);
     }
   }
 
@@ -116,21 +232,23 @@ class FoundryMCPBridge {
       if (!this.isGMUser()) return;
 
       // Check if enhanced index is enabled
-      const enhancedIndexEnabled = this.settings.getSetting('enableEnhancedCreatureIndex');
+      const enhancedIndexEnabled = this.settings.getSetting('enableEnhancedCreatureIndex') === true;
       if (!enhancedIndexEnabled) return;
 
       // Check if index file exists
       const indexFilename = 'enhanced-creature-index.json';
       try {
-        const browseResult = await (
-          foundry as any
-        ).applications.apps.FilePicker.implementation.browse('data', `worlds/${game.world.id}`);
-        const indexExists = browseResult.files.some((f: any) => f.endsWith(indexFilename));
+        const foundryLike = foundry as unknown as FoundryApplications;
+        const filePicker = foundryLike.applications?.apps?.FilePicker?.implementation;
+        if (!filePicker) {
+          return;
+        }
+
+        const browseResult = await filePicker.browse('data', `worlds/${game.world.id}`);
+        const indexExists = browseResult.files.some(file => file.endsWith(indexFilename));
 
         if (!indexExists) {
-          console.log(
-            `[${MODULE_ID}] Enhanced creature index not found, building automatically for better UX...`
-          );
+          this.log('Enhanced creature index not found, building automatically for better UX...');
           ui.notifications?.info('Building enhanced creature index for faster searches...');
 
           // Trigger index build through data access
@@ -138,16 +256,14 @@ class FoundryMCPBridge {
             await this.queryHandlers.dataAccess.rebuildEnhancedCreatureIndex();
           }
         } else {
-          console.log(`[${MODULE_ID}] Enhanced creature index exists, ready for instant searches`);
+          this.log('Enhanced creature index exists, ready for instant searches');
         }
       } catch (error) {
         // World directory might not exist yet, that's okay
-        console.log(
-          `[${MODULE_ID}] Could not check for enhanced index file (world directory may not exist yet)`
-        );
+        this.log('Could not check for enhanced index file (world directory may not exist yet)');
       }
     } catch (error) {
-      console.warn(`[${MODULE_ID}] Failed to auto-build enhanced index:`, error);
+      this.log('Failed to auto-build enhanced index', error);
     }
   }
 
@@ -161,19 +277,20 @@ class FoundryMCPBridge {
 
     // SECURITY: Double-check GM access (safety measure)
     if (!this.isGMUser()) {
-      console.warn(`[${MODULE_ID}] Attempted to start bridge without GM access`);
+      this.log('Attempted to start bridge without GM access');
       return;
     }
 
-    if (this.socketBridge?.isConnected() || this.isConnecting) {
-      console.log(`[${MODULE_ID}] Bridge already running or connecting`);
+    const isConnected = this.socketBridge?.isConnected() ?? false;
+    if (isConnected || this.isConnecting) {
+      this.log('Bridge already running or connecting');
       return;
     }
 
     this.isConnecting = true;
 
     try {
-      console.log(`[${MODULE_ID}] Starting MCP bridge...`);
+      this.log('Starting MCP bridge...');
 
       const config = this.settings.getBridgeConfig();
 
@@ -189,8 +306,8 @@ class FoundryMCPBridge {
 
       // Log connection details for debugging
       const connectionInfo = this.socketBridge.getConnectionInfo();
-      console.log(
-        `[${MODULE_ID}] Bridge started successfully - Type: ${connectionInfo.type}, State: ${connectionInfo.state}`
+      this.log(
+        `Bridge started successfully - Type: ${connectionInfo.type}, State: ${connectionInfo.state}`
       );
 
       await this.settings.setSetting('lastConnectionState', 'connected');
@@ -204,15 +321,15 @@ class FoundryMCPBridge {
       this.startHeartbeat();
 
       // Show connection notification based on user preference
-      if (this.settings.getSetting('enableNotifications')) {
+      if (this.settings.getSetting<boolean>('enableNotifications')) {
         ui.notifications.info('🔗 MCP Bridge connected successfully');
       }
-      console.log(
-        `[${MODULE_ID}] GM connection established - Bridge active for user: ${game.user?.name}`
+      this.log(
+        `GM connection established - Bridge active for user: ${game.user?.name ?? 'Unknown'}`
       );
     } catch (error) {
       // Log as warning instead of error for initial connection failures
-      console.warn(`[${MODULE_ID}] Failed to start bridge:`, error);
+      this.log('Failed to start bridge', error);
 
       // Show helpful message for GM users when MCP server isn't available
       if (this.isGMUser()) {
@@ -224,7 +341,8 @@ class FoundryMCPBridge {
           errorMessage.includes('connect ECONNREFUSED')
         ) {
           // Only show this notification if it's been more than 30 seconds since last shown
-          const lastShown = this.settings.getSetting('lastMCPServerNotification') as string;
+          const lastShownRaw: unknown = this.settings.getSetting('lastMCPServerNotification');
+          const lastShown = typeof lastShownRaw === 'string' ? lastShownRaw : '';
           const now = new Date().getTime();
           const thirtySecondsAgo = now - 30 * 1000;
 
@@ -234,11 +352,7 @@ class FoundryMCPBridge {
             );
 
             // Remember when we showed this notification
-            this.settings
-              .setSetting('lastMCPServerNotification', new Date().toISOString())
-              .catch(() => {
-                // Ignore settings save errors during startup
-              });
+            void this.settings.setSetting('lastMCPServerNotification', new Date().toISOString());
           }
         }
       }
@@ -255,12 +369,12 @@ class FoundryMCPBridge {
    */
   async stop(): Promise<void> {
     if (!this.socketBridge) {
-      console.log(`[${MODULE_ID}] Bridge not running`);
+      this.log('Bridge not running');
       return;
     }
 
     try {
-      console.log(`[${MODULE_ID}] Stopping MCP bridge...`);
+      this.log('Stopping MCP bridge...');
 
       // Stop heartbeat monitoring
       this.stopHeartbeat();
@@ -273,14 +387,14 @@ class FoundryMCPBridge {
       // Update settings display with disconnected status
       this.settings.updateConnectionStatusDisplay(false, 0);
 
-      console.log(`[${MODULE_ID}] Bridge stopped`);
+      this.log('Bridge stopped');
 
       // Show disconnection notification based on user preference
-      if (this.settings.getSetting('enableNotifications')) {
+      if (this.settings.getSetting<boolean>('enableNotifications')) {
         ui.notifications.info('MCP Bridge disconnected');
       }
     } catch (error) {
-      console.error(`[${MODULE_ID}] Error stopping bridge:`, error);
+      this.log('Error stopping bridge', error);
     }
   }
 
@@ -288,14 +402,14 @@ class FoundryMCPBridge {
    * Restart the bridge with current settings
    */
   async restart(): Promise<void> {
-    console.log(`[${MODULE_ID}] Restarting bridge...`);
+    this.log('Restarting bridge...');
 
     await this.stop();
 
     // Small delay to ensure clean disconnect
     await new Promise(resolve => setTimeout(resolve, 1000));
 
-    if (this.settings.getSetting('enabled')) {
+    if (this.settings.getSetting<boolean>('enabled')) {
       await this.start();
     }
   }
@@ -303,16 +417,27 @@ class FoundryMCPBridge {
   /**
    * Get current bridge status
    */
-  getStatus(): any {
+  getStatus(): {
+    initialized: boolean;
+    enabled: unknown;
+    connected: boolean;
+    connectionState: string;
+    connectionInfo: ReturnType<SocketBridge['getConnectionInfo']> | undefined;
+    settings: ReturnType<ModuleSettings['getAllSettings']>;
+    registeredMethods: ReturnType<QueryHandlers['getRegisteredMethods']>;
+    lastConnectionState: unknown;
+    lastActivity: string;
+    heartbeatActive: boolean;
+  } {
     return {
       initialized: this.isInitialized,
-      enabled: this.settings.getSetting('enabled'),
+      enabled: this.settings.getSetting<boolean>('enabled'),
       connected: this.socketBridge?.isConnected() ?? false,
       connectionState: this.socketBridge?.getConnectionState() ?? 'disconnected',
       connectionInfo: this.socketBridge?.getConnectionInfo(),
       settings: this.settings.getAllSettings(),
       registeredMethods: this.queryHandlers.getRegisteredMethods(),
-      lastConnectionState: this.settings.getSetting('lastConnectionState'),
+      lastConnectionState: this.settings.getSetting<string>('lastConnectionState'),
       lastActivity: this.lastActivity.toISOString(),
       heartbeatActive: this.heartbeatInterval !== null,
     };
@@ -324,13 +449,13 @@ class FoundryMCPBridge {
   private startHeartbeat(): void {
     this.stopHeartbeat(); // Ensure no duplicate intervals
 
-    const interval = this.settings.getSetting('heartbeatInterval') * 1000; // Convert to milliseconds
+    const interval = this.settings.getSetting<number>('heartbeatInterval') * 1000; // Convert to milliseconds
 
-    this.heartbeatInterval = window.setInterval(async () => {
-      await this.performHeartbeat();
+    this.heartbeatInterval = window.setInterval(() => {
+      void this.performHeartbeat();
     }, interval);
 
-    console.log(`[${MODULE_ID}] Heartbeat monitoring started (${interval}ms interval)`);
+    this.log(`Heartbeat monitoring started (${interval}ms interval)`);
   }
 
   /**
@@ -340,7 +465,7 @@ class FoundryMCPBridge {
     if (this.heartbeatInterval) {
       clearInterval(this.heartbeatInterval);
       this.heartbeatInterval = null;
-      console.log(`[${MODULE_ID}] Heartbeat monitoring stopped`);
+      this.log('Heartbeat monitoring stopped');
     }
   }
 
@@ -353,11 +478,11 @@ class FoundryMCPBridge {
       if (!this.socketBridge || !this.socketBridge.isConnected()) {
         // Only log once per disconnection to avoid spam
         if (this.lastActivity && new Date().getTime() - this.lastActivity.getTime() > 60000) {
-          console.warn(`[${MODULE_ID}] Heartbeat: Connection lost`);
+          this.log('Heartbeat: Connection lost');
 
           // Attempt auto-reconnection if enabled (with backoff)
-          if (this.settings.getSetting('autoReconnectEnabled')) {
-            console.log(`[${MODULE_ID}] Attempting auto-reconnection...`);
+          if (this.settings.getSetting<boolean>('autoReconnectEnabled')) {
+            this.log('Attempting auto-reconnection...');
             await this.restart();
           }
         }
@@ -369,15 +494,15 @@ class FoundryMCPBridge {
       this.updateLastActivity();
     } catch (error) {
       // Only attempt reconnect once per failure cycle
-      if (this.settings.getSetting('autoReconnectEnabled')) {
-        console.log(`[${MODULE_ID}] Heartbeat failure - attempting single reconnection...`);
+      if (this.settings.getSetting<boolean>('autoReconnectEnabled')) {
+        this.log('Heartbeat failure - attempting single reconnection...');
         try {
           await this.restart();
         } catch (reconnectError) {
-          console.error(`[${MODULE_ID}] Auto-reconnection failed:`, reconnectError);
+          this.log('Auto-reconnection failed', reconnectError);
           // Disable further attempts until manual intervention
           await this.settings.setSetting('autoReconnectEnabled', false);
-          if (this.settings.getSetting('enableNotifications')) {
+          if (this.settings.getSetting<boolean>('enableNotifications')) {
             ui.notifications.warn('⚠️ Lost connection to AI model - Auto-reconnect disabled');
           }
         }
@@ -390,7 +515,7 @@ class FoundryMCPBridge {
    */
   updateLastActivity(): void {
     this.lastActivity = new Date();
-    this.settings.setSetting('lastActivity', this.lastActivity.toISOString());
+    void this.settings.setSetting('lastActivity', this.lastActivity.toISOString());
   }
 
   /**
@@ -403,16 +528,16 @@ class FoundryMCPBridge {
   /**
    * Monitor ComfyUI startup and show status banners
    */
-  async startComfyUIMonitoring(): Promise<void> {
+  startComfyUIMonitoring(): void {
     try {
       // Check if ComfyUI monitoring is needed
-      const autoStart = this.settings.getSetting('mapGenAutoStart') || false;
+      const autoStart = this.settings.getSetting('mapGenAutoStart') === true;
       if (!autoStart) {
-        console.log(`[${MODULE_ID}] ComfyUI auto-start disabled, skipping monitoring`);
+        this.log('ComfyUI auto-start disabled, skipping monitoring');
         return;
       }
 
-      console.log(`[${MODULE_ID}] Starting ComfyUI monitoring...`);
+      this.log('Starting ComfyUI monitoring...');
 
       // Show initial loading banner
       ui.notifications?.info(
@@ -428,16 +553,14 @@ class FoundryMCPBridge {
           attempts++;
 
           const status = await this.comfyuiManager.checkStatus();
-          console.log(`[${MODULE_ID}] ComfyUI status check #${attempts}:`, status);
+          this.log(`ComfyUI status check #${attempts}`, status);
 
           if (status.status === 'running') {
             // Success! ComfyUI is ready
             ui.notifications?.info(
               `✅ AI Map Generation service ready! Models loaded successfully.`
             );
-            console.log(
-              `[${MODULE_ID}] ComfyUI ready after ${attempts} attempts (${attempts * 5}s)`
-            );
+            this.log(`ComfyUI ready after ${attempts} attempts (${attempts * 5}s)`);
             return;
           }
 
@@ -446,14 +569,16 @@ class FoundryMCPBridge {
             ui.notifications?.warn(
               `⚠️ AI Map Generation service failed to start (timeout after 2 minutes). Check ComfyUI installation.`
             );
-            console.warn(`[${MODULE_ID}] ComfyUI startup timeout after ${maxAttempts} attempts`);
+            this.log(`ComfyUI startup timeout after ${maxAttempts} attempts`);
             return;
           }
 
           // Continue checking
-          setTimeout(checkStatus, checkInterval);
+          setTimeout(() => {
+            void checkStatus();
+          }, checkInterval);
         } catch (error) {
-          console.error(`[${MODULE_ID}] ComfyUI status check failed:`, error);
+          this.log('ComfyUI status check failed', error);
 
           if (attempts >= maxAttempts) {
             ui.notifications?.error(
@@ -463,14 +588,18 @@ class FoundryMCPBridge {
           }
 
           // Continue checking despite errors (ComfyUI might still be starting)
-          setTimeout(checkStatus, checkInterval);
+          setTimeout(() => {
+            void checkStatus();
+          }, checkInterval);
         }
       };
 
       // Start monitoring
-      setTimeout(checkStatus, 2000); // Initial 2-second delay to let backend start
+      setTimeout(() => {
+        void checkStatus();
+      }, 2000); // Initial 2-second delay to let backend start
     } catch (error) {
-      console.error(`[${MODULE_ID}] Failed to start ComfyUI monitoring:`, error);
+      this.log('Failed to start ComfyUI monitoring', error);
       ui.notifications?.warn(
         `⚠️ Failed to monitor AI Map Generation startup: ${error instanceof Error ? error.message : 'Unknown error'}`
       );
@@ -485,13 +614,13 @@ class FoundryMCPBridge {
    * Cleanup when module is disabled or world is closed
    */
   async cleanup(): Promise<void> {
-    console.log(`[${MODULE_ID}] Cleaning up...`);
+    this.log('Cleaning up...');
 
     await this.stop();
     this.queryHandlers.unregisterHandlers();
     this.campaignHooks.unregister();
 
-    console.log(`[${MODULE_ID}] Cleanup complete`);
+    this.log('Cleanup complete');
   }
 }
 
@@ -499,14 +628,14 @@ class FoundryMCPBridge {
 const foundryMCPBridge = new FoundryMCPBridge();
 
 // Make it available globally for settings callbacks
-(window as any).foundryMCPBridge = foundryMCPBridge;
+(window as unknown as FoundryMCPGlobals).foundryMCPBridge = foundryMCPBridge;
 
 // Foundry VTT Hooks
-Hooks.once('init', async () => {
+Hooks.once('init', () => {
   try {
-    await foundryMCPBridge.initialize();
+    foundryMCPBridge.initialize();
   } catch (error) {
-    console.error(`[${MODULE_ID}] Initialization failed:`, error);
+    debugGM('Initialization failed', error);
   }
 });
 
@@ -516,75 +645,99 @@ Hooks.once('ready', async () => {
 
     // Register socket listener for roll state management (after game.user is available)
 
-    game.socket?.on('module.foundry-mcp-bridge', async data => {
-      try {
-        // Handle ChatMessage update requests (GM only)
-        if (data.type === 'requestMessageUpdate' && data.buttonId && data.messageId) {
-          // Only GM can update ChatMessages for other users
-          if (game.user?.isGM) {
-            try {
-              // Get the data access instance to update the message
-              const queryHandlers = foundryMCPBridge['queryHandlers'] as any;
-              if (queryHandlers?.dataAccess) {
-                await queryHandlers.dataAccess.updateRollButtonMessage(
-                  data.buttonId,
-                  data.userId,
-                  data.rollLabel
-                );
-              }
-            } catch (error) {
-              console.error(`[${MODULE_ID}] GM failed to update message:`, error);
-              // Notify GM about the failure
-              if (game.user?.isGM) {
-                ui.notifications?.error(
-                  `Failed to update player roll message: ${error instanceof Error ? error.message : 'Unknown error'}`
-                );
-              }
-            }
-          } else {
-          }
-          return;
-        }
-
-        // Handle roll state save requests (GM only) - LEGACY
-        if (data.type === 'requestRollStateSave' && data.buttonId && data.rollState) {
-          // Only GM can save to world settings
-          if (game.user?.isGM) {
-            try {
-              // Get the data access instance to save the roll state
-              const queryHandlers = foundryMCPBridge['queryHandlers'] as any;
-              if (queryHandlers?.dataAccess) {
-                await queryHandlers.dataAccess.saveRollState(
-                  data.buttonId,
-                  data.rollState.rolledBy
-                );
-              }
-            } catch (error) {
-              console.error(`[${MODULE_ID}] GM failed to save LEGACY roll state:`, error);
-              // Notify GM about the failure so they can take action
-              if (game.user?.isGM) {
-                ui.notifications?.error(
-                  `Failed to save player roll state: ${error instanceof Error ? error.message : 'Unknown error'}`
-                );
-              }
-            }
-          } else {
-          }
-          return;
-        }
-
-        // Handle real-time roll state updates - LEGACY (now handled by ChatMessage.update())
-        if (data.type === 'rollStateUpdate' && data.buttonId && data.rollState) {
-          // No longer needed - ChatMessage.update() automatically syncs across all clients
-        }
-
-        // Note: rollStateSaved confirmations removed - not needed since rollStateUpdate handles UI sync
-      } catch (error) {
-        console.error(`[${MODULE_ID}] Error handling socket message:`, error);
+    game.socket?.on('module.foundry-mcp-bridge', data => {
+      const messageData = asRollButtonMessageData(data);
+      if (!messageData) {
+        return;
       }
+
+      void (async (): Promise<void> => {
+        try {
+          // Handle ChatMessage update requests (GM only)
+          if (
+            messageData.type === 'requestMessageUpdate' &&
+            typeof messageData.buttonId === 'string' &&
+            typeof messageData.messageId === 'string'
+          ) {
+            // Only GM can update ChatMessages for other users
+            if (game.user?.isGM) {
+              try {
+                // Get the data access instance to update the message
+                const dataAccess = foundryMCPBridge.getDataAccess();
+                if (
+                  dataAccess?.updateRollButtonMessage &&
+                  typeof messageData.userId === 'string' &&
+                  typeof messageData.rollLabel === 'string'
+                ) {
+                  await dataAccess.updateRollButtonMessage(
+                    messageData.buttonId,
+                    messageData.userId,
+                    messageData.rollLabel
+                  );
+                }
+              } catch (error) {
+                debugGM('GM failed to update message', error);
+                // Notify GM about the failure
+                if (game.user?.isGM) {
+                  ui.notifications?.error(
+                    `Failed to update player roll message: ${error instanceof Error ? error.message : 'Unknown error'}`
+                  );
+                }
+              }
+            }
+            return;
+          }
+
+          // Handle roll state save requests (GM only) - LEGACY
+          if (
+            messageData.type === 'requestRollStateSave' &&
+            typeof messageData.buttonId === 'string' &&
+            messageData.rollState
+          ) {
+            // Only GM can save to world settings
+            if (game.user?.isGM) {
+              try {
+                // Get the data access instance to save the roll state
+                const dataAccess = foundryMCPBridge.getDataAccess();
+                if (
+                  dataAccess?.saveRollState &&
+                  typeof messageData.rollState.rolledBy === 'string'
+                ) {
+                  await dataAccess.saveRollState(
+                    messageData.buttonId,
+                    messageData.rollState.rolledBy
+                  );
+                }
+              } catch (error) {
+                debugGM('GM failed to save LEGACY roll state', error);
+                // Notify GM about the failure so they can take action
+                if (game.user?.isGM) {
+                  ui.notifications?.error(
+                    `Failed to save player roll state: ${error instanceof Error ? error.message : 'Unknown error'}`
+                  );
+                }
+              }
+            }
+            return;
+          }
+
+          // Handle real-time roll state updates - LEGACY (now handled by ChatMessage.update())
+          if (
+            messageData.type === 'rollStateUpdate' &&
+            typeof messageData.buttonId === 'string' &&
+            messageData.rollState
+          ) {
+            // No longer needed - ChatMessage.update() automatically syncs across all clients
+          }
+
+          // Note: rollStateSaved confirmations removed - not needed since rollStateUpdate handles UI sync
+        } catch (error) {
+          debugGM('Error handling socket message', error);
+        }
+      })();
     });
   } catch (error) {
-    console.error(`[${MODULE_ID}] Ready failed:`, error);
+    debugGM('Ready failed', error);
   }
 });
 
@@ -596,37 +749,38 @@ Hooks.on('closeSettingsConfig', () => {
 
     if (enabled && !connected) {
       // Setting was enabled but not connected, try to start
-      foundryMCPBridge.start().catch(error => {
-        console.error(`[${MODULE_ID}] Failed to start after settings change:`, error);
+      void foundryMCPBridge.start().catch(error => {
+        debugGM('Failed to start after settings change', error);
       });
     } else if (!enabled && connected) {
       // Setting was disabled but still connected, stop
-      foundryMCPBridge.stop().catch(error => {
-        console.error(`[${MODULE_ID}] Failed to stop after settings change:`, error);
+      void foundryMCPBridge.stop().catch(error => {
+        debugGM('Failed to stop after settings change', error);
       });
     }
   } catch (error) {
-    console.error(`[${MODULE_ID}] Error handling settings change:`, error);
+    debugGM('Error handling settings change', error);
   }
 });
 
 // Global hook to handle MCP roll button rendering and state management
 // Using renderChatMessageHTML for Foundry v13 compatibility (renderChatMessage is deprecated)
-Hooks.on('renderChatMessageHTML', (message: any, html: HTMLElement) => {
+Hooks.on('renderChatMessageHTML', (message: unknown, html: HTMLElement) => {
   try {
     // Convert HTMLElement to jQuery for compatibility with existing handler code
     const $html = $(html);
+    const typedMessage = message as ChatMessageLike;
 
     // Check if this message has MCP roll button flags
-    const rollButtons = message.getFlag?.(MODULE_ID, 'rollButtons');
+    const rollButtons = asRollButtonsMap(typedMessage.getFlag?.(MODULE_ID, 'rollButtons'));
 
-    if (rollButtons) {
+    if (Object.keys(rollButtons).length > 0) {
       // Get the data access instance
-      const queryHandlers = foundryMCPBridge['queryHandlers'] as any;
-      if (queryHandlers?.dataAccess) {
+      const dataAccess = foundryMCPBridge.getDataAccess();
+      if (dataAccess) {
         // Check if any buttons in this message are already rolled
         for (const [_buttonId, buttonData] of Object.entries(rollButtons)) {
-          if (buttonData && typeof buttonData === 'object' && (buttonData as any).rolled) {
+          if (buttonData.rolled) {
             break;
           }
         }
@@ -635,24 +789,24 @@ Hooks.on('renderChatMessageHTML', (message: any, html: HTMLElement) => {
         // Just attach any necessary handlers for active buttons
         if ($html.find('.mcp-roll-button').length > 0) {
           // Only attach handlers to active (non-rolled) buttons
-          queryHandlers.dataAccess.attachRollButtonHandlers($html);
+          dataAccess.attachRollButtonHandlers?.($html);
         }
       }
     } else if ($html.find('.mcp-roll-button').length > 0) {
       // Legacy message without flags - fall back to old behavior
 
-      const queryHandlers = foundryMCPBridge['queryHandlers'] as any;
-      if (queryHandlers?.dataAccess) {
-        queryHandlers.dataAccess.attachRollButtonHandlers($html);
+      const dataAccess = foundryMCPBridge.getDataAccess();
+      if (dataAccess) {
+        dataAccess.attachRollButtonHandlers?.($html);
 
         // Check for legacy roll states
         setTimeout(() => {
-          queryHandlers.dataAccess.ensureButtonStatesForMessage($html);
+          dataAccess.ensureButtonStatesForMessage?.($html);
         }, 100);
       }
     }
   } catch (error) {
-    console.warn(`[${MODULE_ID}] Error processing roll buttons in chat message:`, error);
+    debugGM('Error processing roll buttons in chat message', error);
   }
 });
 
@@ -665,30 +819,30 @@ Hooks.on('canvasReady', () => {
   try {
     const status = foundryMCPBridge.getStatus();
     if (status.enabled && !status.connected) {
-      foundryMCPBridge.start().catch(error => {
-        console.warn(`[${MODULE_ID}] Failed to reconnect on canvas ready:`, error);
+      void foundryMCPBridge.start().catch(error => {
+        debugGM('Failed to reconnect on canvas ready', error);
       });
     }
   } catch (error) {
-    console.error(`[${MODULE_ID}] Error on canvas ready:`, error);
+    debugGM('Error on canvas ready', error);
   }
 });
 
 // Cleanup on unload
 window.addEventListener('beforeunload', () => {
-  foundryMCPBridge.cleanup().catch(error => {
-    console.error(`[${MODULE_ID}] Cleanup failed:`, error);
+  void foundryMCPBridge.cleanup().catch(error => {
+    debugGM('Cleanup failed', error);
   });
 });
 
 // Development helpers (only in debug mode)
 if (typeof window !== 'undefined') {
-  (window as any).foundryMCPDebug = {
+  (window as unknown as FoundryMCPGlobals).foundryMCPDebug = {
     bridge: foundryMCPBridge,
-    getStatus: () => foundryMCPBridge.getStatus(),
-    start: () => foundryMCPBridge.start(),
-    stop: () => foundryMCPBridge.stop(),
-    restart: () => foundryMCPBridge.restart(),
+    getStatus: (): ReturnType<FoundryMCPBridge['getStatus']> => foundryMCPBridge.getStatus(),
+    start: async (): Promise<void> => foundryMCPBridge.start(),
+    stop: async (): Promise<void> => foundryMCPBridge.stop(),
+    restart: async (): Promise<void> => foundryMCPBridge.restart(),
   };
 }
 

@@ -22,6 +22,11 @@ Build a professional, scalable, type-safe project baseline with predictable CI/r
 - Reduce risk with phased, measurable change sets.
 - Prioritize hotspots with highest warning density first.
 - Maintain Foundry compatibility while refactoring internals.
+- Keep MCP core orchestration generic and move system behavior into adapters.
+
+Architecture reference:
+
+- [process/MCP_ADAPTER_ARCHITECTURE.md](process/MCP_ADAPTER_ARCHITECTURE.md)
 
 ## Phase 1: Quality Gate Foundation (Done in this pass)
 - Added strict lint script:
@@ -50,6 +55,8 @@ Per file acceptance criteria:
 - No explicit any in new/edited sections.
 - No no-unsafe-* warnings in touched code.
 - No behavior regression (tests pass).
+- For system-aware behavior, no new game-specific branches in core tools.
+- Refactors prefer adapter capability methods over utility-level system rules.
 
 ## Phase 3: Type Boundary Hardening
 - Introduce typed DTOs for Foundry bridge responses.

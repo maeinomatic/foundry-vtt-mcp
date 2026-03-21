@@ -132,6 +132,18 @@ export class CompendiumTools {
     return this.gameSystem;
   }
 
+  private getSystemAdapter(gameSystem: GameSystem) {
+    return this.systemRegistry?.getAdapter(gameSystem) ?? null;
+  }
+
+  private describeFilterSet(filters: Record<string, unknown>, gameSystem: GameSystem): string {
+    const adapter = this.getSystemAdapter(gameSystem);
+    if (adapter) {
+      return adapter.describeFilters(filters);
+    }
+    return describeFilters(filters, gameSystem);
+  }
+
   /**
    * Tool definitions for compendium operations
    */
@@ -434,11 +446,24 @@ export class CompendiumTools {
 
     const { query, packType, filters, limit } = parsedArgs;
 
+    if (filters) {
+      const adapter = this.getSystemAdapter(gameSystem);
+      if (adapter) {
+        const schemaValidation = adapter.getFilterSchema().safeParse(filters);
+        if (!schemaValidation.success) {
+          const details = schemaValidation.error.errors
+            .map(err => `${err.path.join('.')}: ${err.message}`)
+            .join('; ');
+          throw new Error(`Invalid filters for system ${gameSystem}: ${details}`);
+        }
+      }
+    }
+
     // Log system detection and filters
     this.logger.info('Compendium search with system detection', {
       gameSystem,
       query,
-      filters: filters ? describeFilters(filters, gameSystem) : 'none',
+      filters: filters ? this.describeFilterSet(filters, gameSystem) : 'none',
     });
 
     try {
@@ -463,7 +488,7 @@ export class CompendiumTools {
       return {
         query,
         gameSystem, // Include detected system in response
-        filterDescription: filters ? describeFilters(filters, gameSystem) : 'no filters',
+        filterDescription: filters ? this.describeFilterSet(filters, gameSystem) : 'no filters',
         results: limitedResults.map(item => this.formatCompendiumItem(item, gameSystem)),
         totalFound: results.length,
         showing: limitedResults.length,
@@ -727,7 +752,7 @@ export class CompendiumTools {
         criteria: params,
         searchSummary: {
           ...searchSummary,
-          searchStrategy: `Prioritized pack search - ${gameSystem === 'pf2e' ? 'PF2e' : 'D&D 5e'} content first, then modules, then campaign-specific`,
+          searchStrategy: `Prioritized pack search - ${gameSystem === 'pf2e' ? 'PF2e' : gameSystem === 'dsa5' ? 'DSA5' : gameSystem === 'dnd5e' ? 'D&D 5e' : 'system-specific'} content first, then modules, then campaign-specific`,
           note: 'Packs searched in priority order to find most relevant creatures first',
         },
         optimizationNote:
@@ -812,6 +837,8 @@ export class CompendiumTools {
           if (gameSystem === 'dnd5e') {
             stats.challengeRating = level;
           } else if (gameSystem === 'pf2e') {
+            stats.level = level;
+          } else if (gameSystem === 'dsa5') {
             stats.level = level;
           }
         }
@@ -995,6 +1022,8 @@ export class CompendiumTools {
           formatted.challengeRating = level;
         } else if (gameSystem === 'pf2e') {
           formatted.level = level;
+        } else if (gameSystem === 'dsa5') {
+          formatted.level = level;
         }
       }
 
@@ -1125,6 +1154,11 @@ export class CompendiumTools {
    * Helper method to describe criteria in human-readable format
    */
   private describeCriteria(params: CriteriaParams, gameSystem: GameSystem): string {
+    const adapter = this.getSystemAdapter(gameSystem);
+    if (adapter) {
+      return adapter.describeFilters(params as Record<string, unknown>);
+    }
+
     const parts: string[] = [];
 
     if (gameSystem === 'dnd5e') {
@@ -1137,13 +1171,13 @@ export class CompendiumTools {
           parts.push(`CR ${min}-${max}`);
         }
       }
-    } else if (gameSystem === 'pf2e') {
+    } else if (gameSystem === 'pf2e' || gameSystem === 'dsa5') {
       if (params.level !== undefined) {
         if (typeof params.level === 'number') {
           parts.push(`Level ${params.level}`);
         } else if (typeof params.level === 'object') {
-          const min = params.level.min ?? -1;
-          const max = params.level.max ?? 25;
+          const min = params.level.min ?? (gameSystem === 'dsa5' ? 1 : -1);
+          const max = params.level.max ?? (gameSystem === 'dsa5' ? 7 : 25);
           parts.push(`Level ${min}-${max}`);
         }
       }

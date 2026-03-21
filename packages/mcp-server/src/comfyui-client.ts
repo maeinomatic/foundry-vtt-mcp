@@ -429,12 +429,12 @@ export class ComfyUIClient {
     // Skip process management if no install path (remote mode)
     if (!this.config.installPath) {
       this.logger.info('ComfyUI in remote mode - skipping service stop');
-      return;
+      return Promise.resolve();
     }
 
     if (!this.process || this.process.killed) {
       this.logger.warn('ComfyUI service is not running');
-      return;
+      return Promise.resolve();
     }
 
     this.logger.info('Stopping ComfyUI service');

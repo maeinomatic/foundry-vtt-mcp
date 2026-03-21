@@ -215,8 +215,8 @@ export class OwnershipTools {
             player: player.name,
             permission: validatedLevel,
             success: Boolean(result.success),
-            message: typeof result.message === 'string' ? result.message : undefined,
-            error: typeof result.error === 'string' ? result.error : undefined,
+            ...(typeof result.message === 'string' ? { message: result.message } : {}),
+            ...(typeof result.error === 'string' ? { error: result.error } : {}),
           });
         } catch (error) {
           results.push({

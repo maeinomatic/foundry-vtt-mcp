@@ -377,8 +377,15 @@ async function startWrapper(): Promise<void> {
 
     try {
       const res = await backend.send('call_tool', { name, args: args ?? {} });
+      const response = asRecord(res);
+      if (response) {
+        return response;
+      }
 
-      return res;
+      return {
+        content: [{ type: 'text', text: 'Error: Invalid backend response' }],
+        isError: true,
+      };
     } catch (e: unknown) {
       return {
         content: [{ type: 'text', text: `Error: ${getErrorMessage(e) || 'Backend unavailable'}` }],
