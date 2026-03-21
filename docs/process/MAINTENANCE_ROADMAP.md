@@ -59,6 +59,42 @@ Defer (major/risky):
 6. `vitest` `3.x` -> `4.x`
 7. `@league-of-foundry-developers/foundry-vtt-types` `9.x` -> `13.x` (beta)
 
+## Official Foundry Docs Hygiene (Recurring)
+
+Use this recurring workflow to keep syntax assumptions and compatibility notes
+aligned with official Foundry sources.
+
+Canonical reference:
+
+- `docs/process/FOUNDRY_OFFICIAL_REFERENCE.md`
+
+Related execution tracker:
+
+- `docs/foundry-v14-compatibility-plan.md`
+
+Tracking issue:
+
+- https://github.com/maeinomatic/foundry-vtt-mcp/issues/26
+
+### Recurring Tasks (weekly and before release candidates)
+
+1. Review official Foundry releases for new v13/v14 builds.
+2. Review the v14 breaking-change project board for newly added/closed issues.
+3. Map relevant breaking issues to impacted repository files.
+4. Update `docs/foundry-v14-compatibility-plan.md` tracker rows.
+5. Update `docs/process/FOUNDRY_OFFICIAL_REFERENCE.md` when official guidance or source links change.
+6. Run regression checks and record results:
+   - `npm run typecheck`
+   - `npm -w @foundry-mcp/server test -- --run`
+   - `npm run build`
+   - `npm run test:mcp:schema`
+
+### Exit Criteria
+
+1. Official reference links are valid and current.
+2. v14 tracker reflects latest relevant breaking changes.
+3. Test/build/typecheck/schema checks remain green after any compatibility-related updates.
+
 ## Phase Plan
 
 ## Phase 1: Test Foundation (Immediate)
@@ -229,7 +265,8 @@ Suggested sequence:
 1. Finish Phase 1 (real Vitest tests).
 2. Add Phase 2 CI gates.
 3. Execute Phase 3 safe dependency bumps.
-4. Re-run audit and record delta.
+4. Run Official Foundry Docs Hygiene recurring tasks and update compatibility notes.
+5. Re-run audit and record delta.
 
 ## Historical References
 
@@ -250,3 +287,4 @@ Use this checklist in PR descriptions:
 - [ ] Schema smoke test passes (`npm run test:mcp:schema`)
 - [ ] Audit reviewed (`npm audit --workspaces`)
 - [ ] Foundry v13 compatibility preserved
+- [ ] Official Foundry reference + v14 tracker reviewed/updated when needed

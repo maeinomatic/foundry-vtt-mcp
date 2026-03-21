@@ -217,6 +217,74 @@ export class DnD5eAdapter implements SystemAdapter {
     return describeDnD5eFilters(validated.data);
   }
 
+  formatRawCompendiumCreature(
+    entity: unknown,
+    mode: 'search' | 'criteria'
+  ): Record<string, unknown> {
+    const record = asRecord(entity);
+    const system = asRecord(record?.system);
+
+    const challengeRating =
+      toNumber(getNestedValue(system, ['details', 'cr'])) ??
+      toNumber(getNestedValue(system, ['cr']));
+    const creatureType =
+      toStringValue(getNestedValue(system, ['details', 'type', 'value'])) ??
+      toStringValue(getNestedValue(system, ['type', 'value']));
+    const size =
+      toStringValue(getNestedValue(system, ['traits', 'size'])) ??
+      toStringValue(getNestedValue(system, ['traits', 'size', 'value'])) ??
+      toStringValue(getNestedValue(system, ['size']));
+    const alignment =
+      toStringValue(getNestedValue(system, ['details', 'alignment'])) ??
+      toStringValue(getNestedValue(system, ['details', 'alignment', 'value'])) ??
+      toStringValue(getNestedValue(system, ['alignment']));
+
+    const hpCurrent = toNumber(getNestedValue(system, ['attributes', 'hp', 'value']));
+    const hpMax = toNumber(getNestedValue(system, ['attributes', 'hp', 'max']));
+    const armorClass = toNumber(getNestedValue(system, ['attributes', 'ac', 'value']));
+
+    const hasSpellcasting = Boolean(
+      getNestedValue(system, ['spells']) ||
+        getNestedValue(system, ['attributes', 'spellcasting']) ||
+        (toNumber(getNestedValue(system, ['details', 'spellLevel'])) ?? 0) > 0
+    );
+
+    const hasLegendaryActions = Boolean(
+      getNestedValue(system, ['resources', 'legact']) ||
+        getNestedValue(system, ['legendary']) ||
+        (toNumber(getNestedValue(system, ['resources', 'legres', 'value'])) ?? 0) > 0
+    );
+
+    if (mode === 'search') {
+      const stats: Record<string, unknown> = {};
+      if (challengeRating !== undefined) stats.challengeRating = challengeRating;
+      if (creatureType) stats.creatureType = creatureType;
+      if (size) stats.size = size;
+      if (alignment) stats.alignment = alignment;
+      if (hpCurrent !== undefined || hpMax !== undefined) {
+        stats.hitPoints = { current: hpCurrent, max: hpMax };
+      }
+      if (armorClass !== undefined) stats.armorClass = armorClass;
+      if (hasLegendaryActions) stats.hasLegendaryActions = true;
+      if (hasSpellcasting) stats.spellcaster = true;
+      return Object.keys(stats).length > 0 ? { stats } : {};
+    }
+
+    const typeLower = (creatureType ?? '').toLowerCase();
+    return {
+      ...(challengeRating !== undefined ? { challengeRating } : {}),
+      ...(creatureType ? { creatureType } : {}),
+      ...(size ? { size } : {}),
+      flags: {
+        spellcaster: hasSpellcasting,
+        legendary: hasLegendaryActions,
+        undead: typeLower === 'undead',
+        dragon: typeLower === 'dragon',
+        fiend: typeLower === 'fiend',
+      },
+    };
+  }
+
   getPowerLevel(creature: SystemCreatureIndex): number | undefined {
     const dnd5eCreature = creature as DnD5eCreatureIndex;
 
@@ -356,5 +424,190 @@ export class DnD5eAdapter implements SystemAdapter {
     }
 
     return stats;
+  }
+
+  formatCharacterBasicInfo(actorData: unknown): Record<string, unknown> {
+    const actor = asRecord(actorData);
+    const system = asRecord(actor?.system);
+    const basicInfo: Record<string, unknown> = {};
+
+    const hp = asRecord(getNestedValue(system, ['attributes', 'hp']));
+    if (hp) {
+      basicInfo.hitPoints = {
+        current: toNumber(hp.value),
+        max: toNumber(hp.max),
+        temp: toNumber(hp.temp) ?? 0,
+      };
+    }
+
+    const ac =
+      toNumber(getNestedValue(system, ['attributes', 'ac', 'value'])) ??
+      toNumber(getNestedValue(system, ['attributes', 'ac']));
+    if (ac !== undefined) {
+      basicInfo.armorClass = ac;
+    }
+
+    const level =
+      toNumber(getNestedValue(system, ['details', 'level', 'value'])) ??
+      toNumber(getNestedValue(system, ['details', 'level'])) ??
+      toNumber(getNestedValue(system, ['level']));
+    if (level !== undefined) {
+      basicInfo.level = level;
+    }
+
+    const className = toStringValue(getNestedValue(system, ['details', 'class']));
+    if (className) {
+      basicInfo.class = className;
+    }
+
+    const race = toStringValue(getNestedValue(system, ['details', 'race']));
+    if (race) {
+      basicInfo.race = race;
+    }
+
+    return basicInfo;
+  }
+
+  formatCharacterItemForList(itemData: unknown): Record<string, unknown> {
+    const item = asRecord(itemData);
+    const system = asRecord(item?.system);
+
+    const formatted: Record<string, unknown> = {
+      id: toStringValue(item?.id) ?? '',
+      name: toStringValue(item?.name) ?? 'Unknown Item',
+      type: toStringValue(item?.type) ?? 'unknown',
+    };
+
+    const quantity = toNumber(getNestedValue(system, ['quantity']));
+    if (quantity !== undefined && quantity !== 1) {
+      formatted.quantity = quantity;
+    }
+
+    const equipped = getNestedValue(system, ['equipped']);
+    if (typeof equipped === 'boolean') {
+      formatted.equipped = equipped;
+    }
+
+    const attunement = getNestedValue(system, ['attunement']);
+    if (typeof attunement === 'number' || typeof attunement === 'string') {
+      formatted.attunement = attunement;
+    }
+
+    return formatted;
+  }
+
+  formatCharacterActionForList(actionData: unknown): Record<string, unknown> {
+    const action = asRecord(actionData);
+    const formatted: Record<string, unknown> = {
+      name: toStringValue(action?.name) ?? 'Unknown Action',
+      type: toStringValue(action?.type),
+    };
+
+    const traits = action?.traits;
+    if (Array.isArray(traits)) {
+      const traitValues = traits.filter((t): t is string => typeof t === 'string');
+      if (traitValues.length > 0) {
+        formatted.traits = traitValues;
+      }
+    }
+
+    const actionCost = toNumber(action?.actions);
+    if (actionCost !== undefined) {
+      formatted.actionCost = actionCost;
+    }
+
+    const itemId = toStringValue(action?.itemId);
+    if (itemId) {
+      formatted.itemId = itemId;
+    }
+
+    return formatted;
+  }
+
+  formatSpellcastingEntryForList(entryData: unknown): Record<string, unknown> {
+    const entry = asRecord(entryData);
+    const formatted: Record<string, unknown> = {
+      name: toStringValue(entry?.name) ?? 'Unknown Entry',
+      type: toStringValue(entry?.type),
+    };
+
+    const tradition = toStringValue(entry?.tradition);
+    if (tradition) {
+      formatted.tradition = tradition;
+    }
+
+    const ability = toStringValue(entry?.ability);
+    if (ability) {
+      formatted.ability = ability;
+    }
+
+    const dc = toNumber(entry?.dc);
+    if (dc !== undefined) {
+      formatted.dc = dc;
+    }
+
+    const attack = toNumber(entry?.attack);
+    if (attack !== undefined) {
+      formatted.attack = attack;
+    }
+
+    const slots = asRecord(entry?.slots);
+    if (slots && Object.keys(slots).length > 0) {
+      formatted.slots = slots;
+    }
+
+    const spells = entry?.spells;
+    if (Array.isArray(spells) && spells.length > 0) {
+      formatted.spells = spells.map(spellValue => {
+        const spell = asRecord(spellValue);
+        const spellData: Record<string, unknown> = {
+          id: toStringValue(spell?.id),
+          name: toStringValue(spell?.name) ?? 'Unknown Spell',
+          level: toNumber(spell?.level),
+        };
+
+        if (spell?.prepared === false) {
+          spellData.prepared = false;
+        }
+
+        if (spell?.expended) {
+          spellData.expended = true;
+        }
+
+        const traits = spell?.traits;
+        if (Array.isArray(traits)) {
+          const traitValues = traits.filter((t): t is string => typeof t === 'string');
+          if (traitValues.length > 0) {
+            spellData.traits = traitValues;
+          }
+        }
+
+        const actionCost = toNumber(spell?.actionCost);
+        if (actionCost !== undefined) {
+          spellData.actionCost = actionCost;
+        }
+
+        const range = toStringValue(spell?.range);
+        if (range) {
+          spellData.range = range;
+        }
+
+        const target = toStringValue(spell?.target);
+        if (target) {
+          spellData.target = target;
+        }
+
+        const area = toStringValue(spell?.area);
+        if (area) {
+          spellData.area = area;
+        }
+
+        return spellData;
+      });
+
+      formatted.spellCount = spells.length;
+    }
+
+    return formatted;
   }
 }

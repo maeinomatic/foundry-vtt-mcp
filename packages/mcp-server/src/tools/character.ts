@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { FoundryClient } from '../foundry-client.js';
 import { Logger } from '../logger.js';
 import { SystemRegistry } from '../systems/system-registry.js';
+import type { SystemAdapter } from '../systems/types.js';
 import { detectGameSystem, type GameSystem } from '../utils/system-detection.js';
 
 export interface CharacterToolsOptions {
@@ -564,21 +565,21 @@ export class CharacterTools {
       id: characterData.id,
       name: characterData.name,
       type: characterData.type,
-      basicInfo: this.extractBasicInfo(characterData),
+      basicInfo: await this.extractBasicInfo(characterData),
       stats: await this.extractStats(characterData),
-      items: this.formatItems(characterData.items ?? []),
+      items: await this.formatItems(characterData.items ?? []),
       effects: this.formatEffects(characterData.effects ?? []),
       hasImage: !!characterData.img,
     };
 
     // Add actions with minimal data (name, traits, action cost only - no variants)
     if (characterData.actions && characterData.actions.length > 0) {
-      response.actions = this.formatActions(characterData.actions);
+      response.actions = await this.formatActions(characterData.actions);
     }
 
     // Add spellcasting data with spell lists
     if (characterData.spellcasting && characterData.spellcasting.length > 0) {
-      response.spellcasting = this.formatSpellcasting(characterData.spellcasting);
+      response.spellcasting = await this.formatSpellcasting(characterData.spellcasting);
     }
 
     // Exclude itemVariants and itemToggles - these are verbose and can be fetched via get-character-entity if needed
@@ -586,114 +587,175 @@ export class CharacterTools {
     return response;
   }
 
-  private formatSpellcasting(spellcastingEntries: SpellcastingEntry[]): unknown[] {
-    return spellcastingEntries.map(entry => {
-      const formatted: Record<string, unknown> = {
-        name: entry.name,
-        type: entry.type,
-      };
-
-      // Include tradition for PF2e (arcane, divine, primal, occult)
-      if (entry.tradition) {
-        formatted.tradition = entry.tradition;
-      }
-
-      // Include spellcasting ability
-      if (entry.ability) {
-        formatted.ability = entry.ability;
-      }
-
-      // Include DC and attack bonus
-      if (entry.dc) {
-        formatted.dc = entry.dc;
-      }
-      if (entry.attack) {
-        formatted.attack = entry.attack;
-      }
-
-      // Include spell slots if available
-      if (entry.slots && Object.keys(entry.slots).length > 0) {
-        formatted.slots = entry.slots;
-      }
-
-      // Format spells - minimal data for browsing, use get-character-entity for full details
-      if (entry.spells && entry.spells.length > 0) {
-        formatted.spells = entry.spells.map(spell => {
-          const spellData: Record<string, unknown> = {
-            id: spell.id,
-            name: spell.name,
-            level: spell.level,
-          };
-
-          // Only include prepared status if it's false (assumed prepared by default)
-          if (spell.prepared === false) {
-            spellData.prepared = false;
-          }
-
-          // Include expended status if spell slot has been used
-          if (spell.expended) {
-            spellData.expended = true;
-          }
-
-          // Include traits for PF2e spells (for filtering by damage type, etc.)
-          if (spell.traits && spell.traits.length > 0) {
-            spellData.traits = spell.traits;
-          }
-
-          // Include action cost
-          if (spell.actionCost) {
-            spellData.actionCost = spell.actionCost;
-          }
-
-          // Include targeting info - helps Claude decide whether to specify targets
-          if (spell.range) {
-            spellData.range = spell.range;
-          }
-          if (spell.target) {
-            spellData.target = spell.target;
-          }
-          if (spell.area) {
-            spellData.area = spell.area;
-          }
-
-          return spellData;
+  private async formatSpellcasting(spellcastingEntries: SpellcastingEntry[]): Promise<unknown[]> {
+    if (this.systemRegistry) {
+      try {
+        const gameSystem = await this.getGameSystem();
+        const adapter = this.systemRegistry.getAdapter(gameSystem);
+        if (adapter) {
+          return spellcastingEntries.map(entry =>
+            this.formatSpellcastingWithAdapter(adapter, entry)
+          );
+        }
+      } catch (error) {
+        this.logger.warn('Failed to use system adapter for spellcasting formatting, falling back', {
+          error,
         });
-
-        formatted.spellCount = entry.spells.length;
       }
+    }
 
-      return formatted;
-    });
+    return spellcastingEntries.map(entry => this.formatSpellcastingLegacy(entry));
   }
 
-  private formatActions(actions: CharacterAction[]): unknown[] {
-    // Return minimal action data - just enough to identify and filter
-    return actions.map(action => {
-      const formatted: Record<string, unknown> = {
-        name: action.name,
-        type: action.type,
-      };
-
-      // Include traits if present (for filtering, e.g., "fire" attacks, "concentrate" actions)
-      if (action.traits && action.traits.length > 0) {
-        formatted.traits = action.traits;
-      }
-
-      // Include action cost (e.g., 1, 2, 3 actions, reaction, free)
-      if (action.actions !== undefined) {
-        formatted.actionCost = action.actions;
-      }
-
-      // Include itemId for cross-referencing with items
-      if (action.itemId) {
-        formatted.itemId = action.itemId;
-      }
-
-      return formatted;
-    });
+  private formatSpellcastingWithAdapter(
+    adapter: SystemAdapter,
+    entry: SpellcastingEntry
+  ): Record<string, unknown> {
+    const formatter = adapter as unknown as {
+      formatSpellcastingEntryForList: (value: unknown) => Record<string, unknown>;
+    };
+    return formatter.formatSpellcastingEntryForList(entry);
   }
 
-  private extractBasicInfo(characterData: CharacterInfoResponse): unknown {
+  private formatSpellcastingLegacy(entry: SpellcastingEntry): Record<string, unknown> {
+    const formatted: Record<string, unknown> = {
+      name: entry.name,
+      type: entry.type,
+    };
+
+    if (entry.tradition) {
+      formatted.tradition = entry.tradition;
+    }
+
+    if (entry.ability) {
+      formatted.ability = entry.ability;
+    }
+
+    if (entry.dc) {
+      formatted.dc = entry.dc;
+    }
+    if (entry.attack) {
+      formatted.attack = entry.attack;
+    }
+
+    if (entry.slots && Object.keys(entry.slots).length > 0) {
+      formatted.slots = entry.slots;
+    }
+
+    if (entry.spells && entry.spells.length > 0) {
+      formatted.spells = entry.spells.map(spell => {
+        const spellData: Record<string, unknown> = {
+          id: spell.id,
+          name: spell.name,
+          level: spell.level,
+        };
+
+        if (spell.prepared === false) {
+          spellData.prepared = false;
+        }
+
+        if (spell.expended) {
+          spellData.expended = true;
+        }
+
+        if (spell.traits && spell.traits.length > 0) {
+          spellData.traits = spell.traits;
+        }
+
+        if (spell.actionCost) {
+          spellData.actionCost = spell.actionCost;
+        }
+
+        if (spell.range) {
+          spellData.range = spell.range;
+        }
+        if (spell.target) {
+          spellData.target = spell.target;
+        }
+        if (spell.area) {
+          spellData.area = spell.area;
+        }
+
+        return spellData;
+      });
+
+      formatted.spellCount = entry.spells.length;
+    }
+
+    return formatted;
+  }
+
+  private async formatActions(actions: CharacterAction[]): Promise<unknown[]> {
+    if (this.systemRegistry) {
+      try {
+        const gameSystem = await this.getGameSystem();
+        const adapter = this.systemRegistry.getAdapter(gameSystem);
+        if (adapter) {
+          return actions.map(action => this.formatActionWithAdapter(adapter, action));
+        }
+      } catch (error) {
+        this.logger.warn('Failed to use system adapter for action formatting, falling back', {
+          error,
+        });
+      }
+    }
+
+    return actions.map(action => this.formatActionLegacy(action));
+  }
+
+  private formatActionWithAdapter(
+    adapter: SystemAdapter,
+    action: CharacterAction
+  ): Record<string, unknown> {
+    const formatter = adapter as unknown as {
+      formatCharacterActionForList: (value: unknown) => Record<string, unknown>;
+    };
+    return formatter.formatCharacterActionForList(action);
+  }
+
+  private formatActionLegacy(action: CharacterAction): Record<string, unknown> {
+    const formatted: Record<string, unknown> = {
+      name: action.name,
+      type: action.type,
+    };
+
+    if (action.traits && action.traits.length > 0) {
+      formatted.traits = action.traits;
+    }
+
+    if (action.actions !== undefined) {
+      formatted.actionCost = action.actions;
+    }
+
+    if (action.itemId) {
+      formatted.itemId = action.itemId;
+    }
+
+    return formatted;
+  }
+
+  private async extractBasicInfo(characterData: CharacterInfoResponse): Promise<unknown> {
+    if (this.systemRegistry) {
+      try {
+        const gameSystem = await this.getGameSystem();
+        const adapter = this.systemRegistry.getAdapter(gameSystem);
+        if (adapter) {
+          this.logger.debug('Using system adapter for character basic info extraction', {
+            system: gameSystem,
+          });
+          return adapter.formatCharacterBasicInfo(characterData);
+        }
+      } catch (error) {
+        this.logger.warn('Failed to use system adapter for basic info, falling back', {
+          error,
+        });
+      }
+    }
+
+    return this.extractBasicInfoLegacy(characterData);
+  }
+
+  private extractBasicInfoLegacy(characterData: CharacterInfoResponse): unknown {
     const system = characterData.system ?? {};
 
     // Extract common fields that exist across different game systems
@@ -799,56 +861,78 @@ export class CharacterTools {
     return stats;
   }
 
-  private formatItems(items: CharacterItem[]): unknown[] {
+  private async formatItems(items: CharacterItem[]): Promise<unknown[]> {
+    if (this.systemRegistry) {
+      try {
+        const gameSystem = await this.getGameSystem();
+        const adapter = this.systemRegistry.getAdapter(gameSystem);
+        if (adapter) {
+          return items.map(item => this.formatCharacterItemWithAdapter(adapter, item));
+        }
+      } catch (error) {
+        this.logger.warn('Failed to use system adapter for item formatting, falling back', {
+          error,
+        });
+      }
+    }
+
+    return items.map(item => this.formatCharacterItemLegacy(item));
+  }
+
+  private formatCharacterItemWithAdapter(
+    adapter: SystemAdapter,
+    item: CharacterItem
+  ): Record<string, unknown> {
+    return adapter.formatCharacterItemForList(item);
+  }
+
+  private formatCharacterItemLegacy(item: CharacterItem): Record<string, unknown> {
     // Return ALL items with minimal data
-    return items.map(item => {
-      // Return minimal data - just enough to identify and filter items
-      const formattedItem: Record<string, unknown> = {
-        id: item.id,
-        name: item.name,
-        type: item.type,
-      };
+    const formattedItem: Record<string, unknown> = {
+      id: item.id,
+      name: item.name,
+      type: item.type,
+    };
 
-      // Include quantity if present
-      if (item.system?.quantity !== undefined && item.system.quantity !== 1) {
-        formattedItem.quantity = item.system.quantity;
-      }
+    // Include quantity if present
+    if (item.system?.quantity !== undefined && item.system.quantity !== 1) {
+      formattedItem.quantity = item.system.quantity;
+    }
 
-      // Include traits for PF2e items (feats, equipment, spells, etc.)
-      if (item.system?.traits?.value) {
-        formattedItem.traits = Array.isArray(item.system.traits.value)
-          ? item.system.traits.value
-          : [];
-      }
+    // Include traits for PF2e items (feats, equipment, spells, etc.)
+    if (item.system?.traits?.value) {
+      formattedItem.traits = Array.isArray(item.system.traits.value)
+        ? item.system.traits.value
+        : [];
+    }
 
-      // Include rarity for PF2e items
-      if (item.system?.traits?.rarity) {
-        formattedItem.rarity = item.system.traits.rarity;
-      }
+    // Include rarity for PF2e items
+    if (item.system?.traits?.rarity) {
+      formattedItem.rarity = item.system.traits.rarity;
+    }
 
-      // Include level for PF2e items (feats, spells, etc.)
-      const itemLevel = getLeveledValue(item.system?.level);
-      if (itemLevel !== undefined) {
-        formattedItem.level = itemLevel;
-      }
+    // Include level for PF2e items (feats, spells, etc.)
+    const itemLevel = getLeveledValue(item.system?.level);
+    if (itemLevel !== undefined) {
+      formattedItem.level = itemLevel;
+    }
 
-      // Include action cost for PF2e feats/actions
-      if (item.system?.actionType?.value) {
-        formattedItem.actionType = item.system.actionType.value;
-      }
+    // Include action cost for PF2e feats/actions
+    if (item.system?.actionType?.value) {
+      formattedItem.actionType = item.system.actionType.value;
+    }
 
-      // Include equipped status for equippable items
-      if (item.system?.equipped !== undefined) {
-        formattedItem.equipped = item.system.equipped;
-      }
+    // Include equipped status for equippable items
+    if (item.system?.equipped !== undefined) {
+      formattedItem.equipped = item.system.equipped;
+    }
 
-      // Include attuned status for D&D 5e magic items
-      if (item.system?.attunement !== undefined) {
-        formattedItem.attunement = item.system.attunement;
-      }
+    // Include attuned status for D&D 5e magic items
+    if (item.system?.attunement !== undefined) {
+      formattedItem.attunement = item.system.attunement;
+    }
 
-      return formattedItem;
-    });
+    return formattedItem;
   }
 
   private formatEffects(effects: CharacterEffect[]): Array<{

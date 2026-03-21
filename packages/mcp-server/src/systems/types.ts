@@ -116,6 +116,16 @@ export interface SystemAdapter {
   describeFilters(filters: Record<string, unknown>): string;
 
   /**
+   * Format raw compendium creature entity data for MCP responses.
+   * `mode=search` is used by search-compendium output.
+   * `mode=criteria` is used by list-creatures-by-criteria output.
+   */
+  formatRawCompendiumCreature(
+    entity: unknown,
+    mode: 'search' | 'criteria'
+  ): Record<string, unknown>;
+
+  /**
    * Get normalized power level for a creature
    * D&D 5e: CR (0-30)
    * PF2e: Level (-1 to 25+)
@@ -130,6 +140,28 @@ export interface SystemAdapter {
    * @param actorData - Raw Foundry actor data
    */
   extractCharacterStats(actorData: unknown): unknown;
+
+  /**
+   * Format basic character info for compact character responses.
+   * Used by get-character for system-specific basic info shaping.
+   */
+  formatCharacterBasicInfo(actorData: unknown): Record<string, unknown>;
+
+  /**
+   * Format a character item for compact list responses.
+   * Used by get-character item listings to keep core tools system-agnostic.
+   */
+  formatCharacterItemForList(item: unknown): Record<string, unknown>;
+
+  /**
+   * Format a character action for compact list responses.
+   */
+  formatCharacterActionForList(action: unknown): Record<string, unknown>;
+
+  /**
+   * Format a spellcasting entry for compact list responses.
+   */
+  formatSpellcastingEntryForList(entry: unknown): Record<string, unknown>;
 }
 
 /**

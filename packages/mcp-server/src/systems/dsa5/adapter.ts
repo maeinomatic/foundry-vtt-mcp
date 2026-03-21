@@ -259,6 +259,57 @@ export class DSA5Adapter implements SystemAdapter {
     return describeDSA5Filters(validated.data);
   }
 
+  formatRawCompendiumCreature(
+    entity: unknown,
+    mode: 'search' | 'criteria'
+  ): Record<string, unknown> {
+    const record = asRecord(entity);
+    const system = asRecord(record?.system);
+
+    const experiencePoints =
+      toNumber(getNestedValue(system, ['details', 'experience', 'total'])) ??
+      toNumber(getNestedValue(system, ['details', 'experience']));
+    const level =
+      experiencePoints !== undefined
+        ? getExperienceLevel(experiencePoints).level
+        : toNumber(getNestedValue(system, ['level']));
+    const species = toStringValue(getNestedValue(system, ['details', 'species', 'value']));
+    const size =
+      toStringValue(getNestedValue(system, ['status', 'size', 'value'])) ??
+      toStringValue(getNestedValue(system, ['size']));
+
+    const lifePointsCurrent = toNumber(getNestedValue(system, ['status', 'wounds', 'value']));
+    const lifePointsMax = toNumber(getNestedValue(system, ['status', 'wounds', 'max']));
+
+    const hasSpellcasting = Boolean(
+      getNestedValue(system, ['tradition', 'magical']) ||
+        getNestedValue(system, ['tradition', 'clerical']) ||
+        (toNumber(getNestedValue(system, ['status', 'astralenergy', 'max'])) ?? 0) > 0 ||
+        (toNumber(getNestedValue(system, ['status', 'karmaenergy', 'max'])) ?? 0) > 0
+    );
+
+    if (mode === 'search') {
+      const stats: Record<string, unknown> = {};
+      if (level !== undefined) stats.level = level;
+      if (species) stats.creatureType = species;
+      if (size) stats.size = size;
+      if (lifePointsCurrent !== undefined || lifePointsMax !== undefined) {
+        stats.hitPoints = { current: lifePointsCurrent, max: lifePointsMax };
+      }
+      if (hasSpellcasting) stats.spellcaster = true;
+      return Object.keys(stats).length > 0 ? { stats } : {};
+    }
+
+    return {
+      ...(level !== undefined ? { level } : {}),
+      ...(species ? { creatureType: species } : {}),
+      ...(size ? { size } : {}),
+      flags: {
+        spellcaster: hasSpellcasting,
+      },
+    };
+  }
+
   getPowerLevel(creature: SystemCreatureIndex): number | undefined {
     const dsa5Creature = creature as DSA5CreatureIndex;
 
@@ -435,5 +486,190 @@ export class DSA5Adapter implements SystemAdapter {
     }
 
     return stats;
+  }
+
+  formatCharacterBasicInfo(actorData: unknown): Record<string, unknown> {
+    const actor = asRecord(actorData);
+    const system = asRecord(actor?.system);
+    const basicInfo: Record<string, unknown> = {};
+
+    const wounds = asRecord(getNestedValue(system, ['status', 'wounds']));
+    if (wounds) {
+      basicInfo.lifePoints = {
+        current: toNumber(wounds.current) ?? toNumber(wounds.value),
+        max: toNumber(wounds.max),
+      };
+    }
+
+    const size = toNumber(getNestedValue(system, ['status', 'size', 'value']));
+    if (size !== undefined) {
+      basicInfo.size = size;
+    }
+
+    const species = toStringValue(getNestedValue(system, ['details', 'species', 'value']));
+    if (species) {
+      basicInfo.species = species;
+    }
+
+    const culture = toStringValue(getNestedValue(system, ['details', 'culture', 'value']));
+    if (culture) {
+      basicInfo.culture = culture;
+    }
+
+    const profession = toStringValue(getNestedValue(system, ['details', 'career', 'value']));
+    if (profession) {
+      basicInfo.profession = profession;
+    }
+
+    const totalAP = toNumber(getNestedValue(system, ['details', 'experience', 'total']));
+    if (totalAP !== undefined) {
+      basicInfo.experience = { total: totalAP };
+    }
+
+    return basicInfo;
+  }
+
+  formatCharacterItemForList(itemData: unknown): Record<string, unknown> {
+    const item = asRecord(itemData);
+    const system = asRecord(item?.system);
+
+    const formatted: Record<string, unknown> = {
+      id: toStringValue(item?.id) ?? '',
+      name: toStringValue(item?.name) ?? 'Unknown Item',
+      type: toStringValue(item?.type) ?? 'unknown',
+    };
+
+    const quantity = toNumber(getNestedValue(system, ['quantity']));
+    if (quantity !== undefined && quantity !== 1) {
+      formatted.quantity = quantity;
+    }
+
+    const level =
+      toNumber(getNestedValue(system, ['level', 'value'])) ?? toNumber(getNestedValue(system, ['level']));
+    if (level !== undefined) {
+      formatted.level = level;
+    }
+
+    const equipped = getNestedValue(system, ['equipped']);
+    if (typeof equipped === 'boolean') {
+      formatted.equipped = equipped;
+    }
+
+    return formatted;
+  }
+
+  formatCharacterActionForList(actionData: unknown): Record<string, unknown> {
+    const action = asRecord(actionData);
+    const formatted: Record<string, unknown> = {
+      name: toStringValue(action?.name) ?? 'Unknown Action',
+      type: toStringValue(action?.type),
+    };
+
+    const traits = action?.traits;
+    if (Array.isArray(traits)) {
+      const traitValues = traits.filter((t): t is string => typeof t === 'string');
+      if (traitValues.length > 0) {
+        formatted.traits = traitValues;
+      }
+    }
+
+    const actionCost = toNumber(action?.actions);
+    if (actionCost !== undefined) {
+      formatted.actionCost = actionCost;
+    }
+
+    const itemId = toStringValue(action?.itemId);
+    if (itemId) {
+      formatted.itemId = itemId;
+    }
+
+    return formatted;
+  }
+
+  formatSpellcastingEntryForList(entryData: unknown): Record<string, unknown> {
+    const entry = asRecord(entryData);
+    const formatted: Record<string, unknown> = {
+      name: toStringValue(entry?.name) ?? 'Unknown Entry',
+      type: toStringValue(entry?.type),
+    };
+
+    const tradition = toStringValue(entry?.tradition);
+    if (tradition) {
+      formatted.tradition = tradition;
+    }
+
+    const ability = toStringValue(entry?.ability);
+    if (ability) {
+      formatted.ability = ability;
+    }
+
+    const dc = toNumber(entry?.dc);
+    if (dc !== undefined) {
+      formatted.dc = dc;
+    }
+
+    const attack = toNumber(entry?.attack);
+    if (attack !== undefined) {
+      formatted.attack = attack;
+    }
+
+    const slots = asRecord(entry?.slots);
+    if (slots && Object.keys(slots).length > 0) {
+      formatted.slots = slots;
+    }
+
+    const spells = entry?.spells;
+    if (Array.isArray(spells) && spells.length > 0) {
+      formatted.spells = spells.map(spellValue => {
+        const spell = asRecord(spellValue);
+        const spellData: Record<string, unknown> = {
+          id: toStringValue(spell?.id),
+          name: toStringValue(spell?.name) ?? 'Unknown Spell',
+          level: toNumber(spell?.level),
+        };
+
+        if (spell?.prepared === false) {
+          spellData.prepared = false;
+        }
+
+        if (spell?.expended) {
+          spellData.expended = true;
+        }
+
+        const traits = spell?.traits;
+        if (Array.isArray(traits)) {
+          const traitValues = traits.filter((t): t is string => typeof t === 'string');
+          if (traitValues.length > 0) {
+            spellData.traits = traitValues;
+          }
+        }
+
+        const actionCost = spell?.actionCost;
+        if (typeof actionCost === 'number' || typeof actionCost === 'string') {
+          spellData.actionCost = actionCost;
+        }
+
+        const range = toStringValue(spell?.range);
+        if (range) {
+          spellData.range = range;
+        }
+
+        const target = toStringValue(spell?.target);
+        if (target) {
+          spellData.target = target;
+        }
+
+        const area = toStringValue(spell?.area);
+        if (area) {
+          spellData.area = area;
+        }
+
+        return spellData;
+      });
+
+      formatted.spellCount = spells.length;
+    }
+
+    return formatted;
   }
 }

@@ -2,6 +2,9 @@
 
 This document defines how to evaluate and safely adopt Foundry VTT v14 support.
 
+Canonical source links and official syntax conventions are maintained in:
+`docs/process/FOUNDRY_OFFICIAL_REFERENCE.md`
+
 ## Purpose
 
 1. Track v14 compatibility work without disrupting current v13 stability.

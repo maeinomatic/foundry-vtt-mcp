@@ -2,14 +2,8 @@ import { z } from 'zod';
 import { FoundryClient } from '../foundry-client.js';
 import { Logger } from '../logger.js';
 import { SystemRegistry } from '../systems/system-registry.js';
-import {
-  detectGameSystem,
-  getCreatureLevel,
-  getCreatureType,
-  hasSpellcasting,
-  type GameSystem,
-} from '../utils/system-detection.js';
-import { GenericFiltersSchema, describeFilters } from '../utils/compendium-filters.js';
+import { detectGameSystem, type GameSystem } from '../utils/system-detection.js';
+import type { SystemAdapter } from '../systems/types.js';
 
 export interface CompendiumToolsOptions {
   foundryClient: FoundryClient;
@@ -132,8 +126,27 @@ export class CompendiumTools {
     return this.gameSystem;
   }
 
-  private getSystemAdapter(gameSystem: GameSystem) {
+  private getSystemAdapter(gameSystem: GameSystem): SystemAdapter | null {
     return this.systemRegistry?.getAdapter(gameSystem) ?? null;
+  }
+
+  private getSystemDisplayName(gameSystem: GameSystem): string {
+    const adapter = this.getSystemAdapter(gameSystem);
+    return adapter?.getMetadata().displayName ?? gameSystem;
+  }
+
+  private formatWithAdapter(
+    adapter: SystemAdapter,
+    entity: unknown,
+    mode: 'search' | 'criteria'
+  ): Record<string, unknown> {
+    const formatter = adapter as unknown as {
+      formatRawCompendiumCreature: (
+        value: unknown,
+        outputMode: 'search' | 'criteria'
+      ) => Record<string, unknown>;
+    };
+    return formatter.formatRawCompendiumCreature(entity, mode);
   }
 
   private describeFilterSet(filters: Record<string, unknown>, gameSystem: GameSystem): string {
@@ -141,7 +154,9 @@ export class CompendiumTools {
     if (adapter) {
       return adapter.describeFilters(filters);
     }
-    return describeFilters(filters, gameSystem);
+
+    const keys = Object.keys(filters);
+    return keys.length > 0 ? `filters: ${keys.join(', ')}` : 'no filters';
   }
 
   /**
@@ -408,7 +423,7 @@ export class CompendiumTools {
     const schema = z.object({
       query: z.string().min(2, 'Search query must be at least 2 characters'),
       packType: z.string().optional(),
-      filters: GenericFiltersSchema.optional(),
+      filters: z.record(z.unknown()).optional(),
       limit: z.number().min(1).max(50).default(50),
     });
 
@@ -752,7 +767,7 @@ export class CompendiumTools {
         criteria: params,
         searchSummary: {
           ...searchSummary,
-          searchStrategy: `Prioritized pack search - ${gameSystem === 'pf2e' ? 'PF2e' : gameSystem === 'dsa5' ? 'DSA5' : gameSystem === 'dnd5e' ? 'D&D 5e' : 'system-specific'} content first, then modules, then campaign-specific`,
+          searchStrategy: `Prioritized pack search - ${this.getSystemDisplayName(gameSystem)} content first, then modules, then campaign-specific`,
           note: 'Packs searched in priority order to find most relevant creatures first',
         },
         optimizationNote:
@@ -827,112 +842,12 @@ export class CompendiumTools {
 
     // Add key stats for actors/creatures to reduce need for detail calls
     if (item.type === 'npc' || item.type === 'character') {
-      const stats: Record<string, unknown> = {};
-
-      // Use system detection utilities for accurate stat extraction
       if (gameSystem) {
-        // Level/CR (system-specific)
-        const level = getCreatureLevel(item, gameSystem);
-        if (level !== undefined) {
-          if (gameSystem === 'dnd5e') {
-            stats.challengeRating = level;
-          } else if (gameSystem === 'pf2e') {
-            stats.level = level;
-          } else if (gameSystem === 'dsa5') {
-            stats.level = level;
-          }
+        const adapter = this.getSystemAdapter(gameSystem);
+        if (adapter) {
+          const adapterFormatted = this.formatWithAdapter(adapter, item, 'search');
+          Object.assign(formatted, adapterFormatted);
         }
-
-        // Creature type/traits
-        const creatureType = getCreatureType(item, gameSystem);
-        if (creatureType) {
-          if (gameSystem === 'pf2e' && Array.isArray(creatureType)) {
-            stats.traits = creatureType;
-            // Also extract primary creature type from traits if available
-            const creatureTraits = [
-              'aberration',
-              'animal',
-              'beast',
-              'celestial',
-              'construct',
-              'dragon',
-              'elemental',
-              'fey',
-              'fiend',
-              'fungus',
-              'humanoid',
-              'monitor',
-              'ooze',
-              'plant',
-              'undead',
-            ];
-            const primaryType = creatureType.find((t: string) =>
-              creatureTraits.includes(t.toLowerCase())
-            );
-            if (primaryType) stats.creatureType = primaryType;
-          } else {
-            stats.creatureType = creatureType;
-          }
-        }
-
-        // System-agnostic stats (similar paths in both systems)
-        const system = item.system ?? {};
-
-        // Hit Points
-        const hp = system.attributes?.hp?.value;
-        const maxHp = system.attributes?.hp?.max;
-        if (hp !== undefined || maxHp !== undefined) {
-          stats.hitPoints = { current: hp, max: maxHp };
-        }
-
-        // Armor Class
-        const ac = system.attributes?.ac?.value;
-        if (ac !== undefined) stats.armorClass = ac;
-
-        // Size (similar in both systems)
-        const sizeTrait = system.traits?.size;
-        const size = (typeof sizeTrait === 'string' ? sizeTrait : sizeTrait?.value) ?? system.size;
-        if (size) stats.size = size;
-
-        // Alignment (different paths but similar concept)
-        const detailAlignment = system.details?.alignment;
-        const alignment =
-          (typeof detailAlignment === 'string' ? detailAlignment : detailAlignment?.value) ??
-          system.alignment;
-        if (alignment) stats.alignment = alignment;
-
-        // PF2e specific: Rarity
-        if (gameSystem === 'pf2e') {
-          const rarity = system.traits?.rarity;
-          if (rarity) stats.rarity = rarity;
-        }
-      } else {
-        // Fallback: Legacy D&D 5e extraction
-        const system = item.system ?? {};
-        const cr = system.details?.cr ?? system.cr;
-        if (cr !== undefined) stats.challengeRating = cr;
-
-        const hp = system.attributes?.hp?.value ?? system.hp?.value;
-        const maxHp = system.attributes?.hp?.max ?? system.hp?.max;
-        if (hp !== undefined || maxHp !== undefined) {
-          stats.hitPoints = { current: hp, max: maxHp };
-        }
-
-        const ac = system.attributes?.ac?.value ?? system.ac?.value;
-        if (ac !== undefined) stats.armorClass = ac;
-
-        const creatureType = system.details?.type?.value ?? system.type?.value;
-        if (creatureType) stats.creatureType = creatureType;
-
-        const size = system.traits?.size ?? system.size;
-        if (size) stats.size = size;
-
-        const alignment = system.details?.alignment ?? system.alignment;
-        if (alignment) stats.alignment = alignment;
-      }
-
-      if (Object.keys(stats).length > 0) {
-        formatted.stats = stats;
       }
     }
 
@@ -1007,7 +922,6 @@ export class CompendiumTools {
     creature: CompendiumEntity,
     gameSystem?: GameSystem
   ): Record<string, unknown> {
-    const system = creature.system ?? {};
     const formatted: Record<string, unknown> = {
       name: creature.name,
       id: creature.id,
@@ -1015,125 +929,11 @@ export class CompendiumTools {
     };
 
     if (gameSystem) {
-      // System-specific extraction using detection utilities
-      const level = getCreatureLevel(creature, gameSystem);
-      if (level !== undefined) {
-        if (gameSystem === 'dnd5e') {
-          formatted.challengeRating = level;
-        } else if (gameSystem === 'pf2e') {
-          formatted.level = level;
-        } else if (gameSystem === 'dsa5') {
-          formatted.level = level;
-        }
+      const adapter = this.getSystemAdapter(gameSystem);
+      if (adapter) {
+        const adapterFormatted = this.formatWithAdapter(adapter, creature, 'criteria');
+        Object.assign(formatted, adapterFormatted);
       }
-
-      const creatureType = getCreatureType(creature, gameSystem);
-      if (creatureType) {
-        if (gameSystem === 'pf2e' && Array.isArray(creatureType)) {
-          formatted.traits = creatureType;
-          // Extract primary type from traits
-          const creatureTraits = [
-            'aberration',
-            'animal',
-            'beast',
-            'celestial',
-            'construct',
-            'dragon',
-            'elemental',
-            'fey',
-            'fiend',
-            'fungus',
-            'humanoid',
-            'monitor',
-            'ooze',
-            'plant',
-            'undead',
-          ];
-          const primaryType = creatureType.find((t: string) =>
-            creatureTraits.includes(t.toLowerCase())
-          );
-          if (primaryType) formatted.creatureType = primaryType;
-        } else {
-          formatted.creatureType = creatureType;
-        }
-      }
-
-      const sizeTrait = system.traits?.size;
-      const size =
-        (typeof sizeTrait === 'string' ? sizeTrait : sizeTrait?.value) ?? system.size ?? 'medium';
-      formatted.size = size;
-
-      // PF2e specific: rarity
-      if (gameSystem === 'pf2e') {
-        const rarity = system.traits?.rarity;
-        if (rarity) formatted.rarity = rarity;
-      }
-
-      // Feature flags
-      const hasSpells = hasSpellcasting(creature, gameSystem);
-      const flags: {
-        spellcaster: boolean;
-        legendary?: boolean;
-        undead?: boolean;
-        dragon?: boolean;
-        fiend?: boolean;
-      } = {
-        spellcaster: hasSpells,
-      };
-
-      // D&D 5e specific flags
-      if (gameSystem === 'dnd5e') {
-        const hasLegendary = !!(
-          system.resources?.legact ||
-          system.legendary ||
-          (system.resources?.legres?.value ?? 0) > 0
-        );
-        flags.legendary = hasLegendary;
-
-        const typeStr = typeof creatureType === 'string' ? creatureType.toLowerCase() : '';
-        flags.undead = typeStr === 'undead';
-        flags.dragon = typeStr === 'dragon';
-        flags.fiend = typeStr === 'fiend';
-      }
-
-      formatted.flags = flags;
-    } else {
-      // Legacy fallback (D&D 5e assumptions)
-      const challengeRating = creature.challengeRating ?? system.details?.cr ?? system.cr ?? 0;
-      const creatureType =
-        creature.creatureType ?? system.details?.type?.value ?? system.type?.value ?? 'unknown';
-      const sizeTrait = system.traits?.size;
-      const size =
-        creature.size ??
-        (typeof sizeTrait === 'string' ? sizeTrait : sizeTrait?.value) ??
-        system.size ??
-        'medium';
-
-      const hasSpells =
-        creature.hasSpells ??
-        !!(
-          system.spells ||
-          system.attributes?.spellcasting ||
-          (system.details?.spellLevel && system.details.spellLevel > 0)
-        );
-      const hasLegendary =
-        creature.hasLegendaryActions ??
-        !!(
-          system.resources?.legact ||
-          system.legendary ||
-          (system.resources?.legres?.value ?? 0) > 0
-        );
-
-      formatted.challengeRating = challengeRating;
-      formatted.creatureType = creatureType;
-      formatted.size = size;
-      formatted.flags = {
-        spellcaster: hasSpells,
-        legendary: hasLegendary,
-        undead: creatureType.toLowerCase() === 'undead',
-        dragon: creatureType.toLowerCase() === 'dragon',
-        fiend: creatureType.toLowerCase() === 'fiend',
-      };
     }
 
     return formatted;
@@ -1161,25 +961,23 @@ export class CompendiumTools {
 
     const parts: string[] = [];
 
-    if (gameSystem === 'dnd5e') {
-      if (params.challengeRating !== undefined) {
-        if (typeof params.challengeRating === 'number') {
-          parts.push(`CR ${params.challengeRating}`);
-        } else if (typeof params.challengeRating === 'object') {
-          const min = params.challengeRating.min ?? 0;
-          const max = params.challengeRating.max ?? 30;
-          parts.push(`CR ${min}-${max}`);
-        }
+    if (params.challengeRating !== undefined) {
+      if (typeof params.challengeRating === 'number') {
+        parts.push(`CR ${params.challengeRating}`);
+      } else if (typeof params.challengeRating === 'object') {
+        const min = params.challengeRating.min ?? 0;
+        const max = params.challengeRating.max ?? 30;
+        parts.push(`CR ${min}-${max}`);
       }
-    } else if (gameSystem === 'pf2e' || gameSystem === 'dsa5') {
-      if (params.level !== undefined) {
-        if (typeof params.level === 'number') {
-          parts.push(`Level ${params.level}`);
-        } else if (typeof params.level === 'object') {
-          const min = params.level.min ?? (gameSystem === 'dsa5' ? 1 : -1);
-          const max = params.level.max ?? (gameSystem === 'dsa5' ? 7 : 25);
-          parts.push(`Level ${min}-${max}`);
-        }
+    }
+
+    if (params.level !== undefined) {
+      if (typeof params.level === 'number') {
+        parts.push(`Level ${params.level}`);
+      } else if (typeof params.level === 'object') {
+        const min = params.level.min ?? -1;
+        const max = params.level.max ?? 25;
+        parts.push(`Level ${min}-${max}`);
       }
     }
 
