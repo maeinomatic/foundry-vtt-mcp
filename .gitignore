@@ -76,6 +76,7 @@ test-*.ps1
 config.local.json
 .claude/foundry-mcp-server-*.zip
 foundry-vtt-mcp.zip
+.tmp/
 .foundry-deploy-config
 .mcp.json
 deploy-module.sh

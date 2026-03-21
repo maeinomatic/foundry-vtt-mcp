@@ -12,7 +12,7 @@ These documents are kept for historical context and traceability.
 
 Use these documents for active work:
 
-1. `MAINTENANCE_ROADMAP.md` for build/test/dependency cleanup priorities
+1. `docs/process/MAINTENANCE_ROADMAP.md` for build/test/dependency cleanup priorities
 2. `README.md` for user-facing setup and feature overview
 3. `CHANGELOG.md` for release-facing change history
 

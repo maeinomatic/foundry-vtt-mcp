@@ -3,9 +3,9 @@
 This document proposes a focused set of GitHub issues to create next.
 
 Scope sources:
-- `TOOL_INVENTORY.md` (DnD5e missing endpoint tracker)
+- `docs/process/TOOL_INVENTORY.md` (DnD5e missing endpoint tracker)
 - `docs/foundry-v14-compatibility-plan.md` (official v14 breaking-change watch list)
-- `MAINTENANCE_ROADMAP.md` (quality and release guardrails)
+- `docs/process/MAINTENANCE_ROADMAP.md` (quality and release guardrails)
 
 ## Label Suggestions
 
