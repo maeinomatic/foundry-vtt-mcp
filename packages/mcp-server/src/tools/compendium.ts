@@ -1,5 +1,14 @@
 import { z } from 'zod';
 import { FoundryClient } from '../foundry-client.js';
+import type {
+  FoundryActorSystemBase,
+  FoundryCompendiumDocumentBase,
+  FoundryCompendiumPackSummary,
+  FoundryDescriptionField,
+  FoundryPriceData,
+  FoundryTraitsData,
+  UnknownRecord,
+} from '../foundry-types.js';
 import { Logger } from '../logger.js';
 import { SystemRegistry } from '../systems/system-registry.js';
 import { detectGameSystem, type GameSystem } from '../utils/system-detection.js';
@@ -11,32 +20,11 @@ export interface CompendiumToolsOptions {
   systemRegistry?: SystemRegistry;
 }
 
-type UnknownRecord = Record<string, unknown>;
+type CompendiumPack = FoundryCompendiumPackSummary;
 
-interface CompendiumPack {
-  id: string;
-  label: string;
-  type: string;
-  system?: string;
-  private?: boolean;
-}
-
-interface CompendiumEntitySystem {
-  attributes?: {
-    ac?: { value?: number };
-    hp?: { value?: number; max?: number };
-    movement?: { walk?: number; fly?: number; swim?: number };
-    spellcasting?: unknown;
-  };
-  details?: {
-    cr?: number;
-    type?: { value?: string };
-    alignment?: string | { value?: string };
-    spellLevel?: number;
-    description?: string;
-  };
-  description?: string | { value?: string; content?: string };
-  traits?: { size?: string | { value?: string }; rarity?: string };
+interface CompendiumEntitySystem extends FoundryActorSystemBase {
+  description?: string | FoundryDescriptionField;
+  traits?: FoundryTraitsData;
   size?: string;
   alignment?: string;
   cr?: number;
@@ -51,7 +39,7 @@ interface CompendiumEntitySystem {
   properties?: unknown;
   stealth?: unknown;
   rarity?: unknown;
-  price?: unknown;
+  price?: FoundryPriceData | unknown;
   weight?: unknown;
   quantity?: number;
   abilities?: Record<string, { value?: number }>;
@@ -63,17 +51,9 @@ interface CompendiumEntitySystem {
   ac?: { value?: number };
 }
 
-interface CompendiumEntity {
-  id?: string;
-  name?: string;
-  type?: string;
+interface CompendiumEntity extends FoundryCompendiumDocumentBase<CompendiumEntitySystem> {
   pack?: string;
   packLabel?: string;
-  img?: string;
-  system?: CompendiumEntitySystem;
-  items?: unknown[];
-  effects?: unknown[];
-  fullData?: unknown;
   challengeRating?: number;
   creatureType?: string;
   size?: string;
@@ -148,7 +128,7 @@ export class CompendiumTools {
 
   private formatWithAdapter(
     adapter: SystemAdapter,
-    entity: unknown,
+    entity: CompendiumEntity,
     mode: 'search' | 'criteria' | 'compact' | 'details'
   ): Record<string, unknown> {
     return adapter.formatRawCompendiumCreature(entity, mode);
@@ -490,11 +470,14 @@ export class CompendiumTools {
     });
 
     try {
-      const rawResults = (await this.foundryClient.query('foundry-mcp-bridge.searchCompendium', {
-        query,
-        packType,
-        filters,
-      })) as CompendiumEntity[];
+      const rawResults = await this.foundryClient.query<CompendiumEntity[]>(
+        'foundry-mcp-bridge.searchCompendium',
+        {
+          query,
+          packType,
+          filters,
+        }
+      );
 
       const results = Array.isArray(rawResults) ? rawResults : [];
 
@@ -539,10 +522,13 @@ export class CompendiumTools {
       const adapter = this.getSystemAdapter(gameSystem);
 
       // Use the proper document retrieval method that already exists in actor creation
-      const item = (await this.foundryClient.query('foundry-mcp-bridge.getCompendiumDocumentFull', {
-        packId,
-        documentId: itemId,
-      })) as CompendiumEntity | null;
+      const item = await this.foundryClient.query<CompendiumEntity | null>(
+        'foundry-mcp-bridge.getCompendiumDocumentFull',
+        {
+          packId,
+          documentId: itemId,
+        }
+      );
 
       if (!item) {
         throw new Error(`Item ${itemId} not found in pack ${packId}`);
@@ -759,10 +745,10 @@ export class CompendiumTools {
     });
 
     try {
-      const results = (await this.foundryClient.query(
+      const results = await this.foundryClient.query<CompendiumEntity | CompendiumEntity[]>(
         'foundry-mcp-bridge.listCreaturesByCriteria',
         params
-      )) as CompendiumEntity | CompendiumEntity[];
+      );
 
       this.logger.debug('Creature criteria search completed', {
         gameSystem,
@@ -820,9 +806,9 @@ export class CompendiumTools {
     this.logger.info('Listing compendium packs', { type });
 
     try {
-      const packs = (await this.foundryClient.query(
+      const packs = await this.foundryClient.query<CompendiumPack[]>(
         'foundry-mcp-bridge.getAvailablePacks'
-      )) as CompendiumPack[];
+      );
 
       // Filter by type if specified
       const filteredPacks = type ? packs.filter(pack => pack.type === type) : packs;

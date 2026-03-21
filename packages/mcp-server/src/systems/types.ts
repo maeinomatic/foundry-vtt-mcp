@@ -6,6 +6,13 @@
  */
 
 import { z } from 'zod';
+import type {
+  FoundryActorDocumentBase,
+  FoundryCompendiumDocumentBase,
+  FoundryCompendiumPackSummary,
+  FoundryItemDocumentBase,
+  UnknownRecord,
+} from '../foundry-types.js';
 
 /**
  * Supported game system identifiers
@@ -45,7 +52,7 @@ export interface SystemCreatureIndex {
 
   // System-specific metadata
   system: SystemId;
-  systemData: unknown; // System-specific fields (D&D 5e CR, PF2e level, etc.)
+  systemData: UnknownRecord; // System-specific fields (D&D 5e CR, PF2e level, etc.)
 }
 
 /**
@@ -74,8 +81,8 @@ export interface SystemAdapter {
    * @returns Creature data or null if not a valid creature
    */
   extractCreatureData(
-    doc: unknown,
-    pack: unknown
+    doc: FoundryActorDocumentBase,
+    pack: FoundryCompendiumPackSummary
   ): { creature: SystemCreatureIndex; errors: number } | null;
 
   /**
@@ -101,13 +108,13 @@ export interface SystemAdapter {
    * Format creature data for list display
    * Used in search results and creature lists
    */
-  formatCreatureForList(creature: SystemCreatureIndex): unknown;
+  formatCreatureForList(creature: SystemCreatureIndex): Record<string, unknown>;
 
   /**
    * Format creature data for detailed display
    * Used when showing full creature information
    */
-  formatCreatureForDetails(creature: SystemCreatureIndex): unknown;
+  formatCreatureForDetails(creature: SystemCreatureIndex): Record<string, unknown>;
 
   /**
    * Generate human-readable description of filters
@@ -123,7 +130,7 @@ export interface SystemAdapter {
    * `mode=details` is used by get-compendium-item full actor responses.
    */
   formatRawCompendiumCreature(
-    entity: unknown,
+    entity: FoundryCompendiumDocumentBase,
     mode: 'search' | 'criteria' | 'compact' | 'details'
   ): Record<string, unknown>;
 
@@ -141,25 +148,25 @@ export interface SystemAdapter {
    * Used by get-character and list-characters tools
    * @param actorData - Raw Foundry actor data
    */
-  extractCharacterStats(actorData: unknown): unknown;
+  extractCharacterStats(actorData: FoundryActorDocumentBase): Record<string, unknown>;
 
   /**
    * Format basic character info for compact character responses.
    * Used by get-character for system-specific basic info shaping.
    */
-  formatCharacterBasicInfo(actorData: unknown): Record<string, unknown>;
+  formatCharacterBasicInfo(actorData: FoundryActorDocumentBase): Record<string, unknown>;
 
   /**
    * Format a character item for compact list responses.
    * Used by get-character item listings to keep core tools system-agnostic.
    */
-  formatCharacterItemForList(item: unknown): Record<string, unknown>;
+  formatCharacterItemForList(item: FoundryItemDocumentBase): Record<string, unknown>;
 
   /**
    * Format a character item for detailed entity responses.
    * Used by get-character-entity to keep system-specific item semantics out of core tools.
    */
-  formatCharacterItemForDetails(item: unknown): Record<string, unknown>;
+  formatCharacterItemForDetails(item: FoundryItemDocumentBase): Record<string, unknown>;
 
   /**
    * Format a character action for compact list responses.

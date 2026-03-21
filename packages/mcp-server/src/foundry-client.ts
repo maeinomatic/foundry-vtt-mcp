@@ -1,6 +1,7 @@
 import { Logger } from './logger.js';
 import { Config } from './config.js';
 import { FoundryConnector } from './foundry-connector.js';
+import type { UnknownRecord } from './foundry-types.js';
 
 export interface FoundryQuery {
   method: string;
@@ -13,11 +14,11 @@ export interface FoundryResponse {
   error?: string;
 }
 
-const asRecord = (value: unknown): Record<string, unknown> | undefined => {
+const asRecord = (value: unknown): UnknownRecord | undefined => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     return undefined;
   }
-  return value as Record<string, unknown>;
+  return value as UnknownRecord;
 };
 
 const toStringValue = (value: unknown): string | undefined =>
@@ -64,7 +65,7 @@ export class FoundryClient {
     return this.connector.getConnectionType();
   }
 
-  async query(method: string, data?: unknown): Promise<unknown> {
+  async query<T = unknown>(method: string, data?: unknown): Promise<T> {
     if (!this.connector.isConnected()) {
       throw new Error(
         'Foundry VTT module not connected. Please ensure Foundry is running and the MCP Bridge module is enabled.'
@@ -76,7 +77,7 @@ export class FoundryClient {
     try {
       const result = await this.connector.query(method, data);
       this.logger.debug('Query successful', { method, hasResult: !!result });
-      return result;
+      return result as T;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown query error';
       this.logger.error('Query failed', { method, error: errorMessage });

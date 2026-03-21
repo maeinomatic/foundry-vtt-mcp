@@ -1,5 +1,13 @@
 import { z } from 'zod';
 import { FoundryClient } from '../foundry-client.js';
+import type {
+  FoundryActiveEffectDocumentBase,
+  FoundryActorDocumentBase,
+  FoundryActorSystemBase,
+  FoundryItemDocumentBase,
+  FoundryItemSystemBase,
+  UnknownRecord,
+} from '../foundry-types.js';
 import { Logger } from '../logger.js';
 import { SystemRegistry } from '../systems/system-registry.js';
 import type { SystemAdapter } from '../systems/types.js';
@@ -11,43 +19,13 @@ export interface CharacterToolsOptions {
   systemRegistry?: SystemRegistry;
 }
 
-interface ActorListEntry {
-  id: string;
-  name: string;
-  type: string;
-  img?: string;
-}
+type ActorListEntry = Pick<FoundryActorDocumentBase, 'id' | 'name' | 'type' | 'img'>;
 
-type UnknownRecord = Record<string, unknown>;
+type CharacterSystem = FoundryActorSystemBase;
 
-interface CharacterSystemCore {
-  attributes?: {
-    hp?: { value?: number; max?: number; temp?: number };
-    ac?: { value?: number };
-  };
-  details?: {
-    level?: { value?: number };
-  };
-  level?: number;
-}
+type CharacterItemSystem = FoundryItemSystemBase;
 
-type CharacterSystem = CharacterSystemCore & UnknownRecord;
-
-interface CharacterItemSystemCore {
-  description?: { value?: string } | string;
-  quantity?: number;
-  equipped?: boolean;
-}
-
-type CharacterItemSystem = CharacterItemSystemCore & UnknownRecord;
-
-interface CharacterItem {
-  id: string;
-  name: string;
-  type: string;
-  img?: string;
-  system?: CharacterItemSystem;
-}
+interface CharacterItem extends FoundryItemDocumentBase<CharacterItemSystem> {}
 
 interface CharacterAction {
   name: string;
@@ -60,11 +38,7 @@ interface CharacterAction {
   actions?: number;
 }
 
-interface CharacterEffect {
-  id: string;
-  name: string;
-  disabled?: boolean;
-  icon?: string;
+interface CharacterEffect extends FoundryActiveEffectDocumentBase {
   description?: string;
   traits?: string[];
   duration?: { type?: string; remaining?: number };
@@ -94,12 +68,8 @@ interface SpellcastingEntry {
   spells?: SpellData[];
 }
 
-interface CharacterInfoResponseCore {
-  id: string;
-  name: string;
-  type: string;
-  img?: string;
-  system?: CharacterSystem;
+interface CharacterInfoResponseCore
+  extends FoundryActorDocumentBase<CharacterSystem, CharacterItemSystem> {
   items?: CharacterItem[];
   effects?: CharacterEffect[];
   actions?: CharacterAction[];
@@ -312,9 +282,12 @@ export class CharacterTools {
     this.logger.info('Getting character information', { identifier });
 
     try {
-      const characterData = (await this.foundryClient.query('foundry-mcp-bridge.getCharacterInfo', {
-        characterName: identifier,
-      })) as CharacterInfoResponse;
+      const characterData = await this.foundryClient.query<CharacterInfoResponse>(
+        'foundry-mcp-bridge.getCharacterInfo',
+        {
+          characterName: identifier,
+        }
+      );
 
       this.logger.debug('Successfully retrieved character data', {
         characterId: characterData.id,
@@ -341,9 +314,12 @@ export class CharacterTools {
     this.logger.info('Getting character entity', { characterIdentifier, entityIdentifier });
 
     try {
-      const characterData = (await this.foundryClient.query('foundry-mcp-bridge.getCharacterInfo', {
-        characterName: characterIdentifier,
-      })) as CharacterInfoResponse;
+      const characterData = await this.foundryClient.query<CharacterInfoResponse>(
+        'foundry-mcp-bridge.getCharacterInfo',
+        {
+          characterName: characterIdentifier,
+        }
+      );
       const normalizedEntityIdentifier = entityIdentifier.toLowerCase();
 
       const itemEntity = characterData.items?.find(
@@ -408,9 +384,9 @@ export class CharacterTools {
     this.logger.info('Listing characters', { type });
 
     try {
-      const actors = (await this.foundryClient.query('foundry-mcp-bridge.listActors', {
+      const actors = await this.foundryClient.query<ActorListEntry[]>('foundry-mcp-bridge.listActors', {
         type,
-      })) as ActorListEntry[];
+      });
 
       this.logger.debug('Successfully retrieved character list', { count: actors.length });
 
@@ -456,7 +432,7 @@ export class CharacterTools {
     });
 
     try {
-      const result = (await this.foundryClient.query('foundry-mcp-bridge.useItem', {
+      const result = await this.foundryClient.query<UseItemResponse>('foundry-mcp-bridge.useItem', {
         actorIdentifier,
         itemIdentifier,
         targets,
@@ -465,7 +441,7 @@ export class CharacterTools {
           spellLevel,
           skipDialog: skipDialog ?? true, // Default to skipping dialogs for MCP automation
         },
-      })) as UseItemResponse;
+      });
 
       this.logger.debug('Successfully used item', {
         actorName: result.actorName,
@@ -502,13 +478,16 @@ export class CharacterTools {
     });
 
     try {
-      const result = (await this.foundryClient.query('foundry-mcp-bridge.searchCharacterItems', {
-        characterIdentifier,
-        query,
-        type,
-        category,
-        limit: limit ?? 20,
-      })) as SearchCharacterItemsResponse;
+      const result = await this.foundryClient.query<SearchCharacterItemsResponse>(
+        'foundry-mcp-bridge.searchCharacterItems',
+        {
+          characterIdentifier,
+          query,
+          type,
+          category,
+          limit: limit ?? 20,
+        }
+      );
 
       this.logger.debug('Successfully searched character items', {
         characterName: result.characterName,
@@ -690,11 +669,18 @@ export class CharacterTools {
         };
       }
       if (system.attributes.ac) {
-        basicInfo.armorClass = system.attributes.ac.value;
+        basicInfo.armorClass =
+          typeof system.attributes.ac === 'number'
+            ? system.attributes.ac
+            : system.attributes.ac.value;
       }
     }
 
-    if (system.details?.level?.value) {
+    if (
+      system.details?.level &&
+      typeof system.details.level === 'object' &&
+      system.details.level.value !== undefined
+    ) {
       basicInfo.level = system.details.level.value;
     } else if (system.level !== undefined) {
       basicInfo.level = system.level;

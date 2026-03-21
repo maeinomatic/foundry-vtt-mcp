@@ -7,6 +7,7 @@
 
 import { FoundryClient } from '../foundry-client.js';
 import { Logger } from '../logger.js';
+import type { FoundryWorldInfo, UnknownRecord } from '../foundry-types.js';
 /**
  * The raw Foundry system id for the active world.
  *
@@ -22,11 +23,11 @@ export type GameSystem = string;
 let cachedSystem: GameSystem | null = null;
 let cachedSystemId: string | null = null;
 
-const asRecord = (value: unknown): Record<string, unknown> | undefined => {
+const asRecord = (value: unknown): UnknownRecord | undefined => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     return undefined;
   }
-  return value as Record<string, unknown>;
+  return value as UnknownRecord;
 };
 
 /**
@@ -42,7 +43,7 @@ export async function detectGameSystem(
   }
 
   try {
-    const worldInfo: unknown = await foundryClient.query('foundry-mcp-bridge.getWorldInfo');
+    const worldInfo = await foundryClient.query<FoundryWorldInfo>('foundry-mcp-bridge.getWorldInfo');
     const worldInfoRecord = asRecord(worldInfo);
     const systemValue = worldInfoRecord?.system;
     const systemId = typeof systemValue === 'string' ? systemValue.toLowerCase() : '';

@@ -131,4 +131,6 @@ Then update:
 - Add breaking-change execution details to:
   docs/foundry-v14-compatibility-plan.md
 - Add stable source links or official policy clarifications to this file.
+- Add Foundry typing rollout work and remaining tasks to:
+  docs/process/FOUNDRY_TYPING_PLAN.md
 - Do not store canonical policy details only in ad-hoc PR comments.
