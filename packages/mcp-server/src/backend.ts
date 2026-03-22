@@ -1663,6 +1663,16 @@ async function startBackend(): Promise<void> {
 
                     break;
 
+                  case 'reassign-dnd5e-spell-source-class':
+                    result = await characterTools.handleReassignDnD5eSpellSourceClass(args);
+
+                    break;
+
+                  case 'validate-dnd5e-spellbook':
+                    result = await characterTools.handleValidateDnD5eSpellbook(args);
+
+                    break;
+
                   case 'preview-character-progression':
                     result = await characterTools.handlePreviewCharacterProgression(args);
 

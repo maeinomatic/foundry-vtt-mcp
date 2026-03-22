@@ -281,6 +281,30 @@ describe('CharacterTools', () => {
         return Promise.resolve({ system: 'dnd5e' });
       }
 
+      if (method === 'foundry-mcp-bridge.getCharacterInfo') {
+        expect(data).toEqual({ identifier: 'Laeral' });
+        return Promise.resolve({
+          id: 'actor-3',
+          name: 'Laeral',
+          type: 'character',
+          system: {},
+          items: [
+            {
+              id: 'class-wizard',
+              name: 'Wizard',
+              type: 'class',
+              system: {
+                spellcasting: {
+                  progression: 'full',
+                  type: 'prepared',
+                },
+              },
+            },
+          ],
+          effects: [],
+        });
+      }
+
       if (method === 'foundry-mcp-bridge.createActorEmbeddedItem') {
         expect(data).toEqual({
           actorIdentifier: 'Laeral',
@@ -291,7 +315,7 @@ describe('CharacterTools', () => {
               preparation: {
                 prepared: false,
               },
-              sourceClass: 'Wizard',
+              sourceClass: 'class-wizard',
             },
           },
         });
@@ -328,7 +352,10 @@ describe('CharacterTools', () => {
         name: 'Fireball',
       },
       prepared: false,
-      sourceClass: 'Wizard',
+      sourceClass: {
+        id: 'class-wizard',
+        name: 'Wizard',
+      },
     });
   });
 
@@ -485,6 +512,224 @@ describe('CharacterTools', () => {
       override: 3,
       updatedFields: ['system.spells.spell3.value', 'system.spells.spell3.override'],
     });
+  });
+
+  it('reassigns a DnD5e spell to a concrete spellcasting class item', async () => {
+    const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
+      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+        return Promise.resolve({ system: 'dnd5e' });
+      }
+
+      if (method === 'foundry-mcp-bridge.getCharacterInfo') {
+        expect(data).toEqual({ identifier: 'Laeral' });
+        return Promise.resolve({
+          id: 'actor-3',
+          name: 'Laeral',
+          type: 'character',
+          system: {},
+          items: [
+            {
+              id: 'class-wizard',
+              name: 'Wizard',
+              type: 'class',
+              system: {
+                spellcasting: {
+                  progression: 'full',
+                  type: 'prepared',
+                },
+              },
+            },
+            {
+              id: 'class-cleric',
+              name: 'Cleric',
+              type: 'class',
+              system: {
+                spellcasting: {
+                  progression: 'full',
+                  type: 'prepared',
+                },
+              },
+            },
+          ],
+          effects: [],
+        });
+      }
+
+      if (method === 'foundry-mcp-bridge.updateActorEmbeddedItem') {
+        expect(data).toEqual({
+          actorIdentifier: 'Laeral',
+          itemIdentifier: 'Fireball',
+          itemType: 'spell',
+          updates: {
+            'system.sourceClass': 'class-wizard',
+          },
+        });
+        return Promise.resolve({
+          success: true,
+          actorId: 'actor-3',
+          actorName: 'Laeral',
+          itemId: 'spell-1',
+          itemName: 'Fireball',
+          itemType: 'spell',
+          appliedUpdates: {
+            'system.sourceClass': 'class-wizard',
+          },
+          updatedFields: ['system.sourceClass'],
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected query: ${method}`));
+    });
+
+    const tools = new CharacterTools({
+      foundryClient: { query } as unknown as FoundryClient,
+      logger: createLoggerStub(),
+    });
+
+    const result = (await tools.handleReassignDnD5eSpellSourceClass({
+      actorIdentifier: 'Laeral',
+      spellIdentifier: 'Fireball',
+      classIdentifier: 'Wizard',
+    })) as Record<string, unknown>;
+
+    expect(result).toMatchObject({
+      success: true,
+      spell: {
+        id: 'spell-1',
+        name: 'Fireball',
+      },
+      sourceClass: {
+        id: 'class-wizard',
+        name: 'Wizard',
+      },
+      updatedFields: ['system.sourceClass'],
+    });
+  });
+
+  it('validates a DnD5e spellbook for multiclass source-class issues', async () => {
+    const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
+      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+        return Promise.resolve({ system: 'dnd5e' });
+      }
+
+      if (method === 'foundry-mcp-bridge.getCharacterInfo') {
+        expect(data).toEqual({ identifier: 'Laeral' });
+        return Promise.resolve({
+          id: 'actor-3',
+          name: 'Laeral',
+          type: 'character',
+          system: {},
+          items: [
+            {
+              id: 'class-wizard',
+              name: 'Wizard',
+              type: 'class',
+              system: {
+                spellcasting: {
+                  progression: 'full',
+                  type: 'prepared',
+                },
+              },
+            },
+            {
+              id: 'class-cleric',
+              name: 'Cleric',
+              type: 'class',
+              system: {
+                spellcasting: {
+                  progression: 'full',
+                  type: 'prepared',
+                },
+              },
+            },
+            {
+              id: 'spell-fireball',
+              name: 'Fireball',
+              type: 'spell',
+              system: {
+                sourceClass: 'class-wizard',
+                preparation: {
+                  prepared: true,
+                },
+              },
+            },
+            {
+              id: 'spell-shield',
+              name: 'Shield',
+              type: 'spell',
+              system: {
+                preparation: {
+                  prepared: true,
+                },
+              },
+            },
+            {
+              id: 'spell-bless',
+              name: 'Bless',
+              type: 'spell',
+              system: {
+                sourceClass: 'lost-class',
+                preparation: {
+                  prepared: false,
+                },
+              },
+            },
+          ],
+          effects: [],
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected query: ${method}`));
+    });
+
+    const tools = new CharacterTools({
+      foundryClient: { query } as unknown as FoundryClient,
+      logger: createLoggerStub(),
+    });
+
+    const result = (await tools.handleValidateDnD5eSpellbook({
+      actorIdentifier: 'Laeral',
+    })) as Record<string, unknown>;
+
+    expect(result).toMatchObject({
+      success: true,
+      summary: {
+        spellCount: 3,
+        preparedSpellCount: 2,
+        spellcastingClassCount: 2,
+        multiclassSpellcaster: true,
+        issueCount: 2,
+      },
+    });
+    expect(result.classes).toEqual([
+      {
+        id: 'class-wizard',
+        name: 'Wizard',
+        spellcastingType: 'prepared',
+        spellcastingProgression: 'full',
+      },
+      {
+        id: 'class-cleric',
+        name: 'Cleric',
+        spellcastingType: 'prepared',
+        spellcastingProgression: 'full',
+      },
+    ]);
+    expect(result.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: 'missing-source-class',
+          spellId: 'spell-shield',
+          spellName: 'Shield',
+        }),
+        expect.objectContaining({
+          code: 'unknown-source-class',
+          spellId: 'spell-bless',
+          spellName: 'Bless',
+          sourceClass: 'lost-class',
+        }),
+      ])
+    );
   });
 
   it('exposes DnD5e progression preview as a dedicated tool response', async () => {

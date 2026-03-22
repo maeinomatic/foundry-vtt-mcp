@@ -267,6 +267,82 @@ export class CharacterTools {
     return onFallback();
   }
 
+  private toRecord(value: unknown): UnknownRecord | undefined {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return undefined;
+    }
+
+    return value as UnknownRecord;
+  }
+
+  private getDnD5eSpellSourceValue(item: CharacterItem): string | undefined {
+    const system = this.toRecord(item.system);
+    const spellSource = system?.spellSource;
+    if (typeof spellSource === 'string' && spellSource.trim().length > 0) {
+      return spellSource;
+    }
+
+    const sourceClass = system?.sourceClass;
+    if (typeof sourceClass === 'string' && sourceClass.trim().length > 0) {
+      return sourceClass;
+    }
+
+    return undefined;
+  }
+
+  private getDnD5eSpellPreparedValue(item: CharacterItem): boolean {
+    const system = this.toRecord(item.system);
+    const preparation = this.toRecord(system?.preparation);
+    return typeof preparation?.prepared === 'boolean' ? preparation.prepared : true;
+  }
+
+  private getDnD5eSpellcastingClassSummaries(characterData: CharacterInfoResponse): Array<{
+    id: string;
+    name: string;
+    spellcastingType?: string;
+    spellcastingProgression?: string;
+  }> {
+    return (characterData.items ?? [])
+      .filter(item => item.type === 'class')
+      .map(item => {
+        const system = this.toRecord(item.system);
+        const spellcasting = this.toRecord(system?.spellcasting);
+        return {
+          id: item.id,
+          name: item.name,
+          ...(typeof spellcasting?.type === 'string'
+            ? { spellcastingType: spellcasting.type }
+            : {}),
+          ...(typeof spellcasting?.progression === 'string'
+            ? { spellcastingProgression: spellcasting.progression }
+            : {}),
+        };
+      })
+      .filter(
+        item =>
+          item.spellcastingProgression !== undefined && item.spellcastingProgression !== 'none'
+      );
+  }
+
+  private resolveDnD5eSpellcastingClass(
+    characterData: CharacterInfoResponse,
+    classIdentifier: string
+  ): { id: string; name: string; spellcastingType?: string; spellcastingProgression?: string } {
+    const classes = this.getDnD5eSpellcastingClassSummaries(characterData);
+    const target = classIdentifier.toLowerCase();
+    const match = classes.find(
+      item => item.id.toLowerCase() === target || item.name.toLowerCase() === target
+    );
+
+    if (!match) {
+      throw new Error(
+        `No spellcasting class matching "${classIdentifier}" was found on this actor.`
+      );
+    }
+
+    return match;
+  }
+
   /**
    * Tool: get-character
    * Retrieve detailed information about a specific character
@@ -599,6 +675,48 @@ export class CharacterTools {
             },
           },
           required: ['actorIdentifier', 'slot'],
+        },
+      },
+      {
+        name: 'reassign-dnd5e-spell-source-class',
+        description:
+          'DnD5e only: reassign a spell on a character to a specific spellcasting class for multiclass spellbook organization.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            actorIdentifier: {
+              type: 'string',
+              description: 'Character name or ID',
+            },
+            spellIdentifier: {
+              type: 'string',
+              description: 'Owned spell name or ID',
+            },
+            classIdentifier: {
+              type: 'string',
+              description: 'Owned class item name or ID to assign as the spell source',
+            },
+            reason: {
+              type: 'string',
+              description: 'Optional audit reason for the change',
+            },
+          },
+          required: ['actorIdentifier', 'spellIdentifier', 'classIdentifier'],
+        },
+      },
+      {
+        name: 'validate-dnd5e-spellbook',
+        description:
+          'DnD5e only: inspect a character spellbook for multiclass source-class mismatches and other organizational issues.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            actorIdentifier: {
+              type: 'string',
+              description: 'Character name or ID',
+            },
+          },
+          required: ['actorIdentifier'],
         },
       },
       {
@@ -1376,6 +1494,20 @@ export class CharacterTools {
       );
     }
 
+    const characterData =
+      parsed.sourceClass !== undefined
+        ? await this.foundryClient.query<CharacterInfoResponse>(
+            'foundry-mcp-bridge.getCharacterInfo',
+            {
+              identifier: parsed.actorIdentifier,
+            }
+          )
+        : null;
+    const resolvedSourceClass =
+      parsed.sourceClass !== undefined && characterData
+        ? this.resolveDnD5eSpellcastingClass(characterData, parsed.sourceClass)
+        : null;
+
     const request: FoundryCreateActorEmbeddedItemRequest = {
       actorIdentifier: parsed.actorIdentifier,
       sourceUuid: parsed.spellUuid,
@@ -1385,7 +1517,7 @@ export class CharacterTools {
           preparation: {
             prepared: parsed.prepared,
           },
-          ...(parsed.sourceClass !== undefined ? { sourceClass: parsed.sourceClass } : {}),
+          ...(resolvedSourceClass ? { sourceClass: resolvedSourceClass.id } : {}),
         },
       },
       ...(parsed.reason !== undefined ? { reason: parsed.reason } : {}),
@@ -1407,7 +1539,14 @@ export class CharacterTools {
         name: result.itemName,
       },
       prepared: parsed.prepared,
-      ...(parsed.sourceClass !== undefined ? { sourceClass: parsed.sourceClass } : {}),
+      ...(resolvedSourceClass
+        ? {
+            sourceClass: {
+              id: resolvedSourceClass.id,
+              name: resolvedSourceClass.name,
+            },
+          }
+        : {}),
     };
   }
 
@@ -1561,6 +1700,170 @@ export class CharacterTools {
       ...(parsed.value !== undefined ? { value: parsed.value } : {}),
       ...(parsed.override !== undefined ? { override: parsed.override } : {}),
       updatedFields: result.updatedFields,
+    };
+  }
+
+  async handleReassignDnD5eSpellSourceClass(args: unknown): Promise<UnknownRecord> {
+    const schema = z.object({
+      actorIdentifier: z.string().min(1, 'Actor identifier cannot be empty'),
+      spellIdentifier: z.string().min(1, 'Spell identifier cannot be empty'),
+      classIdentifier: z.string().min(1, 'Class identifier cannot be empty'),
+      reason: z.string().min(1).optional(),
+    });
+
+    const parsed = schema.parse(args);
+    const gameSystem = await this.getGameSystem();
+    if (gameSystem !== 'dnd5e') {
+      throw new Error(
+        'UNSUPPORTED_CAPABILITY: reassign-dnd5e-spell-source-class is only available when the active system is dnd5e.'
+      );
+    }
+
+    const characterData = await this.foundryClient.query<CharacterInfoResponse>(
+      'foundry-mcp-bridge.getCharacterInfo',
+      {
+        identifier: parsed.actorIdentifier,
+      }
+    );
+    const resolvedClass = this.resolveDnD5eSpellcastingClass(characterData, parsed.classIdentifier);
+
+    const request: FoundryUpdateActorEmbeddedItemRequest = {
+      actorIdentifier: parsed.actorIdentifier,
+      itemIdentifier: parsed.spellIdentifier,
+      itemType: 'spell',
+      updates: {
+        'system.sourceClass': resolvedClass.id,
+      },
+      ...(parsed.reason !== undefined ? { reason: parsed.reason } : {}),
+    };
+
+    const result = await this.foundryClient.query<FoundryUpdateActorEmbeddedItemResponse>(
+      'foundry-mcp-bridge.updateActorEmbeddedItem',
+      request
+    );
+
+    return {
+      success: true,
+      actor: {
+        id: result.actorId,
+        name: result.actorName,
+      },
+      spell: {
+        id: result.itemId,
+        name: result.itemName,
+      },
+      sourceClass: {
+        id: resolvedClass.id,
+        name: resolvedClass.name,
+      },
+      updatedFields: result.updatedFields,
+    };
+  }
+
+  async handleValidateDnD5eSpellbook(args: unknown): Promise<UnknownRecord> {
+    const schema = z.object({
+      actorIdentifier: z.string().min(1, 'Actor identifier cannot be empty'),
+    });
+
+    const parsed = schema.parse(args);
+    const gameSystem = await this.getGameSystem();
+    if (gameSystem !== 'dnd5e') {
+      throw new Error(
+        'UNSUPPORTED_CAPABILITY: validate-dnd5e-spellbook is only available when the active system is dnd5e.'
+      );
+    }
+
+    const characterData = await this.foundryClient.query<CharacterInfoResponse>(
+      'foundry-mcp-bridge.getCharacterInfo',
+      {
+        identifier: parsed.actorIdentifier,
+      }
+    );
+
+    const classes = this.getDnD5eSpellcastingClassSummaries(characterData);
+    const classById = new Map(classes.map(item => [item.id, item]));
+    const classByName = new Map(classes.map(item => [item.name.toLowerCase(), item]));
+    const spellItems = (characterData.items ?? []).filter(item => item.type === 'spell');
+
+    const issues: Array<Record<string, unknown>> = [];
+    const sourceClassCounts: Record<string, number> = {};
+    let preparedSpellCount = 0;
+
+    for (const spell of spellItems) {
+      const sourceClass = this.getDnD5eSpellSourceValue(spell);
+      const prepared = this.getDnD5eSpellPreparedValue(spell);
+      if (prepared) {
+        preparedSpellCount += 1;
+      }
+
+      if (sourceClass) {
+        sourceClassCounts[sourceClass] = (sourceClassCounts[sourceClass] ?? 0) + 1;
+      }
+
+      if (!sourceClass) {
+        if (classes.length > 1) {
+          issues.push({
+            severity: 'warning',
+            code: 'missing-source-class',
+            spellId: spell.id,
+            spellName: spell.name,
+            message: 'This spell has no assigned source class on a multiclass spellcaster.',
+          });
+        }
+        continue;
+      }
+
+      const matchedClass = classById.get(sourceClass) ?? classByName.get(sourceClass.toLowerCase());
+      if (!matchedClass) {
+        issues.push({
+          severity: 'warning',
+          code: 'unknown-source-class',
+          spellId: spell.id,
+          spellName: spell.name,
+          sourceClass,
+          message: `This spell references an unknown source class "${sourceClass}".`,
+        });
+      }
+    }
+
+    if (spellItems.length > 0 && classes.length === 0) {
+      issues.push({
+        severity: 'warning',
+        code: 'no-spellcasting-class',
+        message: 'This actor has spells but no spellcasting class items were detected.',
+      });
+    }
+
+    const recommendations: string[] = [];
+    if (classes.length > 1 && issues.some(issue => issue.code === 'missing-source-class')) {
+      recommendations.push(
+        'Use reassign-dnd5e-spell-source-class to assign each multiclass spell to the correct spellcasting class.'
+      );
+    }
+    if (issues.some(issue => issue.code === 'unknown-source-class')) {
+      recommendations.push(
+        'Review spells with unknown source classes and reassign them to a current spellcasting class item.'
+      );
+    }
+
+    return {
+      success: true,
+      character: {
+        id: characterData.id,
+        name: characterData.name,
+        type: characterData.type,
+      },
+      summary: {
+        spellCount: spellItems.length,
+        preparedSpellCount,
+        spellcastingClassCount: classes.length,
+        multiclassSpellcaster: classes.length > 1,
+        issueCount: issues.length,
+        sourceClassCounts,
+      },
+      classes,
+      issues,
+      ...(recommendations.length > 0 ? { recommendations } : {}),
     };
   }
 

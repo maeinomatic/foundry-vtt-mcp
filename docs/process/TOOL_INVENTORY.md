@@ -48,6 +48,8 @@ For broader character management, the current toolset now also supports:
 - DnD5e spell prepare / unprepare
 - DnD5e spell removal
 - DnD5e spell slot and override updates
+- DnD5e spell source-class reassignment for multiclass organization
+- DnD5e spellbook validation for missing or unknown source-class assignments
 
 ## DnD5e Missing Endpoint Tracker
 
@@ -101,13 +103,13 @@ This section tracks capabilities needed for practical DnD5e character management
 
 ### Priority B: DnD5e Spell Management
 
-1. `dnd5e-spellbook-organization`
+1. `dnd5e-spellbook-bulk-organization`
 
-- Purpose: Higher-level spellbook operations such as assigning source class or reorganizing spell ownership context after multiclass changes.
+- Purpose: Bulk spellbook operations such as assigning source class across many spells at once after multiclass changes.
 
 2. `dnd5e-spell-validation`
 
-- Purpose: Validate learned/prepared spell state against class progression and available spellcasting context.
+- Purpose: Deeper validation of learned/prepared spell state against class progression and available spellcasting context beyond the current source-class organization checks.
 
 ### Priority B: Item Authoring and Homebrew
 
@@ -150,10 +152,10 @@ DnD5e adds system-specific needs on top:
 
 - advancement and class-level orchestration
 - multiclass progression logic
-- spell slot management and higher-level spellbook validation
+- higher-level multiclass spellbook automation beyond the current single-spell reassignment and validation tools
 
-The repo now has the generic actor item CRUD layer plus first-pass DnD5e spell learning/preparation/removal.
-The next most valuable gaps are `update-actor`, multiclass add-class flow, proficiencies, and spell slot management.
+The repo now has the generic actor item CRUD layer plus practical DnD5e spell learning, preparation, removal, slot updates, source-class reassignment, and spellbook validation.
+The next most valuable gaps are `update-actor`, multiclass add-class flow, proficiencies, and bulk/high-level spellbook automation.
 
 ## Overview
 
