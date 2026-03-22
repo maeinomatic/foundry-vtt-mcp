@@ -38,6 +38,71 @@ type GameSettingsLike = {
   };
 };
 
+type StrictFormApplicationOptions = {
+  baseApplication: string | null;
+  width: number | null;
+  height: number | 'auto' | null;
+  top: number | null;
+  left: number | null;
+  scale: number | null;
+  popOut: boolean;
+  minimizable: boolean;
+  resizable: boolean;
+  id: string;
+  classes: string[];
+  title: string;
+  template: string | null;
+  scrollY: string[];
+  tabs: Omit<TabsConfiguration, 'callback'>[];
+  dragDrop: Omit<DragDropConfiguration, 'permissions' | 'callbacks'>[];
+  filters: Omit<SearchFilterConfiguration, 'callback'>[];
+  closeOnSubmit: boolean;
+  submitOnChange: boolean;
+  submitOnClose: boolean;
+  editable: boolean;
+  sheetConfig: boolean;
+};
+
+function createFormApplicationOptions(config: {
+  title: string;
+  template: string;
+}): StrictFormApplicationOptions {
+  return {
+    baseApplication: null,
+    width: 500,
+    height: 'auto',
+    top: null,
+    left: null,
+    scale: null,
+    popOut: true,
+    minimizable: true,
+    resizable: false,
+    id: '',
+    classes: [],
+    title: config.title,
+    template: config.template,
+    scrollY: [],
+    tabs: [],
+    dragDrop: [],
+    filters: [],
+    closeOnSubmit: false,
+    submitOnChange: false,
+    submitOnClose: false,
+    editable: true,
+    sheetConfig: false,
+  };
+}
+
+function activateParentFormListeners(form: FormApplication, html: JQuery<HTMLElement>): void {
+  const parentPrototype = Object.getPrototypeOf(Object.getPrototypeOf(form)) as {
+    activateListeners?: (this: FormApplication, listenersHtml: JQuery<HTMLElement>) => void;
+  };
+
+  if (typeof parentPrototype.activateListeners === 'function') {
+    parentPrototype.activateListeners.call(form, html);
+  }
+}
+
 export class ModuleSettings {
   private moduleId: string = MODULE_ID;
 
@@ -81,20 +146,12 @@ export class ModuleSettings {
       hint: 'The Enhanced Creature Index pre-computes creature statistics for instant filtering by Challenge Rating, creature type, and abilities. This enables AI models to quickly find creatures matching specific criteria without loading every compendium entry.',
       icon: 'fas fa-search-plus',
       type: class extends FormApplication {
-        /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return */
-        static get defaultOptions(): FormApplicationOptions {
-          const baseOptions = super.defaultOptions as FormApplicationOptions;
-          return {
-            ...baseOptions,
+        static get defaultOptions(): StrictFormApplicationOptions {
+          return createFormApplicationOptions({
             title: 'Enhanced Creature Index Settings',
             template: `modules/${MODULE_ID}/templates/enhanced-index-menu.html`,
-            width: 500,
-            height: 'auto',
-            resizable: false,
-            closeOnSubmit: false,
-          };
+          });
         }
-        /* eslint-enable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return */
 
         getData(
           _options?: Partial<FormApplicationOptions>
@@ -107,9 +164,7 @@ export class ModuleSettings {
         }
 
         activateListeners(html: JQuery<HTMLElement>): void {
-          // FormApplication base types are loosely typed in Foundry declarations.
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
-          super.activateListeners(html);
+          activateParentFormListeners(this, html);
           html.find('.rebuild-index-btn').on('click', () => {
             const bridge = (window as unknown as { foundryMCPBridge?: FoundryMCPBridgeLike })
               .foundryMCPBridge;
@@ -143,20 +198,12 @@ export class ModuleSettings {
       hint: 'Configure your map generation service for AI-powered battlemap creation. Currently supports ComfyUI installations with plans for future cloud services.',
       icon: 'fas fa-cogs',
       type: class extends FormApplication {
-        /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return */
-        static get defaultOptions(): FormApplicationOptions {
-          const baseOptions = super.defaultOptions as FormApplicationOptions;
-          return {
-            ...baseOptions,
+        static get defaultOptions(): StrictFormApplicationOptions {
+          return createFormApplicationOptions({
             title: 'Map Generation Service Settings',
             template: `modules/${MODULE_ID}/templates/comfyui-settings.html`,
-            width: 500,
-            height: 'auto',
-            resizable: false,
-            closeOnSubmit: false,
-          };
+          });
         }
-        /* eslint-enable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return */
 
         getData(
           _options?: Partial<FormApplicationOptions>
@@ -180,9 +227,7 @@ export class ModuleSettings {
         }
 
         activateListeners(html: JQuery<HTMLElement>): void {
-          // FormApplication base types are loosely typed in Foundry declarations.
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
-          super.activateListeners(html);
+          activateParentFormListeners(this, html);
 
           // Service control buttons
           html.find('#check-status-btn').on('click', () => {

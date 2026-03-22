@@ -1746,6 +1746,70 @@ export class FoundryDataAccess {
     };
   }
 
+  private getActorSystem<TSystem extends UnknownRecord>(actor: Actor): TSystem | undefined {
+    const actorSystem = (actor as { system?: unknown }).system;
+    return actorSystem && typeof actorSystem === 'object' ? (actorSystem as TSystem) : undefined;
+  }
+
+  private getActorItems(actor: Actor): unknown[] {
+    const actorItems = (actor as { items?: unknown }).items;
+
+    if (Array.isArray(actorItems)) {
+      return actorItems;
+    }
+
+    if (actorItems && typeof actorItems === 'object') {
+      const collectionItems = actorItems as { contents?: unknown[] };
+      if (Array.isArray(collectionItems.contents)) {
+        return collectionItems.contents;
+      }
+
+      if (Symbol.iterator in (actorItems as Record<PropertyKey, unknown>)) {
+        return Array.from(actorItems as Iterable<unknown>);
+      }
+    }
+
+    return [];
+  }
+
+  private isModuleSearchItemDocument(item: unknown): item is ModuleSearchItemDocument {
+    if (!item || typeof item !== 'object') {
+      return false;
+    }
+
+    const itemRecord = item as Record<string, unknown>;
+    return (
+      typeof itemRecord.id === 'string' &&
+      typeof itemRecord.name === 'string' &&
+      typeof itemRecord.type === 'string'
+    );
+  }
+
+  private isPF2eSpellcastingEntryDocument(
+    item: unknown
+  ): item is ModulePF2eSpellcastingEntryDocument {
+    return this.isModuleSearchItemDocument(item) && item.type === 'spellcastingEntry';
+  }
+
+  private isDnD5eClassItemDocument(item: unknown): item is ModuleDnD5eClassItemDocument {
+    return this.isModuleSearchItemDocument(item) && item.type === 'class';
+  }
+
+  private getActorItemById(actor: Actor, itemId: string): ModuleSearchItemDocument | undefined {
+    const actorItems = (actor as { items?: unknown }).items;
+    if (actorItems && typeof actorItems === 'object') {
+      const itemCollection = actorItems as { get?: (id: string) => unknown };
+      if (typeof itemCollection.get === 'function') {
+        const item = itemCollection.get(itemId);
+        return this.isModuleSearchItemDocument(item) ? item : undefined;
+      }
+    }
+
+    return this.getActorItems(actor).find(item => {
+      return this.isModuleSearchItemDocument(item) && item.id === itemId;
+    }) as ModuleSearchItemDocument | undefined;
+  }
+
   private createCreatedActorInfo(data: {
     id: string;
     name: string;
@@ -2389,24 +2453,26 @@ export class FoundryDataAccess {
   /**
    * Extract spellcasting data from an actor (supports PF2e and D&D 5e)
    */
-  /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-return */
   private extractSpellcastingData(actor: Actor): SpellcastingEntry[] {
     const entries: SpellcastingEntry[] = [];
     const actorSystem =
-      (actor as { system?: ModuleDnD5eActorSystemData & ModuleDSA5ActorSystemData }).system ?? {};
+      this.getActorSystem<ModuleDnD5eActorSystemData & ModuleDSA5ActorSystemData>(actor) ?? {};
     const systemId = game.system.id;
+    const actorItems = this.getActorItems(actor);
 
-    const spellItems = actor.items.filter(
-      (item): item is ModuleSearchItemDocument => item.type === 'spell'
-    );
+    const spellItems = actorItems.filter((item): item is ModuleSearchItemDocument => {
+      return this.isModuleSearchItemDocument(item) && item.type === 'spell';
+    });
 
     if (systemId === 'pf2e') {
-      const spellcastingEntries = actor.items.filter(
-        (item): item is ModulePF2eSpellcastingEntryDocument => item.type === 'spellcastingEntry'
+      const spellcastingEntries = actorItems.filter(
+        (item): item is ModulePF2eSpellcastingEntryDocument => {
+          return this.isPF2eSpellcastingEntryDocument(item);
+        }
       );
 
       for (const entry of spellcastingEntries) {
-        const entryData = entry.system;
+        const entryData: ModulePF2eSpellcastingSystemData | undefined = entry.system;
         const entrySpells: SpellInfo[] = [];
         const entryId = entry.id;
 
@@ -2450,12 +2516,12 @@ export class FoundryDataAccess {
                 continue;
               }
 
-              const spellItem = actor.items.get(spellRef.id);
+              const spellItem = this.getActorItemById(actor, spellRef.id);
               if (!spellItem) {
                 continue;
               }
 
-              const typedSpellItem = spellItem as ModuleSearchItemDocument;
+              const typedSpellItem = spellItem;
               const spellSystem = typedSpellItem.system as ModulePF2eItemSystemData | undefined;
               const targeting = this.extractPF2eSpellTargeting(spellSystem);
               const actionCost = this.formatPF2eActionCost(spellSystem?.time?.value);
@@ -2535,9 +2601,9 @@ export class FoundryDataAccess {
         );
       }
     } else if (systemId === 'dnd5e') {
-      const classes = actor.items.filter(
-        (item): item is ModuleDnD5eClassItemDocument => item.type === 'class'
-      );
+      const classes = actorItems.filter((item): item is ModuleDnD5eClassItemDocument => {
+        return this.isDnD5eClassItemDocument(item);
+      });
       const spellSlots: Record<string, { value?: number; max?: number }> = actorSystem.spells ?? {};
       const spellsByClass: Record<string, SpellInfo[]> = {};
 
@@ -2566,7 +2632,7 @@ export class FoundryDataAccess {
       }
 
       for (const classItem of classes) {
-        const classSystem = classItem.system;
+        const classSystem: ModuleDnD5eClassItemSystemData | undefined = classItem.system;
         if (
           classSystem?.spellcasting?.progression &&
           classSystem.spellcasting.progression !== 'none'
@@ -2619,15 +2685,15 @@ export class FoundryDataAccess {
         );
       }
     } else if (systemId === 'dsa5') {
-      const astralSpells = actor.items.filter(
-        (item): item is ModuleSearchItemDocument => item.type === 'spell'
-      );
-      const karmaSpells = actor.items.filter((item): item is ModuleSearchItemDocument =>
-        ['liturgy', 'ceremony'].includes(item.type)
-      );
-      const rituals = actor.items.filter(
-        (item): item is ModuleSearchItemDocument => item.type === 'ritual'
-      );
+      const astralSpells = actorItems.filter((item): item is ModuleSearchItemDocument => {
+        return this.isModuleSearchItemDocument(item) && item.type === 'spell';
+      });
+      const karmaSpells = actorItems.filter((item): item is ModuleSearchItemDocument => {
+        return this.isModuleSearchItemDocument(item) && ['liturgy', 'ceremony'].includes(item.type);
+      });
+      const rituals = actorItems.filter((item): item is ModuleSearchItemDocument => {
+        return this.isModuleSearchItemDocument(item) && item.type === 'ritual';
+      });
       const asp =
         ('status' in actorSystem ? actorSystem.status?.astralenergy : undefined) ??
         actorSystem.astralenergy;
@@ -2739,7 +2805,6 @@ export class FoundryDataAccess {
 
     return entries;
   }
-  /* eslint-enable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-return */
 
   /**
    * Format PF2e action cost to human-readable string
