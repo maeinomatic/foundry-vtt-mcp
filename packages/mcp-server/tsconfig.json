@@ -15,7 +15,11 @@
     "resolveJsonModule": true,
     "outDir": "./dist",
     "rootDir": "./src",
-    "composite": true
+    "composite": true,
+    "paths": {
+      "@foundry-mcp/shared": ["../../shared/src/index.ts"],
+      "@foundry-mcp/shared/*": ["../../shared/src/*"]
+    }
   },
   "include": ["src/**/*"],
   "references": [

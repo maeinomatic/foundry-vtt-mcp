@@ -11,6 +11,7 @@
     "lint:fix": "eslint src --ext .ts --fix"
   },
   "dependencies": {
+    "@foundry-mcp/shared": "*",
     "socket.io-client": "^4.7.0"
   },
   "devDependencies": {
