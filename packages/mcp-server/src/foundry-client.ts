@@ -6,6 +6,8 @@ import type {
   FoundryApplyCharacterAdvancementChoiceResponse,
   FoundryActorSummary,
   FoundryActorCreationResult,
+  FoundryBatchUpdateActorEmbeddedItemsRequest,
+  FoundryBatchUpdateActorEmbeddedItemsResponse,
   FoundryBridgeMessage,
   FoundryBridgeQueryRequest,
   FoundryBridgeResponseEnvelope,
@@ -109,6 +111,10 @@ export class FoundryClient {
     method: 'foundry-mcp-bridge.createActorEmbeddedItem',
     data: FoundryCreateActorEmbeddedItemRequest
   ): Promise<FoundryCreateActorEmbeddedItemResponse>;
+  async query(
+    method: 'foundry-mcp-bridge.batchUpdateActorEmbeddedItems',
+    data: FoundryBatchUpdateActorEmbeddedItemsRequest
+  ): Promise<FoundryBatchUpdateActorEmbeddedItemsResponse>;
   async query(
     method: 'foundry-mcp-bridge.previewCharacterProgression',
     data: FoundryPreviewCharacterProgressionRequest

@@ -1673,6 +1673,16 @@ async function startBackend(): Promise<void> {
 
                     break;
 
+                  case 'bulk-reassign-dnd5e-spell-source-class':
+                    result = await characterTools.handleBulkReassignDnD5eSpellSourceClass(args);
+
+                    break;
+
+                  case 'set-dnd5e-prepared-spells':
+                    result = await characterTools.handleSetDnD5ePreparedSpells(args);
+
+                    break;
+
                   case 'preview-character-progression':
                     result = await characterTools.handlePreviewCharacterProgression(args);
 

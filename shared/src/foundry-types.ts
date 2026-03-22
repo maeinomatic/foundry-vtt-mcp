@@ -429,6 +429,29 @@ export interface FoundryUpdateActorEmbeddedItemResponse extends UnknownRecord {
   updatedFields: string[];
 }
 
+export interface FoundryBatchUpdateActorEmbeddedItemsRequest {
+  actorIdentifier: string;
+  updates: Array<{
+    itemIdentifier: string;
+    itemType?: string;
+    updates: UnknownRecord;
+  }>;
+  reason?: string;
+}
+
+export interface FoundryBatchUpdateActorEmbeddedItemsResponse extends UnknownRecord {
+  success: boolean;
+  actorId: string;
+  actorName: string;
+  updatedItems: Array<{
+    itemId: string;
+    itemName: string;
+    itemType: string;
+    appliedUpdates: UnknownRecord;
+    updatedFields: string[];
+  }>;
+}
+
 export interface FoundryCreateActorEmbeddedItemData extends UnknownRecord {
   name: string;
   type: string;

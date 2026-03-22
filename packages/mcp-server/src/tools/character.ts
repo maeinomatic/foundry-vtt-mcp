@@ -5,6 +5,8 @@ import type {
   FoundryApplyCharacterAdvancementChoiceResponse,
   FoundryActorDocumentBase,
   FoundryActorSystemBase,
+  FoundryBatchUpdateActorEmbeddedItemsRequest,
+  FoundryBatchUpdateActorEmbeddedItemsResponse,
   FoundryCharacterEffect,
   FoundryCharacterInfo,
   FoundryCreateActorEmbeddedItemRequest,
@@ -341,6 +343,39 @@ export class CharacterTools {
     }
 
     return match;
+  }
+
+  private findDnD5eSpellItem(
+    characterData: CharacterInfoResponse,
+    spellIdentifier: string
+  ): CharacterItem {
+    const target = spellIdentifier.toLowerCase();
+    const match = (characterData.items ?? []).find(
+      item =>
+        item.type === 'spell' &&
+        (item.id.toLowerCase() === target || item.name.toLowerCase() === target)
+    );
+
+    if (!match) {
+      throw new Error(`No owned spell matching "${spellIdentifier}" was found on this actor.`);
+    }
+
+    return match;
+  }
+
+  private spellMatchesSourceClass(
+    spell: CharacterItem,
+    sourceClass: { id: string; name: string }
+  ): boolean {
+    const currentSource = this.getDnD5eSpellSourceValue(spell);
+    if (!currentSource) {
+      return false;
+    }
+
+    const normalized = currentSource.toLowerCase();
+    return (
+      normalized === sourceClass.id.toLowerCase() || normalized === sourceClass.name.toLowerCase()
+    );
   }
 
   /**
@@ -717,6 +752,78 @@ export class CharacterTools {
             },
           },
           required: ['actorIdentifier'],
+        },
+      },
+      {
+        name: 'bulk-reassign-dnd5e-spell-source-class',
+        description:
+          'DnD5e only: reassign multiple spells to concrete spellcasting classes in one audited batch operation.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            actorIdentifier: {
+              type: 'string',
+              description: 'Character name or ID',
+            },
+            assignments: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  spellIdentifier: {
+                    type: 'string',
+                    description: 'Owned spell name or ID',
+                  },
+                  classIdentifier: {
+                    type: 'string',
+                    description: 'Owned class item name or ID to assign as the spell source',
+                  },
+                },
+                required: ['spellIdentifier', 'classIdentifier'],
+              },
+              description: 'Spell-to-class assignments to apply as one batch update',
+            },
+            reason: {
+              type: 'string',
+              description: 'Optional audit reason for the change',
+            },
+          },
+          required: ['actorIdentifier', 'assignments'],
+        },
+      },
+      {
+        name: 'set-dnd5e-prepared-spells',
+        description:
+          'DnD5e only: bulk manage prepared spells. Use replace mode to set the prepared spell list after a rest, or prepare/unprepare modes for patch-style updates.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            actorIdentifier: {
+              type: 'string',
+              description: 'Character name or ID',
+            },
+            mode: {
+              type: 'string',
+              enum: ['replace', 'prepare', 'unprepare'],
+              description:
+                'replace resets prepared flags within the target spellbook scope, while prepare/unprepare only patch the listed spells',
+            },
+            spellIdentifiers: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Owned spell names or IDs affected by the operation',
+            },
+            sourceClass: {
+              type: 'string',
+              description:
+                'Optional source class name or ID to scope the spellbook, strongly recommended for multiclass prepared casters',
+            },
+            reason: {
+              type: 'string',
+              description: 'Optional audit reason for the change',
+            },
+          },
+          required: ['actorIdentifier', 'mode', 'spellIdentifiers'],
         },
       },
       {
@@ -1864,6 +1971,214 @@ export class CharacterTools {
       classes,
       issues,
       ...(recommendations.length > 0 ? { recommendations } : {}),
+    };
+  }
+
+  async handleBulkReassignDnD5eSpellSourceClass(args: unknown): Promise<UnknownRecord> {
+    const schema = z.object({
+      actorIdentifier: z.string().min(1, 'Actor identifier cannot be empty'),
+      assignments: z
+        .array(
+          z.object({
+            spellIdentifier: z.string().min(1, 'Spell identifier cannot be empty'),
+            classIdentifier: z.string().min(1, 'Class identifier cannot be empty'),
+          })
+        )
+        .min(1, 'assignments must contain at least one spell'),
+      reason: z.string().min(1).optional(),
+    });
+
+    const parsed = schema.parse(args);
+    const gameSystem = await this.getGameSystem();
+    if (gameSystem !== 'dnd5e') {
+      throw new Error(
+        'UNSUPPORTED_CAPABILITY: bulk-reassign-dnd5e-spell-source-class is only available when the active system is dnd5e.'
+      );
+    }
+
+    const characterData = await this.foundryClient.query<CharacterInfoResponse>(
+      'foundry-mcp-bridge.getCharacterInfo',
+      {
+        identifier: parsed.actorIdentifier,
+      }
+    );
+
+    const batchRequest: FoundryBatchUpdateActorEmbeddedItemsRequest = {
+      actorIdentifier: parsed.actorIdentifier,
+      updates: parsed.assignments.map(assignment => {
+        const spell = this.findDnD5eSpellItem(characterData, assignment.spellIdentifier);
+        const sourceClass = this.resolveDnD5eSpellcastingClass(
+          characterData,
+          assignment.classIdentifier
+        );
+
+        return {
+          itemIdentifier: spell.id,
+          itemType: 'spell',
+          updates: {
+            'system.sourceClass': sourceClass.id,
+          },
+        };
+      }),
+      ...(parsed.reason !== undefined ? { reason: parsed.reason } : {}),
+    };
+
+    const result = await this.foundryClient.query<FoundryBatchUpdateActorEmbeddedItemsResponse>(
+      'foundry-mcp-bridge.batchUpdateActorEmbeddedItems',
+      batchRequest
+    );
+
+    return {
+      success: true,
+      actor: {
+        id: result.actorId,
+        name: result.actorName,
+      },
+      updatedCount: result.updatedItems.length,
+      updatedSpells: result.updatedItems.map(item => ({
+        id: item.itemId,
+        name: item.itemName,
+        type: item.itemType,
+      })),
+    };
+  }
+
+  async handleSetDnD5ePreparedSpells(args: unknown): Promise<UnknownRecord> {
+    const schema = z
+      .object({
+        actorIdentifier: z.string().min(1, 'Actor identifier cannot be empty'),
+        mode: z.enum(['replace', 'prepare', 'unprepare']),
+        spellIdentifiers: z.array(z.string().min(1)).default([]),
+        sourceClass: z.string().min(1).optional(),
+        reason: z.string().min(1).optional(),
+      })
+      .superRefine((value, ctx) => {
+        if (value.mode !== 'replace' && value.spellIdentifiers.length === 0) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message:
+              'spellIdentifiers must contain at least one spell for prepare or unprepare mode',
+            path: ['spellIdentifiers'],
+          });
+        }
+      });
+
+    const parsed = schema.parse(args);
+    const gameSystem = await this.getGameSystem();
+    if (gameSystem !== 'dnd5e') {
+      throw new Error(
+        'UNSUPPORTED_CAPABILITY: set-dnd5e-prepared-spells is only available when the active system is dnd5e.'
+      );
+    }
+
+    const characterData = await this.foundryClient.query<CharacterInfoResponse>(
+      'foundry-mcp-bridge.getCharacterInfo',
+      {
+        identifier: parsed.actorIdentifier,
+      }
+    );
+
+    const classes = this.getDnD5eSpellcastingClassSummaries(characterData);
+    const resolvedSourceClass =
+      parsed.sourceClass !== undefined
+        ? this.resolveDnD5eSpellcastingClass(characterData, parsed.sourceClass)
+        : undefined;
+
+    if (parsed.mode === 'replace' && resolvedSourceClass === undefined && classes.length > 1) {
+      throw new Error(
+        'A sourceClass is required for replace mode on multiclass DnD5e spellcasters.'
+      );
+    }
+
+    const selectedSpellMap = new Map(
+      parsed.spellIdentifiers.map(spellIdentifier => {
+        const spell = this.findDnD5eSpellItem(characterData, spellIdentifier);
+        return [spell.id, spell];
+      })
+    );
+
+    if (resolvedSourceClass) {
+      for (const spell of selectedSpellMap.values()) {
+        if (!this.spellMatchesSourceClass(spell, resolvedSourceClass)) {
+          throw new Error(
+            `Spell "${spell.name}" is not currently assigned to source class "${resolvedSourceClass.name}". Reassign it first or choose a matching source class.`
+          );
+        }
+      }
+    }
+
+    const targetSpellScope = (characterData.items ?? []).filter(item => {
+      if (item.type !== 'spell') {
+        return false;
+      }
+
+      if (!resolvedSourceClass) {
+        return true;
+      }
+
+      return this.spellMatchesSourceClass(item, resolvedSourceClass);
+    });
+
+    if (parsed.mode === 'replace' && resolvedSourceClass && targetSpellScope.length === 0) {
+      throw new Error(
+        `No owned spells are currently assigned to source class "${resolvedSourceClass.name}".`
+      );
+    }
+
+    const updates =
+      parsed.mode === 'replace'
+        ? targetSpellScope.map(spell => ({
+            itemIdentifier: spell.id,
+            itemType: 'spell',
+            updates: {
+              'system.preparation.prepared': selectedSpellMap.has(spell.id),
+            },
+          }))
+        : Array.from(selectedSpellMap.values()).map(spell => ({
+            itemIdentifier: spell.id,
+            itemType: 'spell',
+            updates: {
+              'system.preparation.prepared': parsed.mode === 'prepare',
+            },
+          }));
+
+    const batchRequest: FoundryBatchUpdateActorEmbeddedItemsRequest = {
+      actorIdentifier: parsed.actorIdentifier,
+      updates,
+      ...(parsed.reason !== undefined ? { reason: parsed.reason } : {}),
+    };
+
+    const result = await this.foundryClient.query<FoundryBatchUpdateActorEmbeddedItemsResponse>(
+      'foundry-mcp-bridge.batchUpdateActorEmbeddedItems',
+      batchRequest
+    );
+
+    return {
+      success: true,
+      actor: {
+        id: result.actorId,
+        name: result.actorName,
+      },
+      mode: parsed.mode,
+      updatedCount: result.updatedItems.length,
+      ...(resolvedSourceClass
+        ? {
+            sourceClass: {
+              id: resolvedSourceClass.id,
+              name: resolvedSourceClass.name,
+            },
+          }
+        : {}),
+      updatedSpells: result.updatedItems.map(item => ({
+        id: item.itemId,
+        name: item.itemName,
+        prepared:
+          item.appliedUpdates['system.preparation.prepared'] === true
+            ? true
+            : item.appliedUpdates['system.preparation.prepared'] === false
+              ? false
+              : undefined,
+      })),
     };
   }
 

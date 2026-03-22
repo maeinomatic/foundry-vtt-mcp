@@ -1,4 +1,6 @@
 import type {
+  FoundryBatchUpdateActorEmbeddedItemsRequest,
+  FoundryBatchUpdateActorEmbeddedItemsResponse,
   FoundryUpdateActorEmbeddedItemRequest,
   FoundryUpdateActorEmbeddedItemResponse,
   FoundryUpdateActorRequest,
@@ -150,6 +152,89 @@ export class FoundryActorUpdateService {
     } catch (error) {
       this.context.auditLog(
         'updateActorEmbeddedItem',
+        request,
+        'failure',
+        error instanceof Error ? error.message : 'Unknown error'
+      );
+      throw error;
+    }
+  }
+
+  async batchUpdateActorEmbeddedItems(
+    request: FoundryBatchUpdateActorEmbeddedItemsRequest
+  ): Promise<FoundryBatchUpdateActorEmbeddedItemsResponse> {
+    this.context.validateFoundryState();
+
+    const actor = this.context.findActorByIdentifier(request.actorIdentifier);
+    if (!actor) {
+      throw new Error(`Actor not found: ${request.actorIdentifier}`);
+    }
+
+    if (typeof actor.updateEmbeddedDocuments !== 'function') {
+      throw new Error(
+        `Actor "${actor.name ?? request.actorIdentifier}" does not support updateEmbeddedDocuments()`
+      );
+    }
+
+    const actorItems = this.getActorItems(actor);
+    const updates = request.updates.map(
+      (entry: FoundryBatchUpdateActorEmbeddedItemsRequest['updates'][number]) => {
+        const targetIdentifier = entry.itemIdentifier.toLowerCase();
+        const item = actorItems.find(candidate => {
+          if (!candidate.id || !candidate.name) {
+            return false;
+          }
+
+          if (entry.itemType && candidate.type !== entry.itemType) {
+            return false;
+          }
+
+          return (
+            candidate.id.toLowerCase() === targetIdentifier ||
+            candidate.name.toLowerCase() === targetIdentifier
+          );
+        });
+
+        if (!item?.id) {
+          throw new Error(
+            `Item "${entry.itemIdentifier}" was not found on actor "${actor.name ?? request.actorIdentifier}".`
+          );
+        }
+
+        return {
+          item,
+          entry,
+        };
+      }
+    );
+
+    try {
+      await actor.updateEmbeddedDocuments(
+        'Item',
+        updates.map((update: (typeof updates)[number]) => ({
+          _id: update.item.id,
+          ...update.entry.updates,
+        }))
+      );
+
+      const response: FoundryBatchUpdateActorEmbeddedItemsResponse = {
+        success: true,
+        actorId: actor.id ?? '',
+        actorName: actor.name ?? request.actorIdentifier,
+        updatedItems: updates.map((update: (typeof updates)[number]) => ({
+          itemId: update.item.id ?? '',
+          itemName: update.item.name ?? update.entry.itemIdentifier,
+          itemType: update.item.type ?? update.entry.itemType ?? 'unknown',
+          appliedUpdates: update.entry.updates,
+          updatedFields: Object.keys(update.entry.updates),
+        })),
+      };
+
+      this.context.auditLog('batchUpdateActorEmbeddedItems', request, 'success');
+      return response;
+    } catch (error) {
+      this.context.auditLog(
+        'batchUpdateActorEmbeddedItems',
         request,
         'failure',
         error instanceof Error ? error.message : 'Unknown error'

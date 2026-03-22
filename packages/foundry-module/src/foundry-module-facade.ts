@@ -29,6 +29,8 @@ import {
 import type {
   FoundryApplyCharacterAdvancementChoiceRequest,
   FoundryApplyCharacterAdvancementChoiceResponse,
+  FoundryBatchUpdateActorEmbeddedItemsRequest,
+  FoundryBatchUpdateActorEmbeddedItemsResponse,
   FoundryCompendiumSearchFilters,
   FoundryCompendiumSearchResult,
   FoundryCharacterInfo,
@@ -562,6 +564,12 @@ export class FoundryModuleFacade {
     request: FoundryUpdateActorEmbeddedItemRequest
   ): Promise<FoundryUpdateActorEmbeddedItemResponse> {
     return this.actorUpdateService.updateActorEmbeddedItem(request);
+  }
+
+  async batchUpdateActorEmbeddedItems(
+    request: FoundryBatchUpdateActorEmbeddedItemsRequest
+  ): Promise<FoundryBatchUpdateActorEmbeddedItemsResponse> {
+    return this.actorUpdateService.batchUpdateActorEmbeddedItems(request);
   }
 
   async createActorEmbeddedItem(

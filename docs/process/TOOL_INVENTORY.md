@@ -49,6 +49,8 @@ For broader character management, the current toolset now also supports:
 - DnD5e spell removal
 - DnD5e spell slot and override updates
 - DnD5e spell source-class reassignment for multiclass organization
+- DnD5e bulk spell source-class reassignment
+- DnD5e bulk prepared-spell management for rest-based spell changes
 - DnD5e spellbook validation for missing or unknown source-class assignments
 
 ## DnD5e Missing Endpoint Tracker
@@ -103,11 +105,7 @@ This section tracks capabilities needed for practical DnD5e character management
 
 ### Priority B: DnD5e Spell Management
 
-1. `dnd5e-spellbook-bulk-organization`
-
-- Purpose: Bulk spellbook operations such as assigning source class across many spells at once after multiclass changes.
-
-2. `dnd5e-spell-validation`
+1. `dnd5e-spell-validation`
 
 - Purpose: Deeper validation of learned/prepared spell state against class progression and available spellcasting context beyond the current source-class organization checks.
 
@@ -154,8 +152,8 @@ DnD5e adds system-specific needs on top:
 - multiclass progression logic
 - higher-level multiclass spellbook automation beyond the current single-spell reassignment and validation tools
 
-The repo now has the generic actor item CRUD layer plus practical DnD5e spell learning, preparation, removal, slot updates, source-class reassignment, and spellbook validation.
-The next most valuable gaps are `update-actor`, multiclass add-class flow, proficiencies, and bulk/high-level spellbook automation.
+The repo now has the generic actor item CRUD layer plus practical DnD5e spell learning, single and bulk preparation changes, removal, slot updates, single and bulk source-class reassignment, and spellbook validation.
+The next most valuable gaps are `update-actor`, multiclass add-class flow, proficiencies, and deeper spellbook validation/automation tied to class progression limits.
 
 ## Overview
 

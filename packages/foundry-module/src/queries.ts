@@ -6,6 +6,8 @@ import type {
   FoundryApplyCharacterAdvancementChoiceRequest,
   FoundryApplyCharacterAdvancementChoiceResponse,
   FoundryActorCreationResult,
+  FoundryBatchUpdateActorEmbeddedItemsRequest,
+  FoundryBatchUpdateActorEmbeddedItemsResponse,
   FoundryCharacterInfo,
   FoundryCreateActorFromCompendiumRequest,
   FoundryCreateActorEmbeddedItemRequest,
@@ -186,6 +188,8 @@ export class QueryHandlers {
     CONFIG.queries[`${modulePrefix}.updateActor`] = this.handleUpdateActor.bind(this);
     CONFIG.queries[`${modulePrefix}.createActorEmbeddedItem`] =
       this.handleCreateActorEmbeddedItem.bind(this);
+    CONFIG.queries[`${modulePrefix}.batchUpdateActorEmbeddedItems`] =
+      this.handleBatchUpdateActorEmbeddedItems.bind(this);
     CONFIG.queries[`${modulePrefix}.updateActorEmbeddedItem`] =
       this.handleUpdateActorEmbeddedItem.bind(this);
     CONFIG.queries[`${modulePrefix}.deleteActorEmbeddedItem`] =
@@ -781,6 +785,53 @@ export class QueryHandlers {
     } catch (error) {
       throw new Error(
         `Failed to create actor embedded item: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+    }
+  }
+
+  /**
+   * Handle batch embedded item update request
+   */
+  private async handleBatchUpdateActorEmbeddedItems(
+    data: FoundryBatchUpdateActorEmbeddedItemsRequest
+  ): Promise<FoundryBatchUpdateActorEmbeddedItemsResponse | QueryErrorResult> {
+    try {
+      const gmCheck = this.validateGMAccess();
+      if (!gmCheck.allowed) {
+        return { error: 'Access denied', success: false };
+      }
+
+      this.dataAccess.validateFoundryState();
+
+      const permissionCheck = await this.dataAccess.validateWritePermissions('updateActor');
+      if (!permissionCheck.allowed) {
+        return {
+          error: permissionCheck.reason ?? 'Actor update not allowed',
+          success: false,
+        };
+      }
+
+      if (!data.actorIdentifier) {
+        throw new Error('actorIdentifier is required');
+      }
+
+      if (!Array.isArray(data.updates) || data.updates.length === 0) {
+        throw new Error('updates must be a non-empty array');
+      }
+
+      for (const entry of data.updates) {
+        if (!entry.itemIdentifier) {
+          throw new Error('Each batch update entry requires itemIdentifier');
+        }
+        if (!entry.updates || typeof entry.updates !== 'object' || Array.isArray(entry.updates)) {
+          throw new Error('Each batch update entry requires an updates object');
+        }
+      }
+
+      return await this.dataAccess.batchUpdateActorEmbeddedItems(data);
+    } catch (error) {
+      throw new Error(
+        `Failed to batch update actor embedded items: ${error instanceof Error ? error.message : 'Unknown error'}`
       );
     }
   }

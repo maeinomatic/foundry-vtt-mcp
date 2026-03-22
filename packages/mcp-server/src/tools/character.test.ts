@@ -606,6 +606,317 @@ describe('CharacterTools', () => {
     });
   });
 
+  it('bulk reassigns DnD5e spells to concrete spellcasting classes through the batch item-update bridge', async () => {
+    const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
+      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+        return Promise.resolve({ system: 'dnd5e' });
+      }
+
+      if (method === 'foundry-mcp-bridge.getCharacterInfo') {
+        expect(data).toEqual({ identifier: 'Laeral' });
+        return Promise.resolve({
+          id: 'actor-3',
+          name: 'Laeral',
+          type: 'character',
+          system: {},
+          items: [
+            {
+              id: 'class-wizard',
+              name: 'Wizard',
+              type: 'class',
+              system: {
+                spellcasting: {
+                  progression: 'full',
+                  type: 'prepared',
+                },
+              },
+            },
+            {
+              id: 'class-cleric',
+              name: 'Cleric',
+              type: 'class',
+              system: {
+                spellcasting: {
+                  progression: 'full',
+                  type: 'prepared',
+                },
+              },
+            },
+            {
+              id: 'spell-fireball',
+              name: 'Fireball',
+              type: 'spell',
+              system: {},
+            },
+            {
+              id: 'spell-bless',
+              name: 'Bless',
+              type: 'spell',
+              system: {},
+            },
+          ],
+          effects: [],
+        });
+      }
+
+      if (method === 'foundry-mcp-bridge.batchUpdateActorEmbeddedItems') {
+        expect(data).toEqual({
+          actorIdentifier: 'Laeral',
+          updates: [
+            {
+              itemIdentifier: 'spell-fireball',
+              itemType: 'spell',
+              updates: {
+                'system.sourceClass': 'class-wizard',
+              },
+            },
+            {
+              itemIdentifier: 'spell-bless',
+              itemType: 'spell',
+              updates: {
+                'system.sourceClass': 'class-cleric',
+              },
+            },
+          ],
+        });
+        return Promise.resolve({
+          success: true,
+          actorId: 'actor-3',
+          actorName: 'Laeral',
+          updatedItems: [
+            {
+              itemId: 'spell-fireball',
+              itemName: 'Fireball',
+              itemType: 'spell',
+              appliedUpdates: {
+                'system.sourceClass': 'class-wizard',
+              },
+              updatedFields: ['system.sourceClass'],
+            },
+            {
+              itemId: 'spell-bless',
+              itemName: 'Bless',
+              itemType: 'spell',
+              appliedUpdates: {
+                'system.sourceClass': 'class-cleric',
+              },
+              updatedFields: ['system.sourceClass'],
+            },
+          ],
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected query: ${method}`));
+    });
+
+    const tools = new CharacterTools({
+      foundryClient: { query } as unknown as FoundryClient,
+      logger: createLoggerStub(),
+    });
+
+    const result = (await tools.handleBulkReassignDnD5eSpellSourceClass({
+      actorIdentifier: 'Laeral',
+      assignments: [
+        {
+          spellIdentifier: 'Fireball',
+          classIdentifier: 'Wizard',
+        },
+        {
+          spellIdentifier: 'Bless',
+          classIdentifier: 'Cleric',
+        },
+      ],
+    })) as Record<string, unknown>;
+
+    expect(result).toMatchObject({
+      success: true,
+      updatedCount: 2,
+      updatedSpells: [
+        {
+          id: 'spell-fireball',
+          name: 'Fireball',
+          type: 'spell',
+        },
+        {
+          id: 'spell-bless',
+          name: 'Bless',
+          type: 'spell',
+        },
+      ],
+    });
+  });
+
+  it('sets DnD5e prepared spells in replace mode through the batch item-update bridge', async () => {
+    const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
+      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+        return Promise.resolve({ system: 'dnd5e' });
+      }
+
+      if (method === 'foundry-mcp-bridge.getCharacterInfo') {
+        expect(data).toEqual({ identifier: 'Laeral' });
+        return Promise.resolve({
+          id: 'actor-3',
+          name: 'Laeral',
+          type: 'character',
+          system: {},
+          items: [
+            {
+              id: 'class-wizard',
+              name: 'Wizard',
+              type: 'class',
+              system: {
+                spellcasting: {
+                  progression: 'full',
+                  type: 'prepared',
+                },
+              },
+            },
+            {
+              id: 'spell-fireball',
+              name: 'Fireball',
+              type: 'spell',
+              system: {
+                sourceClass: 'class-wizard',
+                preparation: {
+                  prepared: true,
+                },
+              },
+            },
+            {
+              id: 'spell-shield',
+              name: 'Shield',
+              type: 'spell',
+              system: {
+                sourceClass: 'class-wizard',
+                preparation: {
+                  prepared: true,
+                },
+              },
+            },
+            {
+              id: 'spell-detect-magic',
+              name: 'Detect Magic',
+              type: 'spell',
+              system: {
+                sourceClass: 'class-wizard',
+                preparation: {
+                  prepared: false,
+                },
+              },
+            },
+          ],
+          effects: [],
+        });
+      }
+
+      if (method === 'foundry-mcp-bridge.batchUpdateActorEmbeddedItems') {
+        expect(data).toEqual({
+          actorIdentifier: 'Laeral',
+          updates: [
+            {
+              itemIdentifier: 'spell-fireball',
+              itemType: 'spell',
+              updates: {
+                'system.preparation.prepared': true,
+              },
+            },
+            {
+              itemIdentifier: 'spell-shield',
+              itemType: 'spell',
+              updates: {
+                'system.preparation.prepared': false,
+              },
+            },
+            {
+              itemIdentifier: 'spell-detect-magic',
+              itemType: 'spell',
+              updates: {
+                'system.preparation.prepared': true,
+              },
+            },
+          ],
+        });
+        return Promise.resolve({
+          success: true,
+          actorId: 'actor-3',
+          actorName: 'Laeral',
+          updatedItems: [
+            {
+              itemId: 'spell-fireball',
+              itemName: 'Fireball',
+              itemType: 'spell',
+              appliedUpdates: {
+                'system.preparation.prepared': true,
+              },
+              updatedFields: ['system.preparation.prepared'],
+            },
+            {
+              itemId: 'spell-shield',
+              itemName: 'Shield',
+              itemType: 'spell',
+              appliedUpdates: {
+                'system.preparation.prepared': false,
+              },
+              updatedFields: ['system.preparation.prepared'],
+            },
+            {
+              itemId: 'spell-detect-magic',
+              itemName: 'Detect Magic',
+              itemType: 'spell',
+              appliedUpdates: {
+                'system.preparation.prepared': true,
+              },
+              updatedFields: ['system.preparation.prepared'],
+            },
+          ],
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected query: ${method}`));
+    });
+
+    const tools = new CharacterTools({
+      foundryClient: { query } as unknown as FoundryClient,
+      logger: createLoggerStub(),
+    });
+
+    const result = (await tools.handleSetDnD5ePreparedSpells({
+      actorIdentifier: 'Laeral',
+      mode: 'replace',
+      sourceClass: 'Wizard',
+      spellIdentifiers: ['Fireball', 'Detect Magic'],
+    })) as Record<string, unknown>;
+
+    expect(result).toMatchObject({
+      success: true,
+      mode: 'replace',
+      updatedCount: 3,
+      sourceClass: {
+        id: 'class-wizard',
+        name: 'Wizard',
+      },
+    });
+    expect((result as { updatedSpells?: unknown }).updatedSpells).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'spell-fireball',
+          name: 'Fireball',
+          prepared: true,
+        }),
+        expect.objectContaining({
+          id: 'spell-shield',
+          name: 'Shield',
+          prepared: false,
+        }),
+        expect.objectContaining({
+          id: 'spell-detect-magic',
+          name: 'Detect Magic',
+          prepared: true,
+        }),
+      ])
+    );
+  });
+
   it('validates a DnD5e spellbook for multiclass source-class issues', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
       if (method === 'foundry-mcp-bridge.getWorldInfo') {
