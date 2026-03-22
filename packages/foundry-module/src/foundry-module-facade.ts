@@ -13,6 +13,7 @@ import { FoundryActorItemService } from './services/actor-item-service.js';
 import { FoundryActorProgressionService } from './services/actor-progression-service.js';
 import { FoundryActorUpdateService } from './services/actor-update-service.js';
 import { FoundryCharacterService } from './services/character-service.js';
+import { FoundryCompanionService } from './services/companion-service.js';
 import { FoundryCompendiumService } from './services/compendium-service.js';
 import { FoundryJournalService } from './services/journal-service.js';
 import {
@@ -36,19 +37,27 @@ import type {
   FoundryCharacterInfo,
   FoundryCreateActorEmbeddedItemRequest,
   FoundryCreateActorEmbeddedItemResponse,
+  FoundryCreateCharacterCompanionRequest,
+  FoundryCreateCharacterCompanionResponse,
   FoundryCreatureSearchCriteria,
   FoundryCreatureSearchResponse,
   FoundryDeleteActorEmbeddedItemRequest,
   FoundryDeleteActorEmbeddedItemResponse,
+  FoundryDismissCharacterCompanionRequest,
+  FoundryDismissCharacterCompanionResponse,
   FoundryCompendiumEntryFull,
   FoundryGetCharacterAdvancementOptionsRequest,
   FoundryGetCharacterAdvancementOptionsResponse,
   FoundryJournalEntryResponse,
   FoundryJournalSummary,
+  FoundryListCharacterCompanionsRequest,
+  FoundryListCharacterCompanionsResponse,
   FoundryPreviewCharacterProgressionRequest,
   FoundryPreviewCharacterProgressionResponse,
   FoundrySearchCharacterItemsRequest,
   FoundrySearchCharacterItemsResponse,
+  FoundrySummonCharacterCompanionRequest,
+  FoundrySummonCharacterCompanionResponse,
   FoundryUpdateActorEmbeddedItemRequest,
   FoundryUpdateActorEmbeddedItemResponse,
   FoundryUpdateActorRequest,
@@ -94,6 +103,7 @@ export class FoundryModuleFacade {
   private actorProgressionService: FoundryActorProgressionService;
   private actorUpdateService: FoundryActorUpdateService;
   private characterService: FoundryCharacterService;
+  private companionService: FoundryCompanionService;
   private compendiumService: FoundryCompendiumService;
   private journalService: FoundryJournalService;
   private rollRequestService: FoundryRollRequestService;
@@ -166,6 +176,30 @@ export class FoundryModuleFacade {
         this.findActorByIdentifier(identifier),
       sanitizeData: (data: unknown): unknown => this.sanitizeData(data),
       validateFoundryState: (): void => this.validateFoundryState(),
+    });
+    this.companionService = new FoundryCompanionService({
+      auditLog: (
+        action: string,
+        data: unknown,
+        status: 'success' | 'failure',
+        errorMessage?: string
+      ): void => this.auditLog(action, data, status, errorMessage),
+      findActorByIdentifier: (identifier: string): ActorLookupLike | null =>
+        this.findActorByIdentifier(identifier),
+      validateFoundryState: (): void => this.validateFoundryState(),
+      createActorFromCompendiumEntry: (
+        request: CompendiumEntryActorCreationRequest
+      ): Promise<ActorCreationResult> =>
+        this.actorCreationService.createActorFromCompendiumEntry(request),
+      addActorsToScene: (
+        placement: SceneTokenPlacement,
+        transactionId?: string
+      ): Promise<TokenPlacementResult> =>
+        this.actorCreationService.addActorsToScene(placement, transactionId),
+      deleteTokens: (data: {
+        tokenIds: string[];
+      }): Promise<{ success: boolean; deletedCount: number; deletedTokens: string[] }> =>
+        this.sceneInteractionService.deleteTokens(data),
     });
     this.compendiumService = new FoundryCompendiumService({
       moduleId: this.moduleId,
@@ -576,6 +610,30 @@ export class FoundryModuleFacade {
     request: FoundryCreateActorEmbeddedItemRequest
   ): Promise<FoundryCreateActorEmbeddedItemResponse> {
     return this.actorItemService.createActorEmbeddedItem(request);
+  }
+
+  async createCharacterCompanion(
+    request: FoundryCreateCharacterCompanionRequest
+  ): Promise<FoundryCreateCharacterCompanionResponse> {
+    return this.companionService.createCharacterCompanion(request);
+  }
+
+  async listCharacterCompanions(
+    request: FoundryListCharacterCompanionsRequest
+  ): Promise<FoundryListCharacterCompanionsResponse> {
+    return this.companionService.listCharacterCompanions(request);
+  }
+
+  async summonCharacterCompanion(
+    request: FoundrySummonCharacterCompanionRequest
+  ): Promise<FoundrySummonCharacterCompanionResponse> {
+    return this.companionService.summonCharacterCompanion(request);
+  }
+
+  async dismissCharacterCompanion(
+    request: FoundryDismissCharacterCompanionRequest
+  ): Promise<FoundryDismissCharacterCompanionResponse> {
+    return this.companionService.dismissCharacterCompanion(request);
   }
 
   async deleteActorEmbeddedItem(

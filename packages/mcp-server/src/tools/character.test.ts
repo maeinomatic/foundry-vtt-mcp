@@ -2952,4 +2952,388 @@ describe('CharacterTools', () => {
       updatedFields: ['system.levels'],
     });
   });
+
+  it('adds a new DnD5e class item and finalizes the initial multiclass level flow', async () => {
+    const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
+      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+        return Promise.resolve({ system: 'dnd5e' });
+      }
+
+      if (method === 'foundry-mcp-bridge.getCharacterInfo') {
+        const characterInfoCallCount = query.mock.calls.filter(
+          ([calledMethod]) => calledMethod === 'foundry-mcp-bridge.getCharacterInfo'
+        ).length;
+
+        if (characterInfoCallCount === 1) {
+          return Promise.resolve({
+            id: 'actor-9',
+            name: 'Laeral',
+            type: 'character',
+            system: {},
+            items: [
+              {
+                id: 'class-fighter',
+                name: 'Fighter',
+                type: 'class',
+                system: {
+                  levels: 3,
+                },
+              },
+            ],
+            effects: [],
+          });
+        }
+
+        return Promise.resolve({
+          id: 'actor-9',
+          name: 'Laeral',
+          type: 'character',
+          system: {},
+          items: [
+            {
+              id: 'class-fighter',
+              name: 'Fighter',
+              type: 'class',
+              system: {
+                levels: 3,
+              },
+            },
+            {
+              id: 'class-wizard-new',
+              name: 'Wizard',
+              type: 'class',
+              system: {
+                levels: 0,
+              },
+            },
+          ],
+          effects: [],
+        });
+      }
+
+      if (method === 'foundry-mcp-bridge.getCompendiumDocumentFull') {
+        expect(data).toEqual({
+          packId: 'dnd5e.classes',
+          documentId: 'wizard',
+        });
+        return Promise.resolve({
+          id: 'wizard',
+          name: 'Wizard',
+          type: 'class',
+        });
+      }
+
+      if (method === 'foundry-mcp-bridge.createActorEmbeddedItem') {
+        expect(data).toEqual({
+          actorIdentifier: 'Laeral',
+          sourceUuid: 'Compendium.dnd5e.classes.wizard',
+          itemType: 'class',
+        });
+        return Promise.resolve({
+          success: true,
+          actorId: 'actor-9',
+          actorName: 'Laeral',
+          itemId: 'class-wizard-new',
+          itemName: 'Wizard',
+          itemType: 'class',
+          createdFrom: 'uuid',
+          sourceUuid: 'Compendium.dnd5e.classes.wizard',
+        });
+      }
+
+      if (method === 'foundry-mcp-bridge.previewCharacterProgression') {
+        expect(data).toEqual({
+          actorIdentifier: 'Laeral',
+          classIdentifier: 'class-wizard-new',
+          targetLevel: 1,
+        });
+        return Promise.resolve({
+          system: 'dnd5e',
+          actorId: 'actor-9',
+          actorName: 'Laeral',
+          actorType: 'character',
+          classId: 'class-wizard-new',
+          className: 'Wizard',
+          currentLevel: 0,
+          targetLevel: 1,
+          safeToApplyDirectly: true,
+          pendingSteps: [],
+        });
+      }
+
+      if (method === 'foundry-mcp-bridge.updateActorEmbeddedItem') {
+        expect(data).toEqual({
+          actorIdentifier: 'Laeral',
+          itemIdentifier: 'class-wizard-new',
+          itemType: 'class',
+          updates: {
+            'system.levels': 1,
+          },
+          reason: 'character progression update',
+        });
+        return Promise.resolve({
+          success: true,
+          actorId: 'actor-9',
+          actorName: 'Laeral',
+          itemId: 'class-wizard-new',
+          itemName: 'Wizard',
+          itemType: 'class',
+          appliedUpdates: {
+            'system.levels': 1,
+          },
+          updatedFields: ['system.levels'],
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected query: ${method}`));
+    });
+
+    const registry = new SystemRegistry();
+    registry.register(new DnD5eAdapter());
+
+    const tools = new CharacterTools({
+      foundryClient: { query } as unknown as FoundryClient,
+      logger: createLoggerStub(),
+      systemRegistry: registry,
+    });
+
+    const result = (await tools.handleAddDnD5eClassToCharacter({
+      characterIdentifier: 'Laeral',
+      classUuid: 'Compendium.dnd5e.classes.wizard',
+    })) as Record<string, unknown>;
+
+    expect(result).toMatchObject({
+      success: true,
+      classCreated: true,
+      progressionComplete: true,
+      class: {
+        id: 'class-wizard-new',
+        name: 'Wizard',
+        type: 'class',
+      },
+      progression: {
+        classId: 'class-wizard-new',
+        className: 'Wizard',
+        previousLevel: 0,
+        targetLevel: 1,
+        mode: 'set-class-levels',
+      },
+      updatedFields: ['system.levels'],
+    });
+  });
+
+  it('uses the shared create-character-companion bridge request shape', async () => {
+    const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
+      if (method === 'foundry-mcp-bridge.createCharacterCompanion') {
+        expect(data).toEqual({
+          ownerActorIdentifier: 'Laeral',
+          role: 'familiar',
+          sourceUuid: 'Compendium.dnd5e.monsters.owl',
+          customName: 'Nimbus',
+          addToScene: true,
+          placement: {
+            type: 'near-owner',
+          },
+          syncOwnership: true,
+        });
+        return Promise.resolve({
+          success: true,
+          ownerActorId: 'actor-9',
+          ownerActorName: 'Laeral',
+          companionActorId: 'actor-owl',
+          companionActorName: 'Nimbus',
+          companionActorType: 'npc',
+          role: 'familiar',
+          created: true,
+          sourceUuid: 'Compendium.dnd5e.monsters.owl',
+          linkedAt: '2026-03-22T12:00:00.000Z',
+          tokensPlaced: 1,
+          tokenIds: ['token-owl-1'],
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected query: ${method}`));
+    });
+
+    const tools = new CharacterTools({
+      foundryClient: { query } as unknown as FoundryClient,
+      logger: createLoggerStub(),
+    });
+
+    const result = (await tools.handleCreateCharacterCompanion({
+      ownerActorIdentifier: 'Laeral',
+      role: 'familiar',
+      sourceUuid: 'Compendium.dnd5e.monsters.owl',
+      customName: 'Nimbus',
+      addToScene: true,
+      placement: {
+        type: 'near-owner',
+      },
+      syncOwnership: true,
+    })) as Record<string, unknown>;
+
+    expect(result).toMatchObject({
+      success: true,
+      companion: {
+        id: 'actor-owl',
+        name: 'Nimbus',
+        type: 'npc',
+        role: 'familiar',
+      },
+      created: true,
+      tokensPlaced: 1,
+      tokenIds: ['token-owl-1'],
+    });
+  });
+
+  it('uses the shared list-character-companions bridge request shape', async () => {
+    const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
+      if (method === 'foundry-mcp-bridge.listCharacterCompanions') {
+        expect(data).toEqual({
+          ownerActorIdentifier: 'Laeral',
+          role: 'familiar',
+        });
+        return Promise.resolve({
+          ownerActorId: 'actor-9',
+          ownerActorName: 'Laeral',
+          companions: [
+            {
+              actorId: 'actor-owl',
+              actorName: 'Nimbus',
+              actorType: 'npc',
+              role: 'familiar',
+              ownerActorId: 'actor-9',
+              ownerActorName: 'Laeral',
+              onScene: true,
+              tokenIds: ['token-owl-1'],
+            },
+          ],
+          totalCompanions: 1,
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected query: ${method}`));
+    });
+
+    const tools = new CharacterTools({
+      foundryClient: { query } as unknown as FoundryClient,
+      logger: createLoggerStub(),
+    });
+
+    const result = (await tools.handleListCharacterCompanions({
+      ownerActorIdentifier: 'Laeral',
+      role: 'familiar',
+    })) as Record<string, unknown>;
+
+    expect(result).toMatchObject({
+      success: true,
+      totalCompanions: 1,
+      companions: [
+        {
+          actorId: 'actor-owl',
+          actorName: 'Nimbus',
+          role: 'familiar',
+          onScene: true,
+        },
+      ],
+    });
+  });
+
+  it('uses the shared summon-character-companion bridge request shape', async () => {
+    const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
+      if (method === 'foundry-mcp-bridge.summonCharacterCompanion') {
+        expect(data).toEqual({
+          ownerActorIdentifier: 'Laeral',
+          companionIdentifier: 'Nimbus',
+          placementType: 'near-owner',
+          reuseExisting: true,
+        });
+        return Promise.resolve({
+          success: true,
+          ownerActorId: 'actor-9',
+          ownerActorName: 'Laeral',
+          companionActorId: 'actor-owl',
+          companionActorName: 'Nimbus',
+          role: 'familiar',
+          tokensPlaced: 0,
+          tokenIds: ['token-owl-1'],
+          reusedExisting: true,
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected query: ${method}`));
+    });
+
+    const tools = new CharacterTools({
+      foundryClient: { query } as unknown as FoundryClient,
+      logger: createLoggerStub(),
+    });
+
+    const result = (await tools.handleSummonCharacterCompanion({
+      ownerActorIdentifier: 'Laeral',
+      companionIdentifier: 'Nimbus',
+      placementType: 'near-owner',
+      reuseExisting: true,
+    })) as Record<string, unknown>;
+
+    expect(result).toMatchObject({
+      success: true,
+      companion: {
+        id: 'actor-owl',
+        name: 'Nimbus',
+        role: 'familiar',
+      },
+      tokenIds: ['token-owl-1'],
+      reusedExisting: true,
+    });
+  });
+
+  it('uses the shared dismiss-character-companion bridge request shape', async () => {
+    const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
+      if (method === 'foundry-mcp-bridge.dismissCharacterCompanion') {
+        expect(data).toEqual({
+          ownerActorIdentifier: 'Laeral',
+          companionIdentifier: 'Nimbus',
+        });
+        return Promise.resolve({
+          success: true,
+          ownerActorId: 'actor-9',
+          ownerActorName: 'Laeral',
+          dismissedCompanions: [
+            {
+              actorId: 'actor-owl',
+              actorName: 'Nimbus',
+              role: 'familiar',
+              tokenIds: ['token-owl-1'],
+            },
+          ],
+          dismissedTokenCount: 1,
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected query: ${method}`));
+    });
+
+    const tools = new CharacterTools({
+      foundryClient: { query } as unknown as FoundryClient,
+      logger: createLoggerStub(),
+    });
+
+    const result = (await tools.handleDismissCharacterCompanion({
+      ownerActorIdentifier: 'Laeral',
+      companionIdentifier: 'Nimbus',
+    })) as Record<string, unknown>;
+
+    expect(result).toMatchObject({
+      success: true,
+      dismissedTokenCount: 1,
+      dismissedCompanions: [
+        {
+          actorId: 'actor-owl',
+          actorName: 'Nimbus',
+          role: 'familiar',
+        },
+      ],
+    });
+  });
 });

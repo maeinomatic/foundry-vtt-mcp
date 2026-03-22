@@ -11,16 +11,25 @@ import type {
   FoundryCharacterInfo,
   FoundryCreateActorEmbeddedItemRequest,
   FoundryCreateActorEmbeddedItemResponse,
+  FoundryCreateCharacterCompanionRequest,
+  FoundryCreateCharacterCompanionResponse,
+  FoundryDismissCharacterCompanionRequest,
+  FoundryDismissCharacterCompanionResponse,
   FoundryDeleteActorEmbeddedItemRequest,
   FoundryDeleteActorEmbeddedItemResponse,
   FoundryGetCharacterAdvancementOptionsRequest,
   FoundryGetCharacterAdvancementOptionsResponse,
+  FoundryGetCompendiumDocumentRequest,
   FoundryItemDocumentBase,
   FoundryItemSystemBase,
+  FoundryListCharacterCompanionsRequest,
+  FoundryListCharacterCompanionsResponse,
   FoundryProgressionPreviewStep,
   FoundryPreviewCharacterProgressionRequest,
   FoundryPreviewCharacterProgressionResponse,
   FoundrySearchCharacterItemsResponse,
+  FoundrySummonCharacterCompanionRequest,
+  FoundrySummonCharacterCompanionResponse,
   FoundryUpdateActorEmbeddedItemRequest,
   FoundryUpdateActorEmbeddedItemResponse,
   FoundryUpdateActorRequest,
@@ -212,6 +221,18 @@ function normalizeAdvancementChoice(choice: AdvancementChoiceSchemaInput): Advan
   }
 
   return choice;
+}
+
+function parseCompendiumDocumentUuid(uuid: string): { packId: string; documentId: string } | null {
+  const parts = uuid.split('.');
+  if (parts.length < 4 || parts[0] !== 'Compendium') {
+    return null;
+  }
+
+  return {
+    packId: `${parts[1]}.${parts[2]}`,
+    documentId: parts[parts.length - 1],
+  };
 }
 
 interface UseItemResponse extends UnknownRecord {
@@ -534,6 +555,50 @@ export class CharacterTools {
         },
       },
       {
+        name: 'add-dnd5e-class-to-character',
+        description:
+          'DnD5e only: add a new class item to a character for multiclassing, then run the initial level-up flow for that class using explicit advancementSelections and safe automatic follow-up steps when available.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            characterIdentifier: {
+              type: 'string',
+              description: 'Character name or ID to receive the new class',
+            },
+            classUuid: {
+              type: 'string',
+              description: 'Compendium or world UUID of the DnD5e class item to add',
+            },
+            targetLevel: {
+              type: 'number',
+              description:
+                'Target level for the newly added class. Defaults to 1 for the initial multiclass add workflow.',
+            },
+            advancementSelections: {
+              type: 'array',
+              description:
+                'Optional progression choices to apply during the initial class advancement flow, using the same structure as update-character-progression.',
+              items: {
+                type: 'object',
+                properties: {
+                  stepId: { type: 'string' },
+                  stepType: { type: 'string' },
+                  sourceItemId: { type: 'string' },
+                  sourceItemName: { type: 'string' },
+                  choice: { type: 'object' },
+                },
+                required: ['choice'],
+              },
+            },
+            reason: {
+              type: 'string',
+              description: 'Optional audit reason for the change',
+            },
+          },
+          required: ['characterIdentifier', 'classUuid'],
+        },
+      },
+      {
         name: 'update-character-item',
         description:
           'Update an owned character item by name or ID. Useful for quantity, equipped state, prepared state, and other item-level fields.',
@@ -824,6 +889,162 @@ export class CharacterTools {
             },
           },
           required: ['actorIdentifier', 'mode', 'spellIdentifiers'],
+        },
+      },
+      {
+        name: 'create-character-companion',
+        description:
+          'Create or link a persistent companion or familiar actor for a character. Supports cloning a compendium actor or linking an existing world actor, and can optionally place the companion on the current scene.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            ownerActorIdentifier: {
+              type: 'string',
+              description: 'Character name or ID that owns the companion',
+            },
+            role: {
+              type: 'string',
+              enum: ['companion', 'familiar'],
+              description: 'Relationship role for the linked actor',
+            },
+            sourceUuid: {
+              type: 'string',
+              description: 'Compendium Actor UUID to clone into the world as the companion',
+            },
+            existingActorIdentifier: {
+              type: 'string',
+              description: 'Existing world actor name or ID to link instead of cloning a new one',
+            },
+            customName: {
+              type: 'string',
+              description: 'Optional custom actor name when cloning from a source UUID',
+            },
+            addToScene: {
+              type: 'boolean',
+              description: 'Whether to place the linked companion on the current scene immediately',
+            },
+            placement: {
+              type: 'object',
+              properties: {
+                type: {
+                  type: 'string',
+                  enum: ['near-owner', 'random', 'grid', 'center', 'coordinates'],
+                },
+                coordinates: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      x: { type: 'number' },
+                      y: { type: 'number' },
+                    },
+                    required: ['x', 'y'],
+                  },
+                },
+              },
+            },
+            syncOwnership: {
+              type: 'boolean',
+              description:
+                'Whether to copy the owner character ownership settings onto the companion actor',
+            },
+            notes: {
+              type: 'string',
+              description: 'Optional notes stored with the companion link metadata',
+            },
+          },
+          required: ['ownerActorIdentifier', 'role'],
+        },
+      },
+      {
+        name: 'list-character-companions',
+        description:
+          'List persistent companions and familiars linked to a character, including whether they currently have tokens on the active scene.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            ownerActorIdentifier: {
+              type: 'string',
+              description: 'Character name or ID',
+            },
+            role: {
+              type: 'string',
+              enum: ['companion', 'familiar'],
+              description: 'Optional role filter',
+            },
+          },
+          required: ['ownerActorIdentifier'],
+        },
+      },
+      {
+        name: 'summon-character-companion',
+        description:
+          'Place a linked companion or familiar on the active scene. By default it reuses existing tokens and prefers near-owner placement.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            ownerActorIdentifier: {
+              type: 'string',
+              description: 'Character name or ID that owns the companion',
+            },
+            companionIdentifier: {
+              type: 'string',
+              description: 'Linked companion actor name or ID',
+            },
+            placementType: {
+              type: 'string',
+              enum: ['near-owner', 'random', 'grid', 'center', 'coordinates'],
+              description: 'Placement strategy for the summoned companion token',
+            },
+            coordinates: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  x: { type: 'number' },
+                  y: { type: 'number' },
+                },
+                required: ['x', 'y'],
+              },
+            },
+            hidden: {
+              type: 'boolean',
+              description: 'Whether the created token should be hidden',
+            },
+            reuseExisting: {
+              type: 'boolean',
+              description: 'Return existing scene tokens instead of placing another token',
+            },
+          },
+          required: ['ownerActorIdentifier', 'companionIdentifier'],
+        },
+      },
+      {
+        name: 'dismiss-character-companion',
+        description:
+          'Remove linked companion or familiar tokens from the active scene. By default this targets one linked companion, or dismissAll can remove every linked companion token for the character.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            ownerActorIdentifier: {
+              type: 'string',
+              description: 'Character name or ID',
+            },
+            companionIdentifier: {
+              type: 'string',
+              description: 'Optional linked companion actor name or ID',
+            },
+            role: {
+              type: 'string',
+              enum: ['companion', 'familiar'],
+              description: 'Optional role filter when dismissing multiple linked companions',
+            },
+            dismissAll: {
+              type: 'boolean',
+              description: 'Dismiss all linked companion tokens for the owner on the active scene',
+            },
+          },
+          required: ['ownerActorIdentifier'],
         },
       },
       {
@@ -1492,6 +1713,100 @@ export class CharacterTools {
       createdFrom: result.createdFrom,
       ...(result.sourceUuid ? { sourceUuid: result.sourceUuid } : {}),
       ...(result.appliedOverrides ? { appliedOverrides: result.appliedOverrides } : {}),
+    };
+  }
+
+  async handleAddDnD5eClassToCharacter(args: unknown): Promise<UnknownRecord> {
+    const baseSchema = z.object({
+      characterIdentifier: z.string().min(1, 'Character identifier cannot be empty'),
+      classUuid: z.string().min(1, 'classUuid cannot be empty'),
+      targetLevel: z.number().int().positive().default(1),
+      advancementSelections: z.unknown().optional(),
+      reason: z.string().min(1).optional(),
+    });
+
+    const baseParsed = baseSchema.parse(args);
+    const progressionParsed = this.parseProgressionArgs({
+      characterIdentifier: baseParsed.characterIdentifier,
+      targetLevel: baseParsed.targetLevel,
+      ...(baseParsed.advancementSelections !== undefined
+        ? { advancementSelections: baseParsed.advancementSelections }
+        : {}),
+    });
+
+    const gameSystem = await this.getGameSystem();
+    if (gameSystem !== 'dnd5e') {
+      throw new Error(
+        'UNSUPPORTED_CAPABILITY: add-dnd5e-class-to-character is only available when the active system is dnd5e.'
+      );
+    }
+
+    const characterData = await this.foundryClient.query<CharacterInfoResponse>(
+      'foundry-mcp-bridge.getCharacterInfo',
+      {
+        identifier: baseParsed.characterIdentifier,
+      }
+    );
+
+    if (characterData.type !== 'character') {
+      throw new Error(
+        'UNSUPPORTED_CAPABILITY: DnD5e class addition is only supported for character actors.'
+      );
+    }
+
+    const parsedClassUuid = parseCompendiumDocumentUuid(baseParsed.classUuid);
+    if (parsedClassUuid) {
+      const classDocument = await this.foundryClient.query<FoundryItemDocumentBase | null>(
+        'foundry-mcp-bridge.getCompendiumDocumentFull',
+        {
+          packId: parsedClassUuid.packId,
+          documentId: parsedClassUuid.documentId,
+        } satisfies FoundryGetCompendiumDocumentRequest
+      );
+
+      const className = classDocument?.name?.toLowerCase();
+      if (
+        className &&
+        (characterData.items ?? []).some(
+          item => item.type === 'class' && item.name.toLowerCase() === className
+        )
+      ) {
+        throw new Error(
+          `This character already has the class "${classDocument?.name ?? baseParsed.classUuid}". Use update-character-progression to level the existing class instead of adding a duplicate class item.`
+        );
+      }
+    }
+
+    const createResult = await this.foundryClient.query<FoundryCreateActorEmbeddedItemResponse>(
+      'foundry-mcp-bridge.createActorEmbeddedItem',
+      {
+        actorIdentifier: baseParsed.characterIdentifier,
+        sourceUuid: baseParsed.classUuid,
+        itemType: 'class',
+        ...(baseParsed.reason !== undefined ? { reason: baseParsed.reason } : {}),
+      }
+    );
+
+    const progressionResult = await this.runProgressionUpdateFlow({
+      ...progressionParsed,
+      classIdentifier: createResult.itemId,
+    });
+
+    const progressionComplete =
+      progressionResult.success === true &&
+      !('requiresChoices' in progressionResult && progressionResult.requiresChoices === true);
+
+    return {
+      ...progressionResult,
+      success: true,
+      classCreated: true,
+      progressionComplete,
+      class: {
+        id: createResult.itemId,
+        name: createResult.itemName,
+        type: createResult.itemType,
+      },
+      sourceUuid: baseParsed.classUuid,
     };
   }
 
@@ -2182,6 +2497,191 @@ export class CharacterTools {
     };
   }
 
+  async handleCreateCharacterCompanion(args: unknown): Promise<UnknownRecord> {
+    const schema = z
+      .object({
+        ownerActorIdentifier: z.string().min(1, 'Owner actor identifier cannot be empty'),
+        role: z.enum(['companion', 'familiar']),
+        sourceUuid: z.string().min(1).optional(),
+        existingActorIdentifier: z.string().min(1).optional(),
+        customName: z.string().min(1).optional(),
+        addToScene: z.boolean().default(false),
+        placement: z
+          .object({
+            type: z.enum(['near-owner', 'random', 'grid', 'center', 'coordinates']).optional(),
+            coordinates: z
+              .array(
+                z.object({
+                  x: z.number(),
+                  y: z.number(),
+                })
+              )
+              .optional(),
+          })
+          .optional(),
+        syncOwnership: z.boolean().optional(),
+        notes: z.string().min(1).optional(),
+      })
+      .refine(
+        value => (value.sourceUuid !== undefined) !== (value.existingActorIdentifier !== undefined),
+        'Provide exactly one of sourceUuid or existingActorIdentifier'
+      );
+
+    const parsed = schema.parse(args);
+    const normalizedPlacement =
+      parsed.placement !== undefined
+        ? {
+            ...(parsed.placement.type !== undefined ? { type: parsed.placement.type } : {}),
+            ...(parsed.placement.coordinates !== undefined
+              ? { coordinates: parsed.placement.coordinates }
+              : {}),
+          }
+        : undefined;
+    const result = await this.foundryClient.query<FoundryCreateCharacterCompanionResponse>(
+      'foundry-mcp-bridge.createCharacterCompanion',
+      {
+        ownerActorIdentifier: parsed.ownerActorIdentifier,
+        role: parsed.role,
+        ...(parsed.sourceUuid !== undefined ? { sourceUuid: parsed.sourceUuid } : {}),
+        ...(parsed.existingActorIdentifier !== undefined
+          ? { existingActorIdentifier: parsed.existingActorIdentifier }
+          : {}),
+        ...(parsed.customName !== undefined ? { customName: parsed.customName } : {}),
+        addToScene: parsed.addToScene,
+        ...(normalizedPlacement !== undefined ? { placement: normalizedPlacement } : {}),
+        ...(parsed.syncOwnership !== undefined ? { syncOwnership: parsed.syncOwnership } : {}),
+        ...(parsed.notes !== undefined ? { notes: parsed.notes } : {}),
+      } satisfies FoundryCreateCharacterCompanionRequest
+    );
+
+    return {
+      success: result.success,
+      owner: {
+        id: result.ownerActorId,
+        name: result.ownerActorName,
+      },
+      companion: {
+        id: result.companionActorId,
+        name: result.companionActorName,
+        type: result.companionActorType,
+        role: result.role,
+      },
+      created: result.created,
+      ...(result.sourceUuid ? { sourceUuid: result.sourceUuid } : {}),
+      ...(result.linkedAt ? { linkedAt: result.linkedAt } : {}),
+      ...(result.tokensPlaced !== undefined ? { tokensPlaced: result.tokensPlaced } : {}),
+      ...(result.tokenIds ? { tokenIds: result.tokenIds } : {}),
+      ...(result.warnings ? { warnings: result.warnings } : {}),
+    };
+  }
+
+  async handleListCharacterCompanions(args: unknown): Promise<UnknownRecord> {
+    const schema = z.object({
+      ownerActorIdentifier: z.string().min(1, 'Owner actor identifier cannot be empty'),
+      role: z.enum(['companion', 'familiar']).optional(),
+    });
+
+    const parsed = schema.parse(args);
+    const result = await this.foundryClient.query<FoundryListCharacterCompanionsResponse>(
+      'foundry-mcp-bridge.listCharacterCompanions',
+      {
+        ownerActorIdentifier: parsed.ownerActorIdentifier,
+        ...(parsed.role !== undefined ? { role: parsed.role } : {}),
+      } satisfies FoundryListCharacterCompanionsRequest
+    );
+
+    return {
+      success: true,
+      owner: {
+        id: result.ownerActorId,
+        name: result.ownerActorName,
+      },
+      companions: result.companions,
+      totalCompanions: result.totalCompanions,
+    };
+  }
+
+  async handleSummonCharacterCompanion(args: unknown): Promise<UnknownRecord> {
+    const schema = z.object({
+      ownerActorIdentifier: z.string().min(1, 'Owner actor identifier cannot be empty'),
+      companionIdentifier: z.string().min(1, 'Companion identifier cannot be empty'),
+      placementType: z.enum(['near-owner', 'random', 'grid', 'center', 'coordinates']).optional(),
+      coordinates: z
+        .array(
+          z.object({
+            x: z.number(),
+            y: z.number(),
+          })
+        )
+        .optional(),
+      hidden: z.boolean().optional(),
+      reuseExisting: z.boolean().optional(),
+    });
+
+    const parsed = schema.parse(args);
+    const result = await this.foundryClient.query<FoundrySummonCharacterCompanionResponse>(
+      'foundry-mcp-bridge.summonCharacterCompanion',
+      {
+        ownerActorIdentifier: parsed.ownerActorIdentifier,
+        companionIdentifier: parsed.companionIdentifier,
+        ...(parsed.placementType !== undefined ? { placementType: parsed.placementType } : {}),
+        ...(parsed.coordinates !== undefined ? { coordinates: parsed.coordinates } : {}),
+        ...(parsed.hidden !== undefined ? { hidden: parsed.hidden } : {}),
+        ...(parsed.reuseExisting !== undefined ? { reuseExisting: parsed.reuseExisting } : {}),
+      } satisfies FoundrySummonCharacterCompanionRequest
+    );
+
+    return {
+      success: result.success,
+      owner: {
+        id: result.ownerActorId,
+        name: result.ownerActorName,
+      },
+      companion: {
+        id: result.companionActorId,
+        name: result.companionActorName,
+        role: result.role,
+      },
+      tokensPlaced: result.tokensPlaced,
+      tokenIds: result.tokenIds,
+      ...(result.reusedExisting !== undefined ? { reusedExisting: result.reusedExisting } : {}),
+      ...(result.warnings ? { warnings: result.warnings } : {}),
+    };
+  }
+
+  async handleDismissCharacterCompanion(args: unknown): Promise<UnknownRecord> {
+    const schema = z.object({
+      ownerActorIdentifier: z.string().min(1, 'Owner actor identifier cannot be empty'),
+      companionIdentifier: z.string().min(1).optional(),
+      role: z.enum(['companion', 'familiar']).optional(),
+      dismissAll: z.boolean().optional(),
+    });
+
+    const parsed = schema.parse(args);
+    const result = await this.foundryClient.query<FoundryDismissCharacterCompanionResponse>(
+      'foundry-mcp-bridge.dismissCharacterCompanion',
+      {
+        ownerActorIdentifier: parsed.ownerActorIdentifier,
+        ...(parsed.companionIdentifier !== undefined
+          ? { companionIdentifier: parsed.companionIdentifier }
+          : {}),
+        ...(parsed.role !== undefined ? { role: parsed.role } : {}),
+        ...(parsed.dismissAll !== undefined ? { dismissAll: parsed.dismissAll } : {}),
+      } satisfies FoundryDismissCharacterCompanionRequest
+    );
+
+    return {
+      success: result.success,
+      owner: {
+        id: result.ownerActorId,
+        name: result.ownerActorName,
+      },
+      dismissedCompanions: result.dismissedCompanions,
+      dismissedTokenCount: result.dismissedTokenCount,
+      ...(result.warnings ? { warnings: result.warnings } : {}),
+    };
+  }
+
   async handlePreviewCharacterProgression(args: unknown): Promise<UnknownRecord> {
     const parsed = this.parseProgressionArgs(args);
 
@@ -2331,6 +2831,17 @@ export class CharacterTools {
 
     this.logger.info('Updating character progression', parsed);
 
+    return this.runProgressionUpdateFlow(parsed);
+  }
+
+  private async runProgressionUpdateFlow(parsed: {
+    characterIdentifier: string;
+    targetLevel?: number;
+    classIdentifier?: string;
+    experiencePoints?: number;
+    experienceSpent?: number;
+    advancementSelections?: AdvancementSelectionInput[];
+  }): Promise<UnknownRecord> {
     let previewResult = await this.buildProgressionPreviewResult(parsed);
     const autoAppliedAdvancements =
       previewResult.preview && parsed.targetLevel !== undefined

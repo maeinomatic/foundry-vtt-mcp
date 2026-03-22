@@ -498,6 +498,17 @@ export interface FoundryDeleteActorEmbeddedItemResponse extends UnknownRecord {
   itemType: string;
 }
 
+export type FoundryCompanionRole = 'companion' | 'familiar';
+
+export interface FoundryCharacterCompanionLink extends UnknownRecord {
+  ownerActorId: string;
+  ownerActorName: string;
+  role: FoundryCompanionRole;
+  notes?: string;
+  sourceUuid?: string;
+  linkedAt?: string;
+}
+
 export interface FoundryCompendiumSearchFilters {
   challengeRating?: number | { min?: number; max?: number };
   creatureType?: string;
@@ -543,6 +554,108 @@ export interface FoundryCreateActorFromCompendiumRequest {
   quantity?: number;
   addToScene?: boolean;
   placement?: FoundryTokenPlacementOptions;
+}
+
+export interface FoundryCreateCharacterCompanionRequest {
+  ownerActorIdentifier: string;
+  role: FoundryCompanionRole;
+  sourceUuid?: string;
+  existingActorIdentifier?: string;
+  customName?: string;
+  addToScene?: boolean;
+  placement?: {
+    type?: FoundryTokenPlacementOptions['type'] | 'near-owner';
+    coordinates?: FoundryTokenPlacementCoordinate[];
+  };
+  syncOwnership?: boolean;
+  notes?: string;
+}
+
+export interface FoundryCreateCharacterCompanionResponse extends UnknownRecord {
+  success: boolean;
+  ownerActorId: string;
+  ownerActorName: string;
+  companionActorId: string;
+  companionActorName: string;
+  companionActorType: string;
+  role: FoundryCompanionRole;
+  created: boolean;
+  sourceUuid?: string;
+  linkedAt?: string;
+  tokensPlaced?: number;
+  tokenIds?: string[];
+  warnings?: string[];
+}
+
+export interface FoundryListCharacterCompanionsRequest {
+  ownerActorIdentifier: string;
+  role?: FoundryCompanionRole;
+}
+
+export interface FoundryCharacterCompanionSummary extends UnknownRecord {
+  actorId: string;
+  actorName: string;
+  actorType: string;
+  role: FoundryCompanionRole;
+  ownerActorId: string;
+  ownerActorName: string;
+  notes?: string;
+  sourceUuid?: string;
+  linkedAt?: string;
+  onScene: boolean;
+  tokenIds: string[];
+}
+
+export interface FoundryListCharacterCompanionsResponse extends UnknownRecord {
+  ownerActorId: string;
+  ownerActorName: string;
+  companions: FoundryCharacterCompanionSummary[];
+  totalCompanions: number;
+}
+
+export interface FoundrySummonCharacterCompanionRequest {
+  ownerActorIdentifier: string;
+  companionIdentifier: string;
+  placementType?: FoundryTokenPlacementOptions['type'] | 'near-owner';
+  coordinates?: FoundryTokenPlacementCoordinate[];
+  hidden?: boolean;
+  reuseExisting?: boolean;
+}
+
+export interface FoundrySummonCharacterCompanionResponse extends UnknownRecord {
+  success: boolean;
+  ownerActorId: string;
+  ownerActorName: string;
+  companionActorId: string;
+  companionActorName: string;
+  role: FoundryCompanionRole;
+  tokensPlaced: number;
+  tokenIds: string[];
+  reusedExisting?: boolean;
+  warnings?: string[];
+}
+
+export interface FoundryDismissCharacterCompanionRequest {
+  ownerActorIdentifier: string;
+  companionIdentifier?: string;
+  role?: FoundryCompanionRole;
+  dismissAll?: boolean;
+}
+
+export interface FoundryDismissedCompanionSummary extends UnknownRecord {
+  actorId: string;
+  actorName: string;
+  role: FoundryCompanionRole;
+  tokenIds: string[];
+}
+
+export interface FoundryDismissCharacterCompanionResponse extends UnknownRecord {
+  success: boolean;
+  ownerActorId: string;
+  ownerActorName: string;
+  dismissedCompanions: FoundryDismissedCompanionSummary[];
+  dismissedTokenCount: number;
+  warnings?: string[];
 }
 
 export interface FoundryCompendiumSearchResult<SystemData extends UnknownRecord = UnknownRecord>

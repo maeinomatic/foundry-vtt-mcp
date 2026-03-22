@@ -11,13 +11,13 @@ Interpretation rule for this inventory:
 - Missing capabilities should be implemented through adapter capabilities and
   registry routing, not by adding system-specific branching in core tool files.
 
-## Current Status Audit (2026-03-20)
+## Current Status Audit (2026-03-22)
 
 This file contains useful historical branch comparison notes, but it is not fully up to date for current master.
 
 Current code reality in `packages/mcp-server/src/backend.ts`:
 
-- The backend currently registers **36 tools** (including token tools and `get-character-entity`).
+- The backend currently registers **41 tools** (including token tools, `get-character-entity`, DnD5e multiclass/class progression helpers, and companion/familiar workflows).
 - The branch summary below (23/26/32 tools split) is historical and should not be treated as the current runtime truth.
 - Token tool availability in this file is outdated. Token manipulation tools are now implemented and routed.
 
@@ -38,6 +38,7 @@ For DnD5e character progression, the current toolset now also supports:
 - applying supported size selections
 - finalizing class level updates after required advancement steps are complete
 - auto-applying deterministic item-grant and size follow-up steps
+- adding a new class item to a character for multiclass entry, then running the initial level-up flow for that class
 
 For broader character management, the current toolset now also supports:
 
@@ -52,6 +53,10 @@ For broader character management, the current toolset now also supports:
 - DnD5e bulk spell source-class reassignment
 - DnD5e bulk prepared-spell management for rest-based spell changes
 - DnD5e spellbook validation for missing or unknown source-class assignments
+- creating or linking persistent character companions and familiars
+- listing linked companions/familiars and whether they are already active on the scene
+- summoning linked companions/familiars onto the active scene
+- dismissing linked companion/familiar tokens from the active scene
 
 ## DnD5e Missing Endpoint Tracker
 
@@ -88,17 +93,12 @@ This section tracks capabilities needed for practical DnD5e character management
 
 ### Priority A: DnD5e Leveling and Advancement
 
-1. `dnd5e-add-class-levels`
-
-- Purpose: Add levels to existing class or add a new class for multiclass.
-- Why needed: Current progression tools can level an existing class item, but adding a new class for multiclass still needs a dedicated workflow.
-
-2. `dnd5e-set-proficiencies`
+1. `dnd5e-set-proficiencies`
 
 - Purpose: Manage weapon/armor/tool/language/saving throw proficiencies.
 - Why needed: Trait advancements now cover supported DnD5e progression steps, but direct proficiency editing outside advancement is still missing.
 
-3. `dnd5e-handle-scale-advancement`
+2. `dnd5e-handle-scale-advancement`
 
 - Purpose: Keep Scale Value surfaced consistently as informational/system-derived during advancement flows.
 - Why needed: Official DnD5e docs indicate Scale Value has no player choice payload, so this is a consistency/documentation concern more than a missing manual write path.
@@ -149,11 +149,12 @@ Not a DnD5e-only problem. The core missing layer is **actor and embedded-item wr
 DnD5e adds system-specific needs on top:
 
 - advancement and class-level orchestration
-- multiclass progression logic
-- higher-level multiclass spellbook automation beyond the current single-spell reassignment and validation tools
+- proficiency and ruleset editing outside advancement
+- higher-level multiclass spellbook validation and automation beyond the current source-class reassignment, bulk preparation, and validation tools
+- richer companion/familiar lifecycle support such as onboarding templates, progression sync, and summon customization
 
-The repo now has the generic actor item CRUD layer plus practical DnD5e spell learning, single and bulk preparation changes, removal, slot updates, single and bulk source-class reassignment, and spellbook validation.
-The next most valuable gaps are `update-actor`, multiclass add-class flow, proficiencies, and deeper spellbook validation/automation tied to class progression limits.
+The repo now has the generic actor item CRUD layer plus practical DnD5e spell learning, single and bulk preparation changes, removal, slot updates, single and bulk source-class reassignment, spellbook validation, multiclass add-class flow, and persistent companion/familiar summon-despawn workflows.
+The next most valuable gaps are `update-actor`, proficiencies, deeper spellbook validation/automation tied to class progression limits, and richer companion/familiar lifecycle tools.
 
 ## Overview
 

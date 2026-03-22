@@ -1633,6 +1633,11 @@ async function startBackend(): Promise<void> {
 
                     break;
 
+                  case 'add-dnd5e-class-to-character':
+                    result = await characterTools.handleAddDnD5eClassToCharacter(args);
+
+                    break;
+
                   case 'update-character-item':
                     result = await characterTools.handleUpdateCharacterItem(args);
 
@@ -1680,6 +1685,26 @@ async function startBackend(): Promise<void> {
 
                   case 'set-dnd5e-prepared-spells':
                     result = await characterTools.handleSetDnD5ePreparedSpells(args);
+
+                    break;
+
+                  case 'create-character-companion':
+                    result = await characterTools.handleCreateCharacterCompanion(args);
+
+                    break;
+
+                  case 'list-character-companions':
+                    result = await characterTools.handleListCharacterCompanions(args);
+
+                    break;
+
+                  case 'summon-character-companion':
+                    result = await characterTools.handleSummonCharacterCompanion(args);
+
+                    break;
+
+                  case 'dismiss-character-companion':
+                    result = await characterTools.handleDismissCharacterCompanion(args);
 
                     break;
 

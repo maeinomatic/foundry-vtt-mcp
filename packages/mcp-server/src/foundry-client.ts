@@ -20,19 +20,27 @@ import type {
   FoundryCreateActorFromCompendiumRequest,
   FoundryCreateActorEmbeddedItemRequest,
   FoundryCreateActorEmbeddedItemResponse,
+  FoundryCreateCharacterCompanionRequest,
+  FoundryCreateCharacterCompanionResponse,
   FoundryCreatureSearchCriteria,
   FoundryCreatureSearchEnvelope,
   FoundryDeleteActorEmbeddedItemRequest,
   FoundryDeleteActorEmbeddedItemResponse,
+  FoundryDismissCharacterCompanionRequest,
+  FoundryDismissCharacterCompanionResponse,
   FoundryGetCharacterAdvancementOptionsRequest,
   FoundryGetCharacterAdvancementOptionsResponse,
   FoundryGetCharacterInfoRequest,
   FoundryGetCompendiumDocumentRequest,
+  FoundryListCharacterCompanionsRequest,
+  FoundryListCharacterCompanionsResponse,
   FoundryListActorsRequest,
   FoundryPreviewCharacterProgressionRequest,
   FoundryPreviewCharacterProgressionResponse,
   FoundrySearchCharacterItemsRequest,
   FoundrySearchCharacterItemsResponse,
+  FoundrySummonCharacterCompanionRequest,
+  FoundrySummonCharacterCompanionResponse,
   FoundryUpdateActorRequest,
   FoundryUpdateActorEmbeddedItemRequest,
   FoundryUpdateActorEmbeddedItemResponse,
@@ -111,6 +119,22 @@ export class FoundryClient {
     method: 'foundry-mcp-bridge.createActorEmbeddedItem',
     data: FoundryCreateActorEmbeddedItemRequest
   ): Promise<FoundryCreateActorEmbeddedItemResponse>;
+  async query(
+    method: 'foundry-mcp-bridge.createCharacterCompanion',
+    data: FoundryCreateCharacterCompanionRequest
+  ): Promise<FoundryCreateCharacterCompanionResponse>;
+  async query(
+    method: 'foundry-mcp-bridge.listCharacterCompanions',
+    data: FoundryListCharacterCompanionsRequest
+  ): Promise<FoundryListCharacterCompanionsResponse>;
+  async query(
+    method: 'foundry-mcp-bridge.summonCharacterCompanion',
+    data: FoundrySummonCharacterCompanionRequest
+  ): Promise<FoundrySummonCharacterCompanionResponse>;
+  async query(
+    method: 'foundry-mcp-bridge.dismissCharacterCompanion',
+    data: FoundryDismissCharacterCompanionRequest
+  ): Promise<FoundryDismissCharacterCompanionResponse>;
   async query(
     method: 'foundry-mcp-bridge.batchUpdateActorEmbeddedItems',
     data: FoundryBatchUpdateActorEmbeddedItemsRequest

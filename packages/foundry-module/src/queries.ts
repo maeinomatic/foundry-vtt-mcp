@@ -12,19 +12,27 @@ import type {
   FoundryCreateActorFromCompendiumRequest,
   FoundryCreateActorEmbeddedItemRequest,
   FoundryCreateActorEmbeddedItemResponse,
+  FoundryCreateCharacterCompanionRequest,
+  FoundryCreateCharacterCompanionResponse,
   FoundryCompendiumSearchRequest,
   FoundryCreatureSearchCriteria,
   FoundryCompendiumEntryFull,
   FoundryDeleteActorEmbeddedItemRequest,
   FoundryDeleteActorEmbeddedItemResponse,
+  FoundryDismissCharacterCompanionRequest,
+  FoundryDismissCharacterCompanionResponse,
   FoundryGetCharacterAdvancementOptionsRequest,
   FoundryGetCharacterAdvancementOptionsResponse,
   FoundryGetCharacterInfoRequest,
   FoundryJournalEntryResponse,
   FoundryJournalSummary,
+  FoundryListCharacterCompanionsRequest,
+  FoundryListCharacterCompanionsResponse,
   FoundryPreviewCharacterProgressionRequest,
   FoundryPreviewCharacterProgressionResponse,
   FoundrySearchCharacterItemsRequest,
+  FoundrySummonCharacterCompanionRequest,
+  FoundrySummonCharacterCompanionResponse,
   FoundryUpdateActorEmbeddedItemRequest,
   FoundryUpdateActorEmbeddedItemResponse,
   FoundryUpdateActorRequest,
@@ -194,6 +202,14 @@ export class QueryHandlers {
       this.handleUpdateActorEmbeddedItem.bind(this);
     CONFIG.queries[`${modulePrefix}.deleteActorEmbeddedItem`] =
       this.handleDeleteActorEmbeddedItem.bind(this);
+    CONFIG.queries[`${modulePrefix}.createCharacterCompanion`] =
+      this.handleCreateCharacterCompanion.bind(this);
+    CONFIG.queries[`${modulePrefix}.listCharacterCompanions`] =
+      this.handleListCharacterCompanions.bind(this);
+    CONFIG.queries[`${modulePrefix}.summonCharacterCompanion`] =
+      this.handleSummonCharacterCompanion.bind(this);
+    CONFIG.queries[`${modulePrefix}.dismissCharacterCompanion`] =
+      this.handleDismissCharacterCompanion.bind(this);
     CONFIG.queries[`${modulePrefix}.getCompendiumDocumentFull`] =
       this.handleGetCompendiumDocumentFull.bind(this);
     CONFIG.queries[`${modulePrefix}.addActorsToScene`] = this.handleAddActorsToScene.bind(this);
@@ -912,6 +928,134 @@ export class QueryHandlers {
     } catch (error) {
       throw new Error(
         `Failed to delete actor embedded item: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+    }
+  }
+
+  private async handleCreateCharacterCompanion(
+    data: FoundryCreateCharacterCompanionRequest
+  ): Promise<FoundryCreateCharacterCompanionResponse | QueryErrorResult> {
+    try {
+      const gmCheck = this.validateGMAccess();
+      if (!gmCheck.allowed) {
+        return { error: 'Access denied', success: false };
+      }
+
+      this.dataAccess.validateFoundryState();
+
+      const updatePermissionCheck = await this.dataAccess.validateWritePermissions('updateActor');
+      if (!updatePermissionCheck.allowed) {
+        return {
+          error: updatePermissionCheck.reason ?? 'Actor update not allowed',
+          success: false,
+        };
+      }
+
+      if (!data.ownerActorIdentifier) {
+        throw new Error('ownerActorIdentifier is required');
+      }
+
+      if (!data.role || !['companion', 'familiar'].includes(data.role)) {
+        throw new Error('role must be companion or familiar');
+      }
+
+      if (!data.sourceUuid && !data.existingActorIdentifier) {
+        throw new Error('sourceUuid or existingActorIdentifier is required');
+      }
+
+      return await this.dataAccess.createCharacterCompanion(data);
+    } catch (error) {
+      throw new Error(
+        `Failed to create character companion: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+    }
+  }
+
+  private async handleListCharacterCompanions(
+    data: FoundryListCharacterCompanionsRequest
+  ): Promise<FoundryListCharacterCompanionsResponse | QueryErrorResult> {
+    try {
+      const gmCheck = this.validateGMAccess();
+      if (!gmCheck.allowed) {
+        return { error: 'Access denied', success: false };
+      }
+
+      this.dataAccess.validateFoundryState();
+
+      const permissionCheck = await this.dataAccess.validateWritePermissions('modifyScene');
+      if (!permissionCheck.allowed) {
+        return {
+          error: permissionCheck.reason ?? 'Scene modification not allowed',
+          success: false,
+        };
+      }
+
+      if (!data.ownerActorIdentifier) {
+        throw new Error('ownerActorIdentifier is required');
+      }
+
+      return await this.dataAccess.listCharacterCompanions(data);
+    } catch (error) {
+      throw new Error(
+        `Failed to list character companions: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+    }
+  }
+
+  private async handleSummonCharacterCompanion(
+    data: FoundrySummonCharacterCompanionRequest
+  ): Promise<FoundrySummonCharacterCompanionResponse | QueryErrorResult> {
+    try {
+      const gmCheck = this.validateGMAccess();
+      if (!gmCheck.allowed) {
+        return { error: 'Access denied', success: false };
+      }
+
+      this.dataAccess.validateFoundryState();
+
+      const permissionCheck = await this.dataAccess.validateWritePermissions('modifyScene');
+      if (!permissionCheck.allowed) {
+        return {
+          error: permissionCheck.reason ?? 'Scene modification not allowed',
+          success: false,
+        };
+      }
+
+      if (!data.ownerActorIdentifier) {
+        throw new Error('ownerActorIdentifier is required');
+      }
+
+      if (!data.companionIdentifier) {
+        throw new Error('companionIdentifier is required');
+      }
+
+      return await this.dataAccess.summonCharacterCompanion(data);
+    } catch (error) {
+      throw new Error(
+        `Failed to summon character companion: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+    }
+  }
+
+  private async handleDismissCharacterCompanion(
+    data: FoundryDismissCharacterCompanionRequest
+  ): Promise<FoundryDismissCharacterCompanionResponse | QueryErrorResult> {
+    try {
+      const gmCheck = this.validateGMAccess();
+      if (!gmCheck.allowed) {
+        return { error: 'Access denied', success: false };
+      }
+
+      this.dataAccess.validateFoundryState();
+
+      if (!data.ownerActorIdentifier) {
+        throw new Error('ownerActorIdentifier is required');
+      }
+
+      return await this.dataAccess.dismissCharacterCompanion(data);
+    } catch (error) {
+      throw new Error(
+        `Failed to dismiss character companion: ${error instanceof Error ? error.message : 'Unknown error'}`
       );
     }
   }
