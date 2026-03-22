@@ -3,6 +3,8 @@ import { FoundryModuleFacade } from './foundry-module-facade.js';
 import { ComfyUIManager } from './comfyui-manager.js';
 import { notifyGM } from './gm-notifications.js';
 import type {
+  FoundryApplyCharacterAdvancementChoiceRequest,
+  FoundryApplyCharacterAdvancementChoiceResponse,
   FoundryActorCreationResult,
   FoundryCharacterInfo,
   FoundryCreateActorFromCompendiumRequest,
@@ -175,6 +177,8 @@ export class QueryHandlers {
       this.handlePreviewCharacterProgression.bind(this);
     CONFIG.queries[`${modulePrefix}.getCharacterAdvancementOptions`] =
       this.handleGetCharacterAdvancementOptions.bind(this);
+    CONFIG.queries[`${modulePrefix}.applyCharacterAdvancementChoice`] =
+      this.handleApplyCharacterAdvancementChoice.bind(this);
     CONFIG.queries[`${modulePrefix}.updateActor`] = this.handleUpdateActor.bind(this);
     CONFIG.queries[`${modulePrefix}.updateActorEmbeddedItem`] =
       this.handleUpdateActorEmbeddedItem.bind(this);
@@ -595,6 +599,82 @@ export class QueryHandlers {
     } catch (error) {
       throw new Error(
         `Failed to get character advancement options: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+    }
+  }
+
+  /**
+   * Handle character advancement choice application request
+   */
+  private async handleApplyCharacterAdvancementChoice(
+    data: FoundryApplyCharacterAdvancementChoiceRequest
+  ): Promise<FoundryApplyCharacterAdvancementChoiceResponse | QueryErrorResult> {
+    try {
+      const gmCheck = this.validateGMAccess();
+      if (!gmCheck.allowed) {
+        return { error: 'Access denied', success: false };
+      }
+
+      this.dataAccess.validateFoundryState();
+
+      const permissionCheck = await this.dataAccess.validateWritePermissions('updateActor');
+      if (!permissionCheck.allowed) {
+        return {
+          error: permissionCheck.reason ?? 'Character advancement choice application not allowed',
+          success: false,
+        };
+      }
+
+      if (!data.actorIdentifier) {
+        throw new Error('actorIdentifier is required');
+      }
+
+      if (!Number.isInteger(data.targetLevel) || data.targetLevel <= 0) {
+        throw new Error('targetLevel must be a positive integer');
+      }
+
+      if (!data.stepId) {
+        throw new Error('stepId is required');
+      }
+
+      if (!data.choice || typeof data.choice !== 'object') {
+        throw new Error('choice is required');
+      }
+
+      if (data.choice.type !== 'ability-score-improvement') {
+        if (data.choice.type === 'subclass') {
+          if (!data.choice.subclassUuid) {
+            throw new Error('Subclass choices require subclassUuid');
+          }
+        } else if (data.choice.type === 'hit-points') {
+          if (data.choice.mode !== 'average' && data.choice.mode !== 'roll') {
+            throw new Error('Hit point choices require mode "average" or "roll"');
+          }
+        } else if (data.choice.type === 'item-choice') {
+          if (!Array.isArray(data.choice.itemUuids) || data.choice.itemUuids.length === 0) {
+            throw new Error('Item-choice selections require one or more itemUuids');
+          }
+        }
+
+        return await this.dataAccess.applyCharacterAdvancementChoice(data);
+      }
+
+      if (data.choice.mode === 'asi') {
+        if (
+          !data.choice.assignments ||
+          typeof data.choice.assignments !== 'object' ||
+          Array.isArray(data.choice.assignments)
+        ) {
+          throw new Error('ASI choices require an assignments object');
+        }
+      } else if (data.choice.mode === 'feat' && !data.choice.featUuid) {
+        throw new Error('Feat choices require featUuid');
+      }
+
+      return await this.dataAccess.applyCharacterAdvancementChoice(data);
+    } catch (error) {
+      throw new Error(
+        `Failed to apply character advancement choice: ${error instanceof Error ? error.message : 'Unknown error'}`
       );
     }
   }

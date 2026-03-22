@@ -1,4 +1,6 @@
 import type {
+  FoundryApplyCharacterAdvancementChoiceRequest,
+  FoundryApplyCharacterAdvancementChoiceResponse,
   FoundryGetCharacterAdvancementOptionsRequest,
   FoundryGetCharacterAdvancementOptionsResponse,
   FoundryPreviewCharacterProgressionRequest,
@@ -77,6 +79,39 @@ export class FoundryActorProgressionService {
     } catch (error) {
       this.context.auditLog(
         'getCharacterAdvancementOptions',
+        request,
+        'failure',
+        error instanceof Error ? error.message : 'Unknown error'
+      );
+      throw error;
+    }
+  }
+
+  async applyCharacterAdvancementChoice(
+    request: FoundryApplyCharacterAdvancementChoiceRequest
+  ): Promise<FoundryApplyCharacterAdvancementChoiceResponse> {
+    this.context.validateFoundryState();
+
+    const actor = this.context.findActorByIdentifier(request.actorIdentifier);
+    if (!actor) {
+      throw new Error(`Actor not found: ${request.actorIdentifier}`);
+    }
+
+    const systemId = this.context.getSystemId();
+    const strategy = getActorProgressionStrategy(systemId);
+    if (!strategy) {
+      throw new Error(
+        `UNSUPPORTED_CAPABILITY: Applying character advancement choices is not implemented for system "${systemId}".`
+      );
+    }
+
+    try {
+      const response = await strategy.applyCharacterAdvancementChoice({ actor, request });
+      this.context.auditLog('applyCharacterAdvancementChoice', request, 'success');
+      return response;
+    } catch (error) {
+      this.context.auditLog(
+        'applyCharacterAdvancementChoice',
         request,
         'failure',
         error instanceof Error ? error.message : 'Unknown error'

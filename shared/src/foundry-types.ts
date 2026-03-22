@@ -314,6 +314,55 @@ export interface FoundryGetCharacterAdvancementOptionsResponse extends UnknownRe
   warnings?: string[];
 }
 
+export interface FoundryApplyCharacterAdvancementChoiceRequest {
+  actorIdentifier: string;
+  targetLevel: number;
+  stepId: string;
+  classIdentifier?: string;
+  choice:
+    | {
+        type: 'ability-score-improvement';
+        mode: 'asi';
+        assignments: Record<string, number>;
+      }
+    | {
+        type: 'ability-score-improvement';
+        mode: 'feat';
+        featUuid: string;
+      }
+    | {
+        type: 'subclass';
+        subclassUuid: string;
+      }
+    | {
+        type: 'hit-points';
+        mode: 'average' | 'roll';
+      }
+    | {
+        type: 'item-choice';
+        itemUuids: string[];
+        replaceItemId?: string;
+        ability?: string;
+      };
+}
+
+export interface FoundryApplyCharacterAdvancementChoiceResponse extends UnknownRecord {
+  success: boolean;
+  system: string;
+  actorId: string;
+  actorName: string;
+  actorType: string;
+  targetLevel: number;
+  stepId: string;
+  stepType: string;
+  stepTitle: string;
+  choice: UnknownRecord;
+  classId?: string;
+  className?: string;
+  createdItemIds?: string[];
+  warnings?: string[];
+}
+
 export interface FoundryPreviewCharacterProgressionResponse extends UnknownRecord {
   system: string;
   actorId: string;

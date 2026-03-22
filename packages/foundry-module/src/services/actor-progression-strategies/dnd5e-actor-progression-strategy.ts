@@ -1,4 +1,6 @@
 import type {
+  FoundryApplyCharacterAdvancementChoiceRequest,
+  FoundryApplyCharacterAdvancementChoiceResponse,
   FoundryAdvancementChoiceDetails,
   FoundryAdvancementOption,
   FoundryGetCharacterAdvancementOptionsResponse,
@@ -26,11 +28,30 @@ interface CompendiumPackLike {
     values: () => Iterable<unknown>;
   };
   getIndex?: () => Promise<unknown>;
+  getDocument?: (id: string) => Promise<unknown>;
+}
+
+interface CompendiumDocumentLike {
+  id?: string;
+  name?: string;
+  type?: string;
+  toObject?: () => unknown;
 }
 
 interface AdvancementDescriptor {
+  index: number;
   advancement: Record<string, unknown>;
   step: FoundryProgressionPreviewStep;
+}
+
+interface EvaluatedRollLike {
+  total: unknown;
+}
+
+interface RollConstructorLike {
+  new (formula: string): {
+    evaluate(options: { async: boolean }): Promise<EvaluatedRollLike>;
+  };
 }
 
 function getClassItem(
@@ -198,6 +219,63 @@ function parseCompendiumUuid(uuid: string): { packId: string; documentId: string
   };
 }
 
+function hasMeaningfulValue(value: unknown): boolean {
+  if (value === null || value === undefined) {
+    return false;
+  }
+
+  if (Array.isArray(value)) {
+    return value.some(entry => hasMeaningfulValue(entry));
+  }
+
+  if (typeof value === 'object') {
+    return Object.values(value).some(entry => hasMeaningfulValue(entry));
+  }
+
+  return true;
+}
+
+function getLevelChoiceCount(
+  advancement: Record<string, unknown>,
+  level: number
+): number | undefined {
+  const configuration = asRecord(advancement.configuration) ?? {};
+  const choicesByLevel = asRecord(configuration.choices);
+  const levelChoice =
+    choicesByLevel && level !== undefined ? asRecord(choicesByLevel[String(level)]) : undefined;
+  return toNumber(levelChoice?.count);
+}
+
+function isAdvancementCompletedForLevel(
+  advancement: Record<string, unknown>,
+  type: string,
+  level: number
+): boolean {
+  const value = asRecord(advancement.value);
+  if (!value) {
+    return false;
+  }
+
+  const lowerType = type.toLowerCase();
+
+  if (lowerType === 'hitpoints') {
+    return value[String(level)] !== undefined;
+  }
+
+  if (lowerType === 'itemchoice') {
+    const addedByLevel = asRecord(value.added);
+    const levelAdded = asRecord(addedByLevel?.[String(level)]);
+    const choiceCount = getLevelChoiceCount(advancement, level) ?? 1;
+    return Object.keys(levelAdded ?? {}).length >= choiceCount;
+  }
+
+  if (lowerType === 'subclass') {
+    return Boolean(toStringValue(value.document) ?? toStringValue(value.uuid));
+  }
+
+  return hasMeaningfulValue(value);
+}
+
 function getCompendiumPacks(): CompendiumPackLike[] {
   const packsCollection = game.packs as unknown as
     | {
@@ -272,6 +350,21 @@ async function resolveCompendiumUuidOption(
   }
 
   return null;
+}
+
+async function resolveCompendiumUuidDocument(uuid: string): Promise<CompendiumDocumentLike | null> {
+  const parsed = parseCompendiumUuid(uuid);
+  if (!parsed) {
+    return null;
+  }
+
+  const pack = getCompendiumPacks().find(candidate => candidate.metadata?.id === parsed.packId);
+  if (!pack || typeof pack.getDocument !== 'function') {
+    return null;
+  }
+
+  const document = await pack.getDocument(parsed.documentId);
+  return document && typeof document === 'object' ? (document as CompendiumDocumentLike) : null;
 }
 
 async function searchItemCompendiumOptions(params: {
@@ -463,13 +556,19 @@ async function buildAdvancementDescriptors(params: {
   for (const [index, advancement] of advancements.entries()) {
     const type = toStringValue(advancement.type) ?? 'Unknown';
     const level = getAdvancementLevel(advancement);
-    if (level === undefined || level <= currentLevel || level > targetLevel) {
+    if (
+      level === undefined ||
+      level <= currentLevel ||
+      level > targetLevel ||
+      isAdvancementCompletedForLevel(advancement, type, level)
+    ) {
       continue;
     }
 
     const optional = isOptionalAdvancement(advancement);
     const choiceDetails = await getChoiceDetails(advancement, type);
     descriptors.push({
+      index,
       advancement,
       step: {
         id:
@@ -583,6 +682,896 @@ async function getStepOptions(params: {
   };
 }
 
+function getClassAdvancements(classItem: ActorProgressionItemLike): Record<string, unknown>[] {
+  const system = asRecord(classItem.system);
+  return Array.isArray(system?.advancement)
+    ? system.advancement.filter((entry): entry is Record<string, unknown> =>
+        Boolean(entry && typeof entry === 'object')
+      )
+    : [];
+}
+
+function getAbilityScores(actor: ActorProgressionActorLike): Record<string, number> {
+  const system = asRecord(actor.system);
+  const abilities = asRecord(system?.abilities);
+  if (!abilities) {
+    return {};
+  }
+
+  return Object.fromEntries(
+    Object.entries(abilities)
+      .map(([key, value]) => [key.toLowerCase(), toNumber(asRecord(value)?.value)] as const)
+      .filter((entry): entry is [string, number] => entry[1] !== undefined)
+  );
+}
+
+function toPositiveIntegerRecord(value: Record<string, number>): Record<string, number> {
+  return Object.fromEntries(
+    Object.entries(value)
+      .map(([key, entryValue]) => [key.toLowerCase(), toNumber(entryValue)] as const)
+      .filter(
+        (entry): entry is [string, number] =>
+          entry[1] !== undefined && Number.isInteger(entry[1]) && entry[1] > 0
+      )
+  );
+}
+
+function sumValues(values: Record<string, number>): number {
+  return Object.values(values).reduce((total, value) => total + value, 0);
+}
+
+function getAsiConfiguration(advancement: Record<string, unknown>): {
+  points: number;
+  pointCap?: number;
+  maxScore?: number;
+  fixed: Record<string, number>;
+  locked: string[];
+} {
+  const configuration = asRecord(advancement.configuration) ?? {};
+  const fixed = toNumericRecord(configuration.fixed) ?? {};
+  const locked =
+    toStringArray(configuration.locked)
+      ?.map(entry => entry.toLowerCase())
+      .filter(Boolean) ?? [];
+  const pointCap = toNumber(configuration.cap);
+  const maxScore = toNumber(configuration.max);
+
+  return {
+    points: toNumber(configuration.points) ?? 2,
+    ...(pointCap !== undefined ? { pointCap } : {}),
+    ...(maxScore !== undefined ? { maxScore } : {}),
+    fixed,
+    locked,
+  };
+}
+
+function getConstitutionModifier(actor: ActorProgressionActorLike): number {
+  const system = asRecord(actor.system);
+  const abilities = asRecord(system?.abilities);
+  const constitution = asRecord(abilities?.con);
+  const explicitModifier = toNumber(constitution?.mod);
+  if (explicitModifier !== undefined) {
+    return explicitModifier;
+  }
+
+  const score = toNumber(constitution?.value);
+  return score !== undefined ? Math.floor((score - 10) / 2) : 0;
+}
+
+function getHitPointState(actor: ActorProgressionActorLike): {
+  current: number;
+  max: number;
+  temp?: number;
+} {
+  const system = asRecord(actor.system);
+  const attributes = asRecord(system?.attributes);
+  const hp = asRecord(attributes?.hp);
+  const current = toNumber(hp?.value);
+  const max = toNumber(hp?.max);
+
+  if (current === undefined || max === undefined) {
+    throw new Error(
+      'UNSUPPORTED_CAPABILITY: This DnD5e actor does not expose hit points in a supported format.'
+    );
+  }
+
+  const temp = toNumber(hp?.temp);
+  return {
+    current,
+    max,
+    ...(temp !== undefined ? { temp } : {}),
+  };
+}
+
+function getClassHitDieFaces(classItem: ActorProgressionItemLike): number {
+  const system = asRecord(classItem.system);
+  const hd = asRecord(system?.hd);
+  const denomination = toStringValue(hd?.denomination);
+  if (denomination) {
+    const parsed = Number(denomination.replace(/^d/i, ''));
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return parsed;
+    }
+  }
+
+  const faces = toNumber(hd?.faces);
+  if (faces !== undefined && faces > 0) {
+    return faces;
+  }
+
+  const direct = toStringValue(system?.hitDie) ?? toStringValue(system?.hitDice);
+  if (direct) {
+    const parsed = Number(direct.replace(/^d/i, ''));
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return parsed;
+    }
+  }
+
+  throw new Error(
+    `UNSUPPORTED_CAPABILITY: Class "${classItem.name ?? classItem.id ?? 'unknown'}" does not expose a supported hit die field.`
+  );
+}
+
+function buildHitPointsAdvancementValueUpdate(params: {
+  classItem: ActorProgressionItemLike;
+  descriptor: AdvancementDescriptor;
+  value: 'avg' | 'max' | number;
+}): Record<string, unknown>[] {
+  const advancements = getClassAdvancements(params.classItem);
+  const level = String(params.descriptor.step.level);
+  return advancements.map((advancement, index) => {
+    if (index !== params.descriptor.index) {
+      return advancement;
+    }
+
+    const advancementValue = asRecord(advancement.value) ?? {};
+    return {
+      ...advancement,
+      value: {
+        ...advancementValue,
+        [level]: params.value,
+      },
+    };
+  });
+}
+
+function buildSubclassAdvancementValueUpdate(params: {
+  classItem: ActorProgressionItemLike;
+  descriptor: AdvancementDescriptor;
+  subclassItemId: string;
+  subclassUuid: string;
+}): Record<string, unknown>[] {
+  return buildClassAdvancementValueUpdate({
+    classItem: params.classItem,
+    descriptor: params.descriptor,
+    value: {
+      document: params.subclassItemId,
+      uuid: params.subclassUuid,
+    },
+  });
+}
+
+function buildItemChoiceAdvancementValueUpdate(params: {
+  classItem: ActorProgressionItemLike;
+  descriptor: AdvancementDescriptor;
+  createdItems: Array<{ id: string; uuid: string }>;
+  replacement?: {
+    originalItemId: string;
+    replacementItemId: string;
+    level: number;
+  };
+}): Record<string, unknown>[] {
+  const advancements = getClassAdvancements(params.classItem);
+  const levelKey = String(params.descriptor.step.level);
+
+  return advancements.map((advancement, index) => {
+    if (index !== params.descriptor.index) {
+      return advancement;
+    }
+
+    const advancementValue = asRecord(advancement.value) ?? {};
+    const addedByLevel = asRecord(advancementValue.added) ?? {};
+    const replacedByLevel = asRecord(advancementValue.replaced) ?? {};
+
+    const updatedAddedByLevel = {
+      ...addedByLevel,
+      [levelKey]: Object.fromEntries(params.createdItems.map(item => [item.id, item.uuid])),
+    };
+
+    const updatedValue: Record<string, unknown> = {
+      ...advancementValue,
+      added: updatedAddedByLevel,
+    };
+
+    if (params.replacement) {
+      updatedValue.replaced = {
+        ...replacedByLevel,
+        [levelKey]: {
+          level: params.replacement.level,
+          original: params.replacement.originalItemId,
+          replacement: params.replacement.replacementItemId,
+        },
+      };
+    } else if (Object.keys(replacedByLevel).length > 0) {
+      updatedValue.replaced = replacedByLevel;
+    }
+
+    return {
+      ...advancement,
+      value: updatedValue,
+    };
+  });
+}
+
+function getAddedItemsByLevel(
+  descriptor: AdvancementDescriptor
+): Record<string, Record<string, string>> {
+  const value = asRecord(descriptor.advancement.value);
+  const addedByLevel = asRecord(value?.added);
+
+  return Object.fromEntries(
+    Object.entries(addedByLevel ?? {}).map(([level, entry]) => [
+      level,
+      Object.fromEntries(
+        Object.entries(asRecord(entry) ?? {}).filter(
+          (recordEntry): recordEntry is [string, string] => typeof recordEntry[1] === 'string'
+        )
+      ),
+    ])
+  );
+}
+
+function findReplacementSourceLevel(
+  descriptor: AdvancementDescriptor,
+  itemId: string
+): number | undefined {
+  const addedByLevel = getAddedItemsByLevel(descriptor);
+  for (const [levelKey, items] of Object.entries(addedByLevel)) {
+    if (itemId in items) {
+      const parsed = Number(levelKey);
+      return Number.isFinite(parsed) ? parsed : undefined;
+    }
+  }
+
+  return undefined;
+}
+
+async function createItemsFromUuids(params: {
+  actor: ActorProgressionActorLike;
+  itemUuids: string[];
+}): Promise<Array<{ id: string; uuid: string }>> {
+  if (typeof params.actor.createEmbeddedDocuments !== 'function') {
+    throw new Error(
+      `Actor "${params.actor.name ?? params.actor.id ?? 'unknown'}" does not support createEmbeddedDocuments().`
+    );
+  }
+
+  const documents = await Promise.all(
+    params.itemUuids.map(async uuid => {
+      const document = await resolveCompendiumUuidDocument(uuid);
+      if (!document?.toObject) {
+        throw new Error(`Compendium item "${uuid}" could not be resolved.`);
+      }
+
+      const itemDataRaw = document.toObject();
+      if (!itemDataRaw || typeof itemDataRaw !== 'object') {
+        throw new Error(`Compendium item "${uuid}" did not provide valid item data.`);
+      }
+
+      const itemData = { ...(itemDataRaw as Record<string, unknown>) };
+      delete itemData._id;
+      delete itemData.folder;
+      delete itemData.sort;
+      return itemData;
+    })
+  );
+
+  const createdItemsRaw = await params.actor.createEmbeddedDocuments('Item', documents);
+  const createdItems = Array.isArray(createdItemsRaw)
+    ? createdItemsRaw.filter((entry): entry is { id?: string } =>
+        Boolean(entry && typeof entry === 'object')
+      )
+    : [];
+
+  return params.itemUuids.map((uuid, index) => {
+    const id = createdItems[index]?.id;
+    if (!id) {
+      throw new Error(`The created item for "${uuid}" did not expose a stable ID.`);
+    }
+
+    return { id, uuid };
+  });
+}
+
+async function rollbackCreatedItems(
+  actor: ActorProgressionActorLike,
+  itemIds: string[],
+  warnings: string[]
+): Promise<void> {
+  if (itemIds.length === 0 || typeof actor.deleteEmbeddedDocuments !== 'function') {
+    return;
+  }
+
+  try {
+    await actor.deleteEmbeddedDocuments('Item', itemIds);
+  } catch (rollbackError) {
+    warnings.push(
+      `Item rollback failed after the class advancement update error: ${
+        rollbackError instanceof Error ? rollbackError.message : 'Unknown rollback error'
+      }`
+    );
+  }
+}
+
+async function evaluateRollTotal(formula: string): Promise<number> {
+  const RollClass = Roll as unknown as RollConstructorLike;
+  const evaluated = await new RollClass(formula).evaluate({ async: true });
+  const total = toNumber(evaluated.total);
+  if (total === undefined) {
+    throw new Error(`Roll "${formula}" did not produce a numeric total.`);
+  }
+
+  return total;
+}
+
+function buildClassAdvancementValueUpdate(params: {
+  classItem: ActorProgressionItemLike;
+  descriptor: AdvancementDescriptor;
+  value: Record<string, unknown>;
+}): Record<string, unknown>[] {
+  const advancements = getClassAdvancements(params.classItem);
+  return advancements.map((advancement, index) =>
+    index === params.descriptor.index ? { ...advancement, value: params.value } : advancement
+  );
+}
+
+async function applyAbilityScoreImprovementChoice(params: {
+  actor: ActorProgressionActorLike;
+  classItem: ActorProgressionItemLike;
+  descriptor: AdvancementDescriptor;
+  request: FoundryApplyCharacterAdvancementChoiceRequest;
+}): Promise<FoundryApplyCharacterAdvancementChoiceResponse> {
+  const { actor, classItem, descriptor, request } = params;
+  const choice = request.choice;
+
+  if (typeof actor.updateEmbeddedDocuments !== 'function') {
+    throw new Error(
+      `Actor "${actor.name ?? request.actorIdentifier}" does not support updateEmbeddedDocuments().`
+    );
+  }
+
+  if (choice.type !== 'ability-score-improvement') {
+    throw new Error(`Unsupported DnD5e advancement choice type: ${choice.type}`);
+  }
+
+  if (choice.mode === 'asi') {
+    if (typeof actor.update !== 'function') {
+      throw new Error(
+        `Actor "${actor.name ?? request.actorIdentifier}" does not support update().`
+      );
+    }
+
+    const availableScores = getAbilityScores(actor);
+    if (Object.keys(availableScores).length === 0) {
+      throw new Error(
+        'UNSUPPORTED_CAPABILITY: This DnD5e actor does not expose ability scores in a supported format.'
+      );
+    }
+
+    const configuration = getAsiConfiguration(descriptor.advancement);
+    const assignments = toPositiveIntegerRecord(choice.assignments);
+    const assignmentEntries = Object.entries(assignments);
+
+    if (configuration.points > 0 && assignmentEntries.length === 0) {
+      throw new Error('This ASI step requires at least one ability assignment.');
+    }
+
+    for (const [ability] of assignmentEntries) {
+      if (!(ability in availableScores)) {
+        throw new Error(`Ability "${ability}" is not available on this actor.`);
+      }
+
+      if (configuration.locked.includes(ability)) {
+        throw new Error(`Ability "${ability}" is locked for this advancement step.`);
+      }
+
+      if (ability in configuration.fixed) {
+        throw new Error(`Ability "${ability}" is already fixed by this advancement step.`);
+      }
+    }
+
+    const assignedPoints = sumValues(assignments);
+    if (assignedPoints !== configuration.points) {
+      throw new Error(
+        `This ASI step requires exactly ${configuration.points} assignable point(s), but ${assignedPoints} were provided.`
+      );
+    }
+
+    const pointCap = configuration.pointCap;
+    if (pointCap !== undefined && assignmentEntries.some(([, value]) => value > pointCap)) {
+      throw new Error(
+        `No more than ${pointCap} point(s) can be assigned to a single ability for this advancement step.`
+      );
+    }
+
+    const totalAssignments = { ...configuration.fixed };
+    for (const [ability, value] of assignmentEntries) {
+      totalAssignments[ability] = (totalAssignments[ability] ?? 0) + value;
+    }
+
+    if (configuration.maxScore !== undefined) {
+      for (const [ability, increase] of Object.entries(totalAssignments)) {
+        const nextValue = (availableScores[ability] ?? 0) + increase;
+        if (nextValue > configuration.maxScore) {
+          throw new Error(
+            `Applying this ASI would raise ${ability.toUpperCase()} above the configured maximum of ${configuration.maxScore}.`
+          );
+        }
+      }
+    }
+
+    const actorUpdates = Object.fromEntries(
+      Object.entries(totalAssignments).map(([ability, increase]) => [
+        `system.abilities.${ability}.value`,
+        (availableScores[ability] ?? 0) + increase,
+      ])
+    );
+    const actorRollback = Object.fromEntries(
+      Object.entries(totalAssignments).map(([ability]) => [
+        `system.abilities.${ability}.value`,
+        availableScores[ability] ?? 0,
+      ])
+    );
+    const classItemUpdates = buildClassAdvancementValueUpdate({
+      classItem,
+      descriptor,
+      value: {
+        type: 'asi',
+        assignments: totalAssignments,
+      },
+    });
+    const warnings: string[] = [];
+
+    await actor.update(actorUpdates);
+    try {
+      await actor.updateEmbeddedDocuments('Item', [
+        {
+          _id: classItem.id,
+          'system.advancement': classItemUpdates,
+        },
+      ]);
+    } catch (error) {
+      try {
+        await actor.update(actorRollback);
+      } catch (rollbackError) {
+        warnings.push(
+          `Actor rollback failed after the class advancement update error: ${
+            rollbackError instanceof Error ? rollbackError.message : 'Unknown rollback error'
+          }`
+        );
+      }
+      throw error instanceof Error && warnings.length > 0
+        ? new Error(`${error.message} ${warnings.join(' ')}`)
+        : error;
+    }
+
+    return {
+      success: true,
+      system: 'dnd5e',
+      actorId: actor.id ?? '',
+      actorName: actor.name ?? request.actorIdentifier,
+      actorType: actor.type ?? 'unknown',
+      targetLevel: request.targetLevel,
+      stepId: descriptor.step.id,
+      stepType: descriptor.step.type,
+      stepTitle: descriptor.step.title,
+      choice: {
+        type: 'ability-score-improvement',
+        mode: 'asi',
+        assignments,
+      },
+      ...(classItem.id ? { classId: classItem.id } : {}),
+      ...(classItem.name ? { className: classItem.name } : {}),
+      ...(warnings.length > 0 ? { warnings } : {}),
+    };
+  }
+
+  if (typeof actor.createEmbeddedDocuments !== 'function') {
+    throw new Error(
+      `Actor "${actor.name ?? request.actorIdentifier}" does not support createEmbeddedDocuments().`
+    );
+  }
+
+  const featDocument = await resolveCompendiumUuidDocument(choice.featUuid);
+  if (!featDocument?.toObject) {
+    throw new Error(`Feat "${choice.featUuid}" could not be resolved from a compendium.`);
+  }
+
+  if (featDocument.type !== 'feat') {
+    throw new Error(`Compendium document "${choice.featUuid}" is not a DnD5e feat.`);
+  }
+
+  const featDataRaw = featDocument.toObject();
+  if (!featDataRaw || typeof featDataRaw !== 'object') {
+    throw new Error(`Feat "${choice.featUuid}" did not provide valid item data.`);
+  }
+
+  const featData = { ...(featDataRaw as Record<string, unknown>) };
+  delete featData._id;
+  delete featData.folder;
+  delete featData.sort;
+
+  const createdItemsRaw = await actor.createEmbeddedDocuments('Item', [featData]);
+  const createdItems = Array.isArray(createdItemsRaw)
+    ? createdItemsRaw.filter((entry): entry is { id?: string; name?: string } =>
+        Boolean(entry && typeof entry === 'object')
+      )
+    : [];
+  const createdItemId = createdItems[0]?.id;
+  if (!createdItemId) {
+    throw new Error('The selected feat item was created without a stable ID.');
+  }
+
+  const classItemUpdates = buildClassAdvancementValueUpdate({
+    classItem,
+    descriptor,
+    value: {
+      type: 'feat',
+      assignments: {},
+      feat: {
+        [createdItemId]: choice.featUuid,
+      },
+    },
+  });
+  const warnings: string[] = [];
+
+  try {
+    await actor.updateEmbeddedDocuments('Item', [
+      {
+        _id: classItem.id,
+        'system.advancement': classItemUpdates,
+      },
+    ]);
+  } catch (error) {
+    if (typeof actor.deleteEmbeddedDocuments === 'function') {
+      try {
+        await actor.deleteEmbeddedDocuments('Item', [createdItemId]);
+      } catch (rollbackError) {
+        warnings.push(
+          `Feat item rollback failed after the class advancement update error: ${
+            rollbackError instanceof Error ? rollbackError.message : 'Unknown rollback error'
+          }`
+        );
+      }
+    }
+
+    throw error instanceof Error && warnings.length > 0
+      ? new Error(`${error.message} ${warnings.join(' ')}`)
+      : error;
+  }
+
+  return {
+    success: true,
+    system: 'dnd5e',
+    actorId: actor.id ?? '',
+    actorName: actor.name ?? request.actorIdentifier,
+    actorType: actor.type ?? 'unknown',
+    targetLevel: request.targetLevel,
+    stepId: descriptor.step.id,
+    stepType: descriptor.step.type,
+    stepTitle: descriptor.step.title,
+    choice: {
+      type: 'ability-score-improvement',
+      mode: 'feat',
+      featUuid: choice.featUuid,
+    },
+    ...(classItem.id ? { classId: classItem.id } : {}),
+    ...(classItem.name ? { className: classItem.name } : {}),
+    createdItemIds: [createdItemId],
+    ...(warnings.length > 0 ? { warnings } : {}),
+  };
+}
+
+async function applySubclassChoice(params: {
+  actor: ActorProgressionActorLike;
+  classItem: ActorProgressionItemLike;
+  descriptor: AdvancementDescriptor;
+  request: FoundryApplyCharacterAdvancementChoiceRequest;
+}): Promise<FoundryApplyCharacterAdvancementChoiceResponse> {
+  const { actor, classItem, descriptor, request } = params;
+
+  if (request.choice.type !== 'subclass') {
+    throw new Error(`Unsupported DnD5e subclass choice type: ${request.choice.type}`);
+  }
+
+  if (typeof actor.updateEmbeddedDocuments !== 'function') {
+    throw new Error(
+      `Actor "${actor.name ?? request.actorIdentifier}" does not support updateEmbeddedDocuments().`
+    );
+  }
+
+  const createdItems = await createItemsFromUuids({
+    actor,
+    itemUuids: [request.choice.subclassUuid],
+  });
+  const subclassItem = createdItems[0];
+  const classItemUpdates = buildSubclassAdvancementValueUpdate({
+    classItem,
+    descriptor,
+    subclassItemId: subclassItem.id,
+    subclassUuid: request.choice.subclassUuid,
+  });
+  const warnings: string[] = [];
+
+  try {
+    await actor.updateEmbeddedDocuments('Item', [
+      {
+        _id: classItem.id,
+        'system.advancement': classItemUpdates,
+      },
+    ]);
+  } catch (error) {
+    await rollbackCreatedItems(
+      actor,
+      createdItems.map(item => item.id),
+      warnings
+    );
+    throw error instanceof Error && warnings.length > 0
+      ? new Error(`${error.message} ${warnings.join(' ')}`)
+      : error;
+  }
+
+  return {
+    success: true,
+    system: 'dnd5e',
+    actorId: actor.id ?? '',
+    actorName: actor.name ?? request.actorIdentifier,
+    actorType: actor.type ?? 'unknown',
+    targetLevel: request.targetLevel,
+    stepId: descriptor.step.id,
+    stepType: descriptor.step.type,
+    stepTitle: descriptor.step.title,
+    choice: {
+      type: 'subclass',
+      subclassUuid: request.choice.subclassUuid,
+    },
+    ...(classItem.id ? { classId: classItem.id } : {}),
+    ...(classItem.name ? { className: classItem.name } : {}),
+    createdItemIds: [subclassItem.id],
+    ...(warnings.length > 0 ? { warnings } : {}),
+  };
+}
+
+async function applyHitPointsChoice(params: {
+  actor: ActorProgressionActorLike;
+  classItem: ActorProgressionItemLike;
+  descriptor: AdvancementDescriptor;
+  request: FoundryApplyCharacterAdvancementChoiceRequest;
+}): Promise<FoundryApplyCharacterAdvancementChoiceResponse> {
+  const { actor, classItem, descriptor, request } = params;
+
+  if (request.choice.type !== 'hit-points') {
+    throw new Error(`Unsupported DnD5e hit point choice type: ${request.choice.type}`);
+  }
+
+  if (typeof actor.update !== 'function' || typeof actor.updateEmbeddedDocuments !== 'function') {
+    throw new Error(
+      `Actor "${actor.name ?? request.actorIdentifier}" does not support the updates required for hit point advancement.`
+    );
+  }
+
+  const hitPointState = getHitPointState(actor);
+  const conModifier = getConstitutionModifier(actor);
+  const hitDieFaces = getClassHitDieFaces(classItem);
+  const rolledHitPoints =
+    request.choice.mode === 'roll'
+      ? await evaluateRollTotal(`1d${hitDieFaces}`)
+      : Math.floor(hitDieFaces / 2) + 1;
+
+  const hpGain = rolledHitPoints + conModifier;
+  const updatedCurrent = hitPointState.current + hpGain;
+  const updatedMax = hitPointState.max + hpGain;
+
+  const actorUpdates = {
+    'system.attributes.hp.value': updatedCurrent,
+    'system.attributes.hp.max': updatedMax,
+  };
+  const actorRollback = {
+    'system.attributes.hp.value': hitPointState.current,
+    'system.attributes.hp.max': hitPointState.max,
+  };
+  const classItemUpdates = buildHitPointsAdvancementValueUpdate({
+    classItem,
+    descriptor,
+    value: request.choice.mode === 'roll' ? rolledHitPoints : 'avg',
+  });
+  const warnings: string[] = [];
+
+  await actor.update(actorUpdates);
+  try {
+    await actor.updateEmbeddedDocuments('Item', [
+      {
+        _id: classItem.id,
+        'system.advancement': classItemUpdates,
+      },
+    ]);
+  } catch (error) {
+    try {
+      await actor.update(actorRollback);
+    } catch (rollbackError) {
+      warnings.push(
+        `Actor rollback failed after the hit point advancement update error: ${
+          rollbackError instanceof Error ? rollbackError.message : 'Unknown rollback error'
+        }`
+      );
+    }
+    throw error instanceof Error && warnings.length > 0
+      ? new Error(`${error.message} ${warnings.join(' ')}`)
+      : error;
+  }
+
+  return {
+    success: true,
+    system: 'dnd5e',
+    actorId: actor.id ?? '',
+    actorName: actor.name ?? request.actorIdentifier,
+    actorType: actor.type ?? 'unknown',
+    targetLevel: request.targetLevel,
+    stepId: descriptor.step.id,
+    stepType: descriptor.step.type,
+    stepTitle: descriptor.step.title,
+    choice: {
+      type: 'hit-points',
+      mode: request.choice.mode,
+      rolledHitPoints: request.choice.mode === 'roll' ? rolledHitPoints : undefined,
+      totalHitPointGain: hpGain,
+      constitutionModifier: conModifier,
+    },
+    ...(classItem.id ? { classId: classItem.id } : {}),
+    ...(classItem.name ? { className: classItem.name } : {}),
+    ...(warnings.length > 0 ? { warnings } : {}),
+  };
+}
+
+async function applyItemChoice(params: {
+  actor: ActorProgressionActorLike;
+  classItem: ActorProgressionItemLike;
+  descriptor: AdvancementDescriptor;
+  request: FoundryApplyCharacterAdvancementChoiceRequest;
+}): Promise<FoundryApplyCharacterAdvancementChoiceResponse> {
+  const { actor, classItem, descriptor, request } = params;
+
+  if (request.choice.type !== 'item-choice') {
+    throw new Error(`Unsupported DnD5e item-choice type: ${request.choice.type}`);
+  }
+
+  if (typeof actor.updateEmbeddedDocuments !== 'function') {
+    throw new Error(
+      `Actor "${actor.name ?? request.actorIdentifier}" does not support updateEmbeddedDocuments().`
+    );
+  }
+
+  const choiceDetails = descriptor.step.choiceDetails;
+  const chooseCount = choiceDetails?.chooseCount ?? 1;
+  if (request.choice.itemUuids.length !== chooseCount) {
+    throw new Error(
+      `This item-choice step requires exactly ${chooseCount} item selection(s), but ${request.choice.itemUuids.length} were provided.`
+    );
+  }
+
+  if (choiceDetails?.options && choiceDetails.options.length > 0) {
+    const allowedUuids = new Set(
+      choiceDetails.options
+        .map(option => option.uuid)
+        .filter((uuid): uuid is string => Boolean(uuid))
+    );
+    for (const itemUuid of request.choice.itemUuids) {
+      if (!allowedUuids.has(itemUuid)) {
+        throw new Error(`Item "${itemUuid}" is not a valid option for this advancement step.`);
+      }
+    }
+  }
+
+  if (request.choice.replaceItemId && request.choice.itemUuids.length !== 1) {
+    throw new Error(
+      'Replacement item-choice steps currently support one selected replacement item.'
+    );
+  }
+
+  const createdItems = await createItemsFromUuids({
+    actor,
+    itemUuids: request.choice.itemUuids,
+  });
+  const warnings: string[] = [];
+
+  let replacement:
+    | {
+        originalItemId: string;
+        replacementItemId: string;
+        level: number;
+      }
+    | undefined;
+
+  if (request.choice.replaceItemId) {
+    const priorLevel = findReplacementSourceLevel(descriptor, request.choice.replaceItemId);
+    if (priorLevel === undefined) {
+      await rollbackCreatedItems(
+        actor,
+        createdItems.map(item => item.id),
+        warnings
+      );
+      throw new Error(
+        `Replacement source item "${request.choice.replaceItemId}" was not found in prior advancement choices for this step.`
+      );
+    }
+
+    replacement = {
+      originalItemId: request.choice.replaceItemId,
+      replacementItemId: createdItems[0].id,
+      level: priorLevel,
+    };
+  }
+
+  const classItemUpdates = buildItemChoiceAdvancementValueUpdate({
+    classItem,
+    descriptor,
+    createdItems,
+    ...(replacement ? { replacement } : {}),
+  });
+
+  try {
+    await actor.updateEmbeddedDocuments('Item', [
+      {
+        _id: classItem.id,
+        'system.advancement': classItemUpdates,
+      },
+    ]);
+  } catch (error) {
+    await rollbackCreatedItems(
+      actor,
+      createdItems.map(item => item.id),
+      warnings
+    );
+    throw error instanceof Error && warnings.length > 0
+      ? new Error(`${error.message} ${warnings.join(' ')}`)
+      : error;
+  }
+
+  if (replacement && typeof actor.deleteEmbeddedDocuments === 'function') {
+    try {
+      await actor.deleteEmbeddedDocuments('Item', [replacement.originalItemId]);
+    } catch (error) {
+      warnings.push(
+        `Replacement cleanup failed for item "${replacement.originalItemId}": ${
+          error instanceof Error ? error.message : 'Unknown error'
+        }`
+      );
+    }
+  }
+
+  return {
+    success: true,
+    system: 'dnd5e',
+    actorId: actor.id ?? '',
+    actorName: actor.name ?? request.actorIdentifier,
+    actorType: actor.type ?? 'unknown',
+    targetLevel: request.targetLevel,
+    stepId: descriptor.step.id,
+    stepType: descriptor.step.type,
+    stepTitle: descriptor.step.title,
+    choice: {
+      type: 'item-choice',
+      itemUuids: request.choice.itemUuids,
+      ...(request.choice.replaceItemId ? { replaceItemId: request.choice.replaceItemId } : {}),
+      ...(request.choice.ability ? { ability: request.choice.ability } : {}),
+    },
+    ...(classItem.id ? { classId: classItem.id } : {}),
+    ...(classItem.name ? { className: classItem.name } : {}),
+    createdItemIds: createdItems.map(item => item.id),
+    ...(warnings.length > 0 ? { warnings } : {}),
+  };
+}
+
 export const dnd5eActorProgressionStrategy: ActorProgressionStrategy = {
   systemId: 'dnd5e',
   async previewCharacterProgression({
@@ -675,5 +1664,71 @@ export const dnd5eActorProgressionStrategy: ActorProgressionStrategy = {
         ? { warnings: ['No concrete options were derived for this advancement step.'] }
         : {}),
     };
+  },
+
+  async applyCharacterAdvancementChoice({
+    actor,
+    request,
+  }): Promise<FoundryApplyCharacterAdvancementChoiceResponse> {
+    if (actor.type !== 'character') {
+      throw new Error(
+        'UNSUPPORTED_CAPABILITY: DnD5e advancement choice application is only supported for character actors.'
+      );
+    }
+
+    const { classItem, descriptors } = await getAdvancementContext({
+      actor,
+      ...(request.classIdentifier !== undefined
+        ? { classIdentifier: request.classIdentifier }
+        : {}),
+      targetLevel: request.targetLevel,
+    });
+    const descriptor = descriptors.find(candidate => candidate.step.id === request.stepId);
+    if (!descriptor) {
+      throw new Error(
+        `Advancement step "${request.stepId}" was not found for this preview context.`
+      );
+    }
+
+    const lowerType = descriptor.step.type.toLowerCase();
+    if (lowerType.includes('abilityscore')) {
+      return applyAbilityScoreImprovementChoice({
+        actor,
+        classItem,
+        descriptor,
+        request,
+      });
+    }
+
+    if (lowerType === 'subclass') {
+      return applySubclassChoice({
+        actor,
+        classItem,
+        descriptor,
+        request,
+      });
+    }
+
+    if (lowerType === 'hitpoints') {
+      return applyHitPointsChoice({
+        actor,
+        classItem,
+        descriptor,
+        request,
+      });
+    }
+
+    if (lowerType === 'itemchoice') {
+      return applyItemChoice({
+        actor,
+        classItem,
+        descriptor,
+        request,
+      });
+    }
+
+    throw new Error(
+      `UNSUPPORTED_CAPABILITY: Applying "${descriptor.step.type}" advancement choices is not implemented yet.`
+    );
   },
 };

@@ -1638,6 +1638,11 @@ async function startBackend(): Promise<void> {
 
                     break;
 
+                  case 'apply-character-advancement-choice':
+                    result = await characterTools.handleApplyCharacterAdvancementChoice(args);
+
+                    break;
+
                   case 'update-character-progression':
                     result = await characterTools.handleUpdateCharacterProgression(args);
 

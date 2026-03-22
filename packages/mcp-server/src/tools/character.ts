@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import { FoundryClient } from '../foundry-client.js';
 import type {
+  FoundryApplyCharacterAdvancementChoiceRequest,
+  FoundryApplyCharacterAdvancementChoiceResponse,
   FoundryActorDocumentBase,
   FoundryActorSystemBase,
   FoundryCharacterEffect,
@@ -316,6 +318,108 @@ export class CharacterTools {
             },
           },
           required: ['characterIdentifier', 'targetLevel', 'stepId'],
+        },
+      },
+      {
+        name: 'apply-character-advancement-choice',
+        description:
+          'Apply a specific character advancement choice. Currently this supports DnD5e ability-score-improvement steps, including direct ASI point allocation or feat selection by compendium UUID.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            characterIdentifier: {
+              type: 'string',
+              description: 'Character name or ID to update',
+            },
+            targetLevel: {
+              type: 'number',
+              description: 'The level-up target used for the preview context',
+            },
+            stepId: {
+              type: 'string',
+              description:
+                'The pending advancement step ID returned by preview-character-progression',
+            },
+            classIdentifier: {
+              type: 'string',
+              description: 'DnD5e only: class item name or ID for multiclass targeting',
+            },
+            choice: {
+              oneOf: [
+                {
+                  type: 'object',
+                  properties: {
+                    type: { const: 'ability-score-improvement' },
+                    mode: { const: 'asi' },
+                    assignments: {
+                      type: 'object',
+                      additionalProperties: { type: 'number' },
+                      description:
+                        'Ability score increases keyed by ability slug such as str or int',
+                    },
+                  },
+                  required: ['type', 'mode', 'assignments'],
+                },
+                {
+                  type: 'object',
+                  properties: {
+                    type: { const: 'ability-score-improvement' },
+                    mode: { const: 'feat' },
+                    featUuid: {
+                      type: 'string',
+                      description: 'Compendium UUID of the selected feat',
+                    },
+                  },
+                  required: ['type', 'mode', 'featUuid'],
+                },
+                {
+                  type: 'object',
+                  properties: {
+                    type: { const: 'subclass' },
+                    subclassUuid: {
+                      type: 'string',
+                      description: 'Compendium UUID of the selected subclass',
+                    },
+                  },
+                  required: ['type', 'subclassUuid'],
+                },
+                {
+                  type: 'object',
+                  properties: {
+                    type: { const: 'hit-points' },
+                    mode: {
+                      enum: ['average', 'roll'],
+                      description:
+                        'Use the class average or roll the class hit die in the DnD5e advancement workflow',
+                    },
+                  },
+                  required: ['type', 'mode'],
+                },
+                {
+                  type: 'object',
+                  properties: {
+                    type: { const: 'item-choice' },
+                    itemUuids: {
+                      type: 'array',
+                      items: { type: 'string' },
+                      description: 'Compendium UUIDs of the selected items',
+                    },
+                    replaceItemId: {
+                      type: 'string',
+                      description: 'Optional existing actor item ID to replace',
+                    },
+                    ability: {
+                      type: 'string',
+                      description:
+                        'Optional spellcasting ability override when supported by the step',
+                    },
+                  },
+                  required: ['type', 'itemUuids'],
+                },
+              ],
+            },
+          },
+          required: ['characterIdentifier', 'targetLevel', 'stepId', 'choice'],
         },
       },
       {
@@ -652,6 +756,120 @@ export class CharacterTools {
       ...(result.classId ? { classId: result.classId } : {}),
       ...(result.className ? { className: result.className } : {}),
       ...(result.warnings ? { warnings: result.warnings } : {}),
+    };
+  }
+
+  async handleApplyCharacterAdvancementChoice(args: unknown): Promise<UnknownRecord> {
+    const choiceSchema = z.discriminatedUnion('mode', [
+      z.object({
+        type: z.literal('ability-score-improvement'),
+        mode: z.literal('asi'),
+        assignments: z.record(z.string(), z.number().int().positive()),
+      }),
+      z.object({
+        type: z.literal('ability-score-improvement'),
+        mode: z.literal('feat'),
+        featUuid: z.string().min(1, 'featUuid cannot be empty'),
+      }),
+      z.object({
+        type: z.literal('hit-points'),
+        mode: z.enum(['average', 'roll']),
+      }),
+    ]);
+    const advancementChoiceSchema = z.union([
+      choiceSchema,
+      z.object({
+        type: z.literal('subclass'),
+        subclassUuid: z.string().min(1, 'subclassUuid cannot be empty'),
+      }),
+      z.object({
+        type: z.literal('item-choice'),
+        itemUuids: z.array(z.string().min(1, 'itemUuids entries cannot be empty')).min(1),
+        replaceItemId: z.string().min(1).optional(),
+        ability: z.string().min(1).optional(),
+      }),
+    ]);
+
+    const schema = z.object({
+      characterIdentifier: z.string().min(1, 'Character identifier cannot be empty'),
+      targetLevel: z.number().int().positive(),
+      stepId: z.string().min(1, 'stepId cannot be empty'),
+      classIdentifier: z.string().min(1).optional(),
+      choice: advancementChoiceSchema,
+    });
+
+    const parsed = schema.parse(args);
+
+    this.logger.info('Applying character advancement choice', parsed);
+
+    const choice: FoundryApplyCharacterAdvancementChoiceRequest['choice'] =
+      parsed.choice.type === 'item-choice'
+        ? {
+            type: 'item-choice',
+            itemUuids: parsed.choice.itemUuids,
+            ...(parsed.choice.replaceItemId !== undefined
+              ? { replaceItemId: parsed.choice.replaceItemId }
+              : {}),
+            ...(parsed.choice.ability !== undefined ? { ability: parsed.choice.ability } : {}),
+          }
+        : parsed.choice;
+
+    const request: FoundryApplyCharacterAdvancementChoiceRequest = {
+      actorIdentifier: parsed.characterIdentifier,
+      targetLevel: parsed.targetLevel,
+      stepId: parsed.stepId,
+      ...(parsed.classIdentifier !== undefined ? { classIdentifier: parsed.classIdentifier } : {}),
+      choice,
+    };
+
+    const result = await this.foundryClient.query<FoundryApplyCharacterAdvancementChoiceResponse>(
+      'foundry-mcp-bridge.applyCharacterAdvancementChoice',
+      request
+    );
+
+    let preview: FoundryPreviewCharacterProgressionResponse | null = null;
+    try {
+      preview = await this.previewCharacterProgression({
+        actorIdentifier: parsed.characterIdentifier,
+        targetLevel: parsed.targetLevel,
+        ...(parsed.classIdentifier !== undefined
+          ? { classIdentifier: parsed.classIdentifier }
+          : {}),
+      });
+    } catch (error) {
+      this.logger.warn('Failed to refresh character progression preview after applying choice', {
+        error,
+      });
+    }
+
+    const warnings = this.mergeWarnings(result.warnings, preview?.warnings);
+
+    return {
+      success: result.success,
+      character: {
+        id: result.actorId,
+        name: result.actorName,
+        type: result.actorType,
+      },
+      step: {
+        id: result.stepId,
+        type: result.stepType,
+        title: result.stepTitle,
+      },
+      choice: result.choice,
+      ...(result.classId ? { classId: result.classId } : {}),
+      ...(result.className ? { className: result.className } : {}),
+      ...(result.createdItemIds ? { createdItemIds: result.createdItemIds } : {}),
+      ...(preview
+        ? {
+            safeToApplyDirectly: preview.safeToApplyDirectly,
+            remainingPendingAdvancements: preview.pendingSteps,
+            nextStep: preview.safeToApplyDirectly
+              ? 'Run update-character-progression to finalize the class level change.'
+              : 'Continue applying the remaining advancement choices before finalizing the level change.',
+          }
+        : {}),
+      ...(warnings.length > 0 ? { warnings } : {}),
     };
   }
 

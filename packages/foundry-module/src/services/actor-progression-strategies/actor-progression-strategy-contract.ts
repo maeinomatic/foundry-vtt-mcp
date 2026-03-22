@@ -1,4 +1,6 @@
 import type {
+  FoundryApplyCharacterAdvancementChoiceRequest,
+  FoundryApplyCharacterAdvancementChoiceResponse,
   FoundryGetCharacterAdvancementOptionsRequest,
   FoundryGetCharacterAdvancementOptionsResponse,
   FoundryPreviewCharacterProgressionRequest,
@@ -9,7 +11,12 @@ export interface ActorProgressionActorLike {
   id?: string;
   name?: string;
   type?: string;
+  system?: unknown;
   items?: unknown;
+  update?: (data: Record<string, unknown>) => Promise<unknown>;
+  createEmbeddedDocuments?: (type: string, data: Record<string, unknown>[]) => Promise<unknown>;
+  updateEmbeddedDocuments?: (type: string, updates: Record<string, unknown>[]) => Promise<unknown>;
+  deleteEmbeddedDocuments?: (type: string, ids: string[]) => Promise<unknown>;
 }
 
 export interface ActorProgressionItemLike {
@@ -29,6 +36,10 @@ export interface ActorProgressionStrategy {
     actor: ActorProgressionActorLike;
     request: FoundryGetCharacterAdvancementOptionsRequest;
   }): Promise<FoundryGetCharacterAdvancementOptionsResponse>;
+  applyCharacterAdvancementChoice(params: {
+    actor: ActorProgressionActorLike;
+    request: FoundryApplyCharacterAdvancementChoiceRequest;
+  }): Promise<FoundryApplyCharacterAdvancementChoiceResponse>;
 }
 
 export function getActorItems(actor: ActorProgressionActorLike): ActorProgressionItemLike[] {

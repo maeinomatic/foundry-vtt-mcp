@@ -2,6 +2,8 @@ import { Logger } from './logger.js';
 import { Config } from './config.js';
 import { FoundryConnector } from './foundry-connector.js';
 import type {
+  FoundryApplyCharacterAdvancementChoiceRequest,
+  FoundryApplyCharacterAdvancementChoiceResponse,
   FoundryActorSummary,
   FoundryActorCreationResult,
   FoundryBridgeMessage,
@@ -107,6 +109,10 @@ export class FoundryClient {
     method: 'foundry-mcp-bridge.getCharacterAdvancementOptions',
     data: FoundryGetCharacterAdvancementOptionsRequest
   ): Promise<FoundryGetCharacterAdvancementOptionsResponse>;
+  async query(
+    method: 'foundry-mcp-bridge.applyCharacterAdvancementChoice',
+    data: FoundryApplyCharacterAdvancementChoiceRequest
+  ): Promise<FoundryApplyCharacterAdvancementChoiceResponse>;
   async query(
     method: 'foundry-mcp-bridge.updateActorEmbeddedItem',
     data: FoundryUpdateActorEmbeddedItemRequest

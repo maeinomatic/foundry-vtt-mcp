@@ -26,6 +26,8 @@ import {
   type WorldInfo,
 } from './services/world-service.js';
 import type {
+  FoundryApplyCharacterAdvancementChoiceRequest,
+  FoundryApplyCharacterAdvancementChoiceResponse,
   FoundryCompendiumSearchFilters,
   FoundryCompendiumSearchResult,
   FoundryCharacterInfo,
@@ -60,6 +62,9 @@ interface ActorLookupLike {
   hasPlayerOwner?: boolean;
   ownership?: Record<string, number>;
   update?: (data: Record<string, unknown>) => Promise<unknown>;
+  createEmbeddedDocuments?: (type: string, data: Record<string, unknown>[]) => Promise<unknown>;
+  updateEmbeddedDocuments?: (type: string, updates: Record<string, unknown>[]) => Promise<unknown>;
+  deleteEmbeddedDocuments?: (type: string, ids: string[]) => Promise<unknown>;
   testUserPermission?: (...args: unknown[]) => boolean;
   getRollData?: () => unknown;
 }
@@ -524,6 +529,12 @@ export class FoundryModuleFacade {
     request: FoundryGetCharacterAdvancementOptionsRequest
   ): Promise<FoundryGetCharacterAdvancementOptionsResponse> {
     return this.actorProgressionService.getCharacterAdvancementOptions(request);
+  }
+
+  async applyCharacterAdvancementChoice(
+    request: FoundryApplyCharacterAdvancementChoiceRequest
+  ): Promise<FoundryApplyCharacterAdvancementChoiceResponse> {
+    return this.actorProgressionService.applyCharacterAdvancementChoice(request);
   }
 
   async updateActor(request: FoundryUpdateActorRequest): Promise<FoundryUpdateActorResponse> {
