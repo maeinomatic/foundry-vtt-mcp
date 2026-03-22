@@ -788,6 +788,11 @@ export class CharacterTools {
         replaceItemId: z.string().min(1).optional(),
         ability: z.string().min(1).optional(),
       }),
+      z.object({
+        type: z.literal('item-grant'),
+        itemUuids: z.array(z.string().min(1, 'itemUuids entries cannot be empty')).optional(),
+        ability: z.string().min(1).optional(),
+      }),
     ]);
 
     const schema = z.object({
@@ -812,7 +817,15 @@ export class CharacterTools {
               : {}),
             ...(parsed.choice.ability !== undefined ? { ability: parsed.choice.ability } : {}),
           }
-        : parsed.choice;
+        : parsed.choice.type === 'item-grant'
+          ? {
+              type: 'item-grant',
+              ...(parsed.choice.itemUuids !== undefined
+                ? { itemUuids: parsed.choice.itemUuids }
+                : {}),
+              ...(parsed.choice.ability !== undefined ? { ability: parsed.choice.ability } : {}),
+            }
+          : parsed.choice;
 
     const request: FoundryApplyCharacterAdvancementChoiceRequest = {
       actorIdentifier: parsed.characterIdentifier,

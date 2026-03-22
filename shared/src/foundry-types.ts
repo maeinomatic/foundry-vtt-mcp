@@ -255,6 +255,9 @@ export interface FoundryProgressionPreviewStep extends UnknownRecord {
   autoApplySafe: boolean;
   hints?: string[];
   choiceDetails?: FoundryAdvancementChoiceDetails;
+  sourceItemId?: string;
+  sourceItemName?: string;
+  sourceItemType?: string;
 }
 
 export interface FoundryAdvancementOption extends UnknownRecord {
@@ -278,6 +281,8 @@ export interface FoundryAdvancementChoiceDetails extends UnknownRecord {
   maxScore?: number;
   fixed?: Record<string, number>;
   locked?: string[];
+  abilityOptions?: string[];
+  defaultSelectedOptionIds?: string[];
   recommendation?: FoundryAdvancementOption;
   options?: FoundryAdvancementOption[];
 }
@@ -342,6 +347,11 @@ export interface FoundryApplyCharacterAdvancementChoiceRequest {
         type: 'item-choice';
         itemUuids: string[];
         replaceItemId?: string;
+        ability?: string;
+      }
+    | {
+        type: 'item-grant';
+        itemUuids?: string[];
         ability?: string;
       };
 }

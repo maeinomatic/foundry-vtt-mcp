@@ -654,6 +654,14 @@ export class QueryHandlers {
           if (!Array.isArray(data.choice.itemUuids) || data.choice.itemUuids.length === 0) {
             throw new Error('Item-choice selections require one or more itemUuids');
           }
+        } else if (data.choice.type === 'item-grant') {
+          if (
+            data.choice.itemUuids !== undefined &&
+            (!Array.isArray(data.choice.itemUuids) ||
+              !data.choice.itemUuids.every((itemUuid: unknown) => typeof itemUuid === 'string'))
+          ) {
+            throw new Error('Item-grant selections require itemUuids to be a string array');
+          }
         }
 
         return await this.dataAccess.applyCharacterAdvancementChoice(data);

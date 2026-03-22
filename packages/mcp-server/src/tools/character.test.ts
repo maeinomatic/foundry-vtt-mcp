@@ -506,7 +506,7 @@ describe('CharacterTools', () => {
     expect(result.nextStep).toContain('remaining advancement choices');
   });
 
-  it('applies a DnD5e subclass choice through the shared progression bridge', async () => {
+  it('applies a DnD5e subclass choice and exposes subclass-owned follow-up advancement steps', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
       if (method === 'foundry-mcp-bridge.applyCharacterAdvancementChoice') {
         expect(data).toEqual({
@@ -549,8 +549,21 @@ describe('CharacterTools', () => {
           className: 'Wizard',
           currentLevel: 7,
           targetLevel: 8,
-          safeToApplyDirectly: true,
-          pendingSteps: [],
+          safeToApplyDirectly: false,
+          pendingSteps: [
+            {
+              id: 'item-subclass-1:ItemGrant:8:0',
+              level: 8,
+              type: 'ItemGrant',
+              title: 'Grant Feature',
+              required: true,
+              choicesRequired: false,
+              autoApplySafe: true,
+              sourceItemId: 'item-subclass-1',
+              sourceItemName: 'School of Evocation',
+              sourceItemType: 'subclass',
+            },
+          ],
         });
       }
 
@@ -576,10 +589,99 @@ describe('CharacterTools', () => {
     expect(result).toMatchObject({
       success: true,
       createdItemIds: ['item-subclass-1'],
-      safeToApplyDirectly: true,
+      safeToApplyDirectly: false,
       step: {
         id: 'subclass-step',
         type: 'Subclass',
+      },
+      remainingPendingAdvancements: [
+        {
+          id: 'item-subclass-1:ItemGrant:8:0',
+          type: 'ItemGrant',
+          sourceItemId: 'item-subclass-1',
+          sourceItemName: 'School of Evocation',
+          sourceItemType: 'subclass',
+        },
+      ],
+    });
+  });
+
+  it('applies a DnD5e item-grant choice through the shared progression bridge', async () => {
+    const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
+      if (method === 'foundry-mcp-bridge.applyCharacterAdvancementChoice') {
+        expect(data).toEqual({
+          actorIdentifier: 'Laeral',
+          classIdentifier: 'Wizard',
+          targetLevel: 8,
+          stepId: 'item-subclass-1:ItemGrant:8:0',
+          choice: {
+            type: 'item-grant',
+          },
+        });
+        return Promise.resolve({
+          success: true,
+          system: 'dnd5e',
+          actorId: 'actor-3',
+          actorName: 'Laeral',
+          actorType: 'character',
+          targetLevel: 8,
+          stepId: 'item-subclass-1:ItemGrant:8:0',
+          stepType: 'ItemGrant',
+          stepTitle: 'Grant Feature',
+          classId: 'class-wizard',
+          className: 'Wizard',
+          choice: {
+            type: 'item-grant',
+            itemUuids: ['Compendium.dnd5e.classfeatures.Item.evocation-savant'],
+          },
+          createdItemIds: ['item-feature-2'],
+        });
+      }
+
+      if (method === 'foundry-mcp-bridge.previewCharacterProgression') {
+        return Promise.resolve({
+          system: 'dnd5e',
+          actorId: 'actor-3',
+          actorName: 'Laeral',
+          actorType: 'character',
+          classId: 'class-wizard',
+          className: 'Wizard',
+          currentLevel: 7,
+          targetLevel: 8,
+          safeToApplyDirectly: true,
+          pendingSteps: [],
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected query: ${method}`));
+    });
+
+    const tools = new CharacterTools({
+      foundryClient: { query } as unknown as FoundryClient,
+      logger: createLoggerStub(),
+    });
+
+    const result = (await tools.handleApplyCharacterAdvancementChoice({
+      characterIdentifier: 'Laeral',
+      classIdentifier: 'Wizard',
+      targetLevel: 8,
+      stepId: 'item-subclass-1:ItemGrant:8:0',
+      choice: {
+        type: 'item-grant',
+      },
+    })) as Record<string, unknown>;
+
+    expect(result).toMatchObject({
+      success: true,
+      createdItemIds: ['item-feature-2'],
+      safeToApplyDirectly: true,
+      step: {
+        id: 'item-subclass-1:ItemGrant:8:0',
+        type: 'ItemGrant',
+      },
+      choice: {
+        type: 'item-grant',
+        itemUuids: ['Compendium.dnd5e.classfeatures.Item.evocation-savant'],
       },
     });
   });

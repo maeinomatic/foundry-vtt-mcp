@@ -40,8 +40,19 @@ interface CompendiumDocumentLike {
 
 interface AdvancementDescriptor {
   index: number;
+  sourceItem: ActorProgressionItemLike;
   advancement: Record<string, unknown>;
   step: FoundryProgressionPreviewStep;
+}
+
+interface ItemGrantDefinition {
+  uuid: string;
+  optional: boolean;
+}
+
+interface ConfiguredGrantOption extends FoundryAdvancementOption {
+  optional: boolean;
+  selectedByDefault: boolean;
 }
 
 interface EvaluatedRollLike {
@@ -130,11 +141,15 @@ function requiresChoices(
   advancement: Record<string, unknown>,
   optional: boolean
 ): boolean {
+  const lowerType = type.toLowerCase();
   if (optional) {
     return true;
   }
 
-  const lowerType = type.toLowerCase();
+  if (lowerType === 'itemgrant') {
+    return requiresItemGrantChoices(advancement);
+  }
+
   if (
     lowerType === 'hitpoints' ||
     lowerType === 'itemchoice' ||
@@ -167,6 +182,12 @@ function buildHints(type: string, optional: boolean): string[] {
 
   if (lowerType === 'itemchoice') {
     hints.push('This advancement requires selecting one or more items from a configured pool.');
+  }
+
+  if (lowerType === 'itemgrant') {
+    hints.push(
+      'This advancement grants one or more follow-up items in the DnD5e progression flow.'
+    );
   }
 
   if (lowerType === 'subclass') {
@@ -421,6 +442,58 @@ function toStringArray(value: unknown): string[] | undefined {
     : undefined;
 }
 
+function getItemGrantDefinitions(advancement: Record<string, unknown>): ItemGrantDefinition[] {
+  const configuration = asRecord(advancement.configuration) ?? {};
+  const poolEntries = Array.isArray(configuration.pool)
+    ? configuration.pool
+    : Array.isArray(configuration.items)
+      ? configuration.items
+      : [];
+
+  return poolEntries
+    .map(entry => {
+      const entryRecord = asRecord(entry);
+      const uuid = normalizeUuid(entryRecord ?? entry);
+      if (!uuid) {
+        return null;
+      }
+
+      return {
+        uuid,
+        optional: entryRecord?.optional === true,
+      };
+    })
+    .filter((entry): entry is ItemGrantDefinition => entry !== null);
+}
+
+function getItemGrantAbilityOptions(advancement: Record<string, unknown>): string[] {
+  const configuration = asRecord(advancement.configuration) ?? {};
+  const spellConfig = asRecord(configuration.spell);
+  const abilityOptions = toStringArray(spellConfig?.ability ?? configuration.ability) ?? [];
+  return Array.from(new Set(abilityOptions));
+}
+
+function getDefaultItemGrantUuids(advancement: Record<string, unknown>): string[] {
+  return getItemGrantDefinitions(advancement)
+    .filter(entry => !entry.optional)
+    .map(entry => entry.uuid);
+}
+
+function requiresItemGrantChoices(advancement: Record<string, unknown>): boolean {
+  if (isOptionalAdvancement(advancement)) {
+    return true;
+  }
+
+  return (
+    getItemGrantDefinitions(advancement).some(entry => entry.optional) ||
+    getItemGrantAbilityOptions(advancement).length > 1
+  );
+}
+
+function isAutoApplySafeAdvancement(type: string, advancement: Record<string, unknown>): boolean {
+  return type.toLowerCase() === 'itemgrant' && !requiresItemGrantChoices(advancement);
+}
+
 async function getAsiChoiceDetails(
   advancement: Record<string, unknown>
 ): Promise<FoundryAdvancementChoiceDetails> {
@@ -497,10 +570,33 @@ async function getChoiceDetails(
   }
 
   if (lowerType === 'itemgrant') {
-    const options = await getConfiguredPoolOptions(advancement);
+    const configuredOptions = await Promise.all(
+      getItemGrantDefinitions(advancement).map(async definition => {
+        const option = await resolveCompendiumUuidOption(definition.uuid, 'configured');
+        if (!option) {
+          return null;
+        }
+
+        return {
+          ...option,
+          optional: definition.optional,
+          selectedByDefault: !definition.optional,
+        } satisfies ConfiguredGrantOption;
+      })
+    );
+    const options = configuredOptions.filter(
+      (option): option is ConfiguredGrantOption => option !== null
+    );
+    const abilityOptions = getItemGrantAbilityOptions(advancement);
+    const defaultSelectedOptionIds = options
+      .filter(option => option.selectedByDefault === true)
+      .map(option => option.id);
+
     return {
       kind: 'grant-items',
       optionQuerySupported: true,
+      ...(abilityOptions.length > 0 ? { abilityOptions } : {}),
+      ...(defaultSelectedOptionIds.length > 0 ? { defaultSelectedOptionIds } : {}),
       ...(options.length > 0 ? { options } : {}),
     };
   }
@@ -539,55 +635,68 @@ async function getChoiceDetails(
 }
 
 async function buildAdvancementDescriptors(params: {
-  classItem: ActorProgressionItemLike;
+  sourceItems: ActorProgressionItemLike[];
   currentLevel: number;
   targetLevel: number;
 }): Promise<AdvancementDescriptor[]> {
-  const { classItem, currentLevel, targetLevel } = params;
-  const system = asRecord(classItem.system);
-  const advancements = Array.isArray(system?.advancement)
-    ? system.advancement.filter((entry): entry is Record<string, unknown> =>
-        Boolean(entry && typeof entry === 'object')
-      )
-    : [];
-
+  const { sourceItems, currentLevel, targetLevel } = params;
   const descriptors: AdvancementDescriptor[] = [];
 
-  for (const [index, advancement] of advancements.entries()) {
-    const type = toStringValue(advancement.type) ?? 'Unknown';
-    const level = getAdvancementLevel(advancement);
-    if (
-      level === undefined ||
-      level <= currentLevel ||
-      level > targetLevel ||
-      isAdvancementCompletedForLevel(advancement, type, level)
-    ) {
-      continue;
-    }
+  for (const sourceItem of sourceItems) {
+    const advancements = getItemAdvancements(sourceItem);
 
-    const optional = isOptionalAdvancement(advancement);
-    const choiceDetails = await getChoiceDetails(advancement, type);
-    descriptors.push({
-      index,
-      advancement,
-      step: {
-        id:
-          toStringValue(advancement._id) ??
-          toStringValue(advancement.id) ??
-          `${classItem.id ?? 'class'}:${type}:${level}:${index}`,
-        level,
-        type,
-        title: getAdvancementTitle(advancement, type),
-        required: !optional,
-        choicesRequired: requiresChoices(type, advancement, optional),
-        autoApplySafe: false,
-        hints: buildHints(type, optional),
-        ...(choiceDetails ? { choiceDetails } : {}),
-      },
-    });
+    for (const [index, advancement] of advancements.entries()) {
+      const type = toStringValue(advancement.type) ?? 'Unknown';
+      const level = getAdvancementLevel(advancement);
+      if (
+        level === undefined ||
+        level <= currentLevel ||
+        level > targetLevel ||
+        isAdvancementCompletedForLevel(advancement, type, level)
+      ) {
+        continue;
+      }
+
+      const optional = isOptionalAdvancement(advancement);
+      const choiceDetails = await getChoiceDetails(advancement, type);
+      descriptors.push({
+        index,
+        sourceItem,
+        advancement,
+        step: {
+          id:
+            toStringValue(advancement._id) ??
+            toStringValue(advancement.id) ??
+            `${sourceItem.id ?? sourceItem.name ?? 'item'}:${type}:${level}:${index}`,
+          level,
+          type,
+          title: getAdvancementTitle(advancement, type),
+          required: !optional,
+          choicesRequired: requiresChoices(type, advancement, optional),
+          autoApplySafe: isAutoApplySafeAdvancement(type, advancement),
+          hints: buildHints(type, optional),
+          ...(choiceDetails ? { choiceDetails } : {}),
+          ...(sourceItem.id ? { sourceItemId: sourceItem.id } : {}),
+          ...(sourceItem.name ? { sourceItemName: sourceItem.name } : {}),
+          ...(sourceItem.type ? { sourceItemType: sourceItem.type } : {}),
+        },
+      });
+    }
   }
 
-  return descriptors.sort((left, right) => left.step.level - right.step.level);
+  return descriptors.sort((left, right) => {
+    if (left.step.level !== right.step.level) {
+      return left.step.level - right.step.level;
+    }
+
+    const leftSource = left.sourceItem.name ?? left.sourceItem.id ?? '';
+    const rightSource = right.sourceItem.name ?? right.sourceItem.id ?? '';
+    if (leftSource !== rightSource) {
+      return leftSource.localeCompare(rightSource);
+    }
+
+    return left.index - right.index;
+  });
 }
 
 async function getAdvancementContext(params: {
@@ -602,8 +711,9 @@ async function getAdvancementContext(params: {
   const classItem = getClassItem(params.actor, params.classIdentifier);
   const classSystem = asRecord(classItem.system);
   const currentLevel = toNumber(classSystem?.levels) ?? 0;
+  const sourceItems = collectAdvancementSourceItems(params.actor, classItem);
   const descriptors = await buildAdvancementDescriptors({
-    classItem,
+    sourceItems,
     currentLevel,
     targetLevel: params.targetLevel,
   });
@@ -682,13 +792,109 @@ async function getStepOptions(params: {
   };
 }
 
-function getClassAdvancements(classItem: ActorProgressionItemLike): Record<string, unknown>[] {
-  const system = asRecord(classItem.system);
+function getItemAdvancements(item: ActorProgressionItemLike): Record<string, unknown>[] {
+  const system = asRecord(item.system);
   return Array.isArray(system?.advancement)
     ? system.advancement.filter((entry): entry is Record<string, unknown> =>
         Boolean(entry && typeof entry === 'object')
       )
     : [];
+}
+
+function getAdvancementLinkedItemIds(advancement: Record<string, unknown>): string[] {
+  const value = asRecord(advancement.value);
+  if (!value) {
+    return [];
+  }
+
+  const linkedIds = new Set<string>();
+  const addLocalId = (candidate: unknown): void => {
+    if (
+      typeof candidate === 'string' &&
+      candidate.length > 0 &&
+      !candidate.startsWith('Compendium.')
+    ) {
+      linkedIds.add(candidate);
+    }
+  };
+
+  addLocalId(value.document);
+
+  if (Array.isArray(value.documents)) {
+    value.documents.forEach(addLocalId);
+  }
+
+  const addedByLevel = asRecord(value.added);
+  for (const levelEntry of Object.values(addedByLevel ?? {})) {
+    for (const itemId of Object.keys(asRecord(levelEntry) ?? {})) {
+      addLocalId(itemId);
+    }
+  }
+
+  const replacedByLevel = asRecord(value.replaced);
+  for (const replacementEntry of Object.values(replacedByLevel ?? {})) {
+    const replacementRecord = asRecord(replacementEntry);
+    addLocalId(replacementRecord?.replacement);
+  }
+
+  for (const [key, entryValue] of Object.entries(value)) {
+    if (
+      key !== 'document' &&
+      key !== 'uuid' &&
+      key !== 'added' &&
+      key !== 'replaced' &&
+      typeof entryValue === 'string' &&
+      entryValue.startsWith('Compendium.')
+    ) {
+      addLocalId(key);
+    }
+  }
+
+  return Array.from(linkedIds);
+}
+
+function collectAdvancementSourceItems(
+  actor: ActorProgressionActorLike,
+  classItem: ActorProgressionItemLike
+): ActorProgressionItemLike[] {
+  const actorItems = getActorItems(actor);
+  const itemsById = new Map(
+    actorItems
+      .filter(
+        (item): item is ActorProgressionItemLike & { id: string } => typeof item.id === 'string'
+      )
+      .map(item => [item.id, item] as const)
+  );
+  const collected: ActorProgressionItemLike[] = [];
+  const queue: ActorProgressionItemLike[] = [classItem];
+  const visitedIds = new Set<string>();
+
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (!current) {
+      continue;
+    }
+
+    if (current.id) {
+      if (visitedIds.has(current.id)) {
+        continue;
+      }
+      visitedIds.add(current.id);
+    }
+
+    collected.push(current);
+
+    for (const advancement of getItemAdvancements(current)) {
+      for (const linkedItemId of getAdvancementLinkedItemIds(advancement)) {
+        const linkedItem = itemsById.get(linkedItemId);
+        if (linkedItem) {
+          queue.push(linkedItem);
+        }
+      }
+    }
+  }
+
+  return collected;
 }
 
 function getAbilityScores(actor: ActorProgressionActorLike): Record<string, number> {
@@ -812,12 +1018,23 @@ function getClassHitDieFaces(classItem: ActorProgressionItemLike): number {
   );
 }
 
+function buildSourceItemAdvancementValueUpdate(params: {
+  sourceItem: ActorProgressionItemLike;
+  descriptor: AdvancementDescriptor;
+  value: Record<string, unknown>;
+}): Record<string, unknown>[] {
+  const advancements = getItemAdvancements(params.sourceItem);
+  return advancements.map((advancement, index) =>
+    index === params.descriptor.index ? { ...advancement, value: params.value } : advancement
+  );
+}
+
 function buildHitPointsAdvancementValueUpdate(params: {
-  classItem: ActorProgressionItemLike;
+  sourceItem: ActorProgressionItemLike;
   descriptor: AdvancementDescriptor;
   value: 'avg' | 'max' | number;
 }): Record<string, unknown>[] {
-  const advancements = getClassAdvancements(params.classItem);
+  const advancements = getItemAdvancements(params.sourceItem);
   const level = String(params.descriptor.step.level);
   return advancements.map((advancement, index) => {
     if (index !== params.descriptor.index) {
@@ -836,13 +1053,13 @@ function buildHitPointsAdvancementValueUpdate(params: {
 }
 
 function buildSubclassAdvancementValueUpdate(params: {
-  classItem: ActorProgressionItemLike;
+  sourceItem: ActorProgressionItemLike;
   descriptor: AdvancementDescriptor;
   subclassItemId: string;
   subclassUuid: string;
 }): Record<string, unknown>[] {
-  return buildClassAdvancementValueUpdate({
-    classItem: params.classItem,
+  return buildSourceItemAdvancementValueUpdate({
+    sourceItem: params.sourceItem,
     descriptor: params.descriptor,
     value: {
       document: params.subclassItemId,
@@ -852,7 +1069,7 @@ function buildSubclassAdvancementValueUpdate(params: {
 }
 
 function buildItemChoiceAdvancementValueUpdate(params: {
-  classItem: ActorProgressionItemLike;
+  sourceItem: ActorProgressionItemLike;
   descriptor: AdvancementDescriptor;
   createdItems: Array<{ id: string; uuid: string }>;
   replacement?: {
@@ -861,7 +1078,7 @@ function buildItemChoiceAdvancementValueUpdate(params: {
     level: number;
   };
 }): Record<string, unknown>[] {
-  const advancements = getClassAdvancements(params.classItem);
+  const advancements = getItemAdvancements(params.sourceItem);
   const levelKey = String(params.descriptor.step.level);
 
   return advancements.map((advancement, index) => {
@@ -903,6 +1120,35 @@ function buildItemChoiceAdvancementValueUpdate(params: {
   });
 }
 
+function buildItemGrantAdvancementValueUpdate(params: {
+  sourceItem: ActorProgressionItemLike;
+  descriptor: AdvancementDescriptor;
+  createdItems: Array<{ id: string; uuid: string }>;
+  declined: boolean;
+  ability?: string;
+}): Record<string, unknown>[] {
+  const advancements = getItemAdvancements(params.sourceItem);
+
+  return advancements.map((advancement, index) => {
+    if (index !== params.descriptor.index) {
+      return advancement;
+    }
+
+    const advancementValue = asRecord(advancement.value) ?? {};
+    const { declined: _existingDeclined, ...restValue } = advancementValue;
+    const linkedItems = Object.fromEntries(params.createdItems.map(item => [item.id, item.uuid]));
+
+    return {
+      ...advancement,
+      value: {
+        ...restValue,
+        ...(params.declined ? { declined: true } : linkedItems),
+        ...(params.ability ? { ability: params.ability } : {}),
+      },
+    };
+  });
+}
+
 function getAddedItemsByLevel(
   descriptor: AdvancementDescriptor
 ): Record<string, Record<string, string>> {
@@ -934,6 +1180,60 @@ function findReplacementSourceLevel(
   }
 
   return undefined;
+}
+
+function resolveItemGrantSelection(params: {
+  descriptor: AdvancementDescriptor;
+  request: FoundryApplyCharacterAdvancementChoiceRequest;
+}): { selectedUuids: string[]; ability?: string } {
+  const { descriptor, request } = params;
+  if (request.choice.type !== 'item-grant') {
+    throw new Error(`Unsupported DnD5e item-grant choice type: ${request.choice.type}`);
+  }
+
+  const definitions = getItemGrantDefinitions(descriptor.advancement);
+  const allowedUuids = new Set(definitions.map(entry => entry.uuid));
+  const defaultSelectedUuids = getDefaultItemGrantUuids(descriptor.advancement);
+  const globalOptional = isOptionalAdvancement(descriptor.advancement);
+  const explicitSelection = request.choice.itemUuids;
+  const selectedUuids = Array.from(new Set(explicitSelection ?? defaultSelectedUuids));
+
+  for (const itemUuid of selectedUuids) {
+    if (!allowedUuids.has(itemUuid)) {
+      throw new Error(`Item "${itemUuid}" is not a valid option for this advancement step.`);
+    }
+  }
+
+  const requiredUuids = definitions
+    .filter(entry => !globalOptional && !entry.optional)
+    .map(entry => entry.uuid);
+
+  for (const requiredUuid of requiredUuids) {
+    if (!selectedUuids.includes(requiredUuid)) {
+      throw new Error(`This item-grant step requires granting "${requiredUuid}".`);
+    }
+  }
+
+  const abilityOptions = getItemGrantAbilityOptions(descriptor.advancement);
+  const ability =
+    abilityOptions.length === 1 && !request.choice.ability
+      ? abilityOptions[0]
+      : request.choice.ability;
+
+  if (selectedUuids.length > 0 && abilityOptions.length > 1 && !ability) {
+    throw new Error(
+      `This item-grant step requires choosing one of these abilities: ${abilityOptions.join(', ')}.`
+    );
+  }
+
+  if (ability && abilityOptions.length > 0 && !abilityOptions.includes(ability)) {
+    throw new Error(`Ability "${ability}" is not a valid option for this advancement step.`);
+  }
+
+  return {
+    selectedUuids,
+    ...(ability ? { ability } : {}),
+  };
 }
 
 async function createItemsFromUuids(params: {
@@ -1014,17 +1314,6 @@ async function evaluateRollTotal(formula: string): Promise<number> {
   return total;
 }
 
-function buildClassAdvancementValueUpdate(params: {
-  classItem: ActorProgressionItemLike;
-  descriptor: AdvancementDescriptor;
-  value: Record<string, unknown>;
-}): Record<string, unknown>[] {
-  const advancements = getClassAdvancements(params.classItem);
-  return advancements.map((advancement, index) =>
-    index === params.descriptor.index ? { ...advancement, value: params.value } : advancement
-  );
-}
-
 async function applyAbilityScoreImprovementChoice(params: {
   actor: ActorProgressionActorLike;
   classItem: ActorProgressionItemLike;
@@ -1033,10 +1322,17 @@ async function applyAbilityScoreImprovementChoice(params: {
 }): Promise<FoundryApplyCharacterAdvancementChoiceResponse> {
   const { actor, classItem, descriptor, request } = params;
   const choice = request.choice;
+  const sourceItemId = descriptor.sourceItem.id;
 
   if (typeof actor.updateEmbeddedDocuments !== 'function') {
     throw new Error(
       `Actor "${actor.name ?? request.actorIdentifier}" does not support updateEmbeddedDocuments().`
+    );
+  }
+
+  if (!sourceItemId) {
+    throw new Error(
+      `Advancement step "${descriptor.step.id}" is not attached to a stable owned item.`
     );
   }
 
@@ -1122,8 +1418,8 @@ async function applyAbilityScoreImprovementChoice(params: {
         availableScores[ability] ?? 0,
       ])
     );
-    const classItemUpdates = buildClassAdvancementValueUpdate({
-      classItem,
+    const classItemUpdates = buildSourceItemAdvancementValueUpdate({
+      sourceItem: descriptor.sourceItem,
       descriptor,
       value: {
         type: 'asi',
@@ -1136,7 +1432,7 @@ async function applyAbilityScoreImprovementChoice(params: {
     try {
       await actor.updateEmbeddedDocuments('Item', [
         {
-          _id: classItem.id,
+          _id: sourceItemId,
           'system.advancement': classItemUpdates,
         },
       ]);
@@ -1212,8 +1508,8 @@ async function applyAbilityScoreImprovementChoice(params: {
     throw new Error('The selected feat item was created without a stable ID.');
   }
 
-  const classItemUpdates = buildClassAdvancementValueUpdate({
-    classItem,
+  const classItemUpdates = buildSourceItemAdvancementValueUpdate({
+    sourceItem: descriptor.sourceItem,
     descriptor,
     value: {
       type: 'feat',
@@ -1228,7 +1524,7 @@ async function applyAbilityScoreImprovementChoice(params: {
   try {
     await actor.updateEmbeddedDocuments('Item', [
       {
-        _id: classItem.id,
+        _id: sourceItemId,
         'system.advancement': classItemUpdates,
       },
     ]);
@@ -1279,6 +1575,7 @@ async function applySubclassChoice(params: {
   request: FoundryApplyCharacterAdvancementChoiceRequest;
 }): Promise<FoundryApplyCharacterAdvancementChoiceResponse> {
   const { actor, classItem, descriptor, request } = params;
+  const sourceItemId = descriptor.sourceItem.id;
 
   if (request.choice.type !== 'subclass') {
     throw new Error(`Unsupported DnD5e subclass choice type: ${request.choice.type}`);
@@ -1290,13 +1587,19 @@ async function applySubclassChoice(params: {
     );
   }
 
+  if (!sourceItemId) {
+    throw new Error(
+      `Advancement step "${descriptor.step.id}" is not attached to a stable owned item.`
+    );
+  }
+
   const createdItems = await createItemsFromUuids({
     actor,
     itemUuids: [request.choice.subclassUuid],
   });
   const subclassItem = createdItems[0];
   const classItemUpdates = buildSubclassAdvancementValueUpdate({
-    classItem,
+    sourceItem: descriptor.sourceItem,
     descriptor,
     subclassItemId: subclassItem.id,
     subclassUuid: request.choice.subclassUuid,
@@ -1306,7 +1609,7 @@ async function applySubclassChoice(params: {
   try {
     await actor.updateEmbeddedDocuments('Item', [
       {
-        _id: classItem.id,
+        _id: sourceItemId,
         'system.advancement': classItemUpdates,
       },
     ]);
@@ -1349,6 +1652,7 @@ async function applyHitPointsChoice(params: {
   request: FoundryApplyCharacterAdvancementChoiceRequest;
 }): Promise<FoundryApplyCharacterAdvancementChoiceResponse> {
   const { actor, classItem, descriptor, request } = params;
+  const sourceItemId = descriptor.sourceItem.id;
 
   if (request.choice.type !== 'hit-points') {
     throw new Error(`Unsupported DnD5e hit point choice type: ${request.choice.type}`);
@@ -1357,6 +1661,12 @@ async function applyHitPointsChoice(params: {
   if (typeof actor.update !== 'function' || typeof actor.updateEmbeddedDocuments !== 'function') {
     throw new Error(
       `Actor "${actor.name ?? request.actorIdentifier}" does not support the updates required for hit point advancement.`
+    );
+  }
+
+  if (!sourceItemId) {
+    throw new Error(
+      `Advancement step "${descriptor.step.id}" is not attached to a stable owned item.`
     );
   }
 
@@ -1381,7 +1691,7 @@ async function applyHitPointsChoice(params: {
     'system.attributes.hp.max': hitPointState.max,
   };
   const classItemUpdates = buildHitPointsAdvancementValueUpdate({
-    classItem,
+    sourceItem: descriptor.sourceItem,
     descriptor,
     value: request.choice.mode === 'roll' ? rolledHitPoints : 'avg',
   });
@@ -1391,7 +1701,7 @@ async function applyHitPointsChoice(params: {
   try {
     await actor.updateEmbeddedDocuments('Item', [
       {
-        _id: classItem.id,
+        _id: sourceItemId,
         'system.advancement': classItemUpdates,
       },
     ]);
@@ -1440,6 +1750,7 @@ async function applyItemChoice(params: {
   request: FoundryApplyCharacterAdvancementChoiceRequest;
 }): Promise<FoundryApplyCharacterAdvancementChoiceResponse> {
   const { actor, classItem, descriptor, request } = params;
+  const sourceItemId = descriptor.sourceItem.id;
 
   if (request.choice.type !== 'item-choice') {
     throw new Error(`Unsupported DnD5e item-choice type: ${request.choice.type}`);
@@ -1448,6 +1759,12 @@ async function applyItemChoice(params: {
   if (typeof actor.updateEmbeddedDocuments !== 'function') {
     throw new Error(
       `Actor "${actor.name ?? request.actorIdentifier}" does not support updateEmbeddedDocuments().`
+    );
+  }
+
+  if (!sourceItemId) {
+    throw new Error(
+      `Advancement step "${descriptor.step.id}" is not attached to a stable owned item.`
     );
   }
 
@@ -1513,7 +1830,7 @@ async function applyItemChoice(params: {
   }
 
   const classItemUpdates = buildItemChoiceAdvancementValueUpdate({
-    classItem,
+    sourceItem: descriptor.sourceItem,
     descriptor,
     createdItems,
     ...(replacement ? { replacement } : {}),
@@ -1522,7 +1839,7 @@ async function applyItemChoice(params: {
   try {
     await actor.updateEmbeddedDocuments('Item', [
       {
-        _id: classItem.id,
+        _id: sourceItemId,
         'system.advancement': classItemUpdates,
       },
     ]);
@@ -1568,6 +1885,89 @@ async function applyItemChoice(params: {
     ...(classItem.id ? { classId: classItem.id } : {}),
     ...(classItem.name ? { className: classItem.name } : {}),
     createdItemIds: createdItems.map(item => item.id),
+    ...(warnings.length > 0 ? { warnings } : {}),
+  };
+}
+
+async function applyItemGrantChoice(params: {
+  actor: ActorProgressionActorLike;
+  classItem: ActorProgressionItemLike;
+  descriptor: AdvancementDescriptor;
+  request: FoundryApplyCharacterAdvancementChoiceRequest;
+}): Promise<FoundryApplyCharacterAdvancementChoiceResponse> {
+  const { actor, classItem, descriptor, request } = params;
+  const sourceItemId = descriptor.sourceItem.id;
+
+  if (request.choice.type !== 'item-grant') {
+    throw new Error(`Unsupported DnD5e item-grant choice type: ${request.choice.type}`);
+  }
+
+  if (typeof actor.updateEmbeddedDocuments !== 'function') {
+    throw new Error(
+      `Actor "${actor.name ?? request.actorIdentifier}" does not support updateEmbeddedDocuments().`
+    );
+  }
+
+  if (!sourceItemId) {
+    throw new Error(
+      `Advancement step "${descriptor.step.id}" is not attached to a stable owned item.`
+    );
+  }
+
+  const selection = resolveItemGrantSelection({ descriptor, request });
+  const createdItems =
+    selection.selectedUuids.length > 0
+      ? await createItemsFromUuids({
+          actor,
+          itemUuids: selection.selectedUuids,
+        })
+      : [];
+  const warnings: string[] = [];
+
+  const sourceItemUpdates = buildItemGrantAdvancementValueUpdate({
+    sourceItem: descriptor.sourceItem,
+    descriptor,
+    createdItems,
+    declined: selection.selectedUuids.length === 0,
+    ...(selection.ability ? { ability: selection.ability } : {}),
+  });
+
+  try {
+    await actor.updateEmbeddedDocuments('Item', [
+      {
+        _id: sourceItemId,
+        'system.advancement': sourceItemUpdates,
+      },
+    ]);
+  } catch (error) {
+    await rollbackCreatedItems(
+      actor,
+      createdItems.map(item => item.id),
+      warnings
+    );
+    throw error instanceof Error && warnings.length > 0
+      ? new Error(`${error.message} ${warnings.join(' ')}`)
+      : error;
+  }
+
+  return {
+    success: true,
+    system: 'dnd5e',
+    actorId: actor.id ?? '',
+    actorName: actor.name ?? request.actorIdentifier,
+    actorType: actor.type ?? 'unknown',
+    targetLevel: request.targetLevel,
+    stepId: descriptor.step.id,
+    stepType: descriptor.step.type,
+    stepTitle: descriptor.step.title,
+    choice: {
+      type: 'item-grant',
+      itemUuids: selection.selectedUuids,
+      ...(selection.ability ? { ability: selection.ability } : {}),
+    },
+    ...(classItem.id ? { classId: classItem.id } : {}),
+    ...(classItem.name ? { className: classItem.name } : {}),
+    ...(createdItems.length > 0 ? { createdItemIds: createdItems.map(item => item.id) } : {}),
     ...(warnings.length > 0 ? { warnings } : {}),
   };
 }
@@ -1720,6 +2120,15 @@ export const dnd5eActorProgressionStrategy: ActorProgressionStrategy = {
 
     if (lowerType === 'itemchoice') {
       return applyItemChoice({
+        actor,
+        classItem,
+        descriptor,
+        request,
+      });
+    }
+
+    if (lowerType === 'itemgrant') {
+      return applyItemGrantChoice({
         actor,
         classItem,
         descriptor,
