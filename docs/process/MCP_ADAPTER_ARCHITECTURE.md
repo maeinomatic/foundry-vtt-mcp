@@ -98,20 +98,25 @@ Each error should include:
 ## Migration Plan (Low Risk)
 
 1. System ID flow
+
 - Return canonical system IDs through detection and routing.
 - Remove `other -> dnd5e` path fallback behavior.
 
 2. Compendium extraction move
+
 - Move system branches from core compendium tool into adapter methods.
 
 3. Filter ownership move
+
 - Move system-specific filter schemas and conversion logic into adapters.
 
 4. Legacy fallback removal
+
 - Keep temporary compatibility fallback for one release behind a flag.
 - Remove fallback once adapter coverage and tests are complete.
 
 5. Contract tests
+
 - Add per-system contract tests that assert common response shape.
 - Add explicit unsupported-capability tests.
 
@@ -137,4 +142,3 @@ This document supports the existing DSA5 direction:
 - adapter-first implementation
 - no broad core rewrites
 - incremental adoption into existing tools
-

@@ -81,14 +81,14 @@ Use this section as the active implementation checklist while coding.
 
 Status legend: `todo`, `in-progress`, `blocked`, `done`.
 
-| Status | Breaking Change | Upstream Issue | Primary Repo Areas | Notes |
-|---|---|---|---|---|
-| todo | DataModel update operators changed (`-=` and `==` deprecated in `updateSource`) | https://github.com/foundryvtt/foundryvtt/issues/13090 | `packages/foundry-module/src/queries.ts`, `packages/foundry-module/src/data-access.ts` | Search for operator-style update payloads and replace with v14-safe semantics. |
-| todo | ActiveEffect legacy transferral retired | https://github.com/foundryvtt/foundryvtt/issues/13280 | `packages/foundry-module/src/queries.ts`, `packages/mcp-server/src/tools/token-manipulation.ts` | Validate status toggle and effect transfer behavior for token/actor operations. |
-| todo | `TokenDocument.detectionModes` changed to `TypedObjectField` | https://github.com/foundryvtt/foundryvtt/issues/12976 | `packages/foundry-module/src/queries.ts` | Confirm read/write shape and defensive guards for missing/invalid modes. |
-| todo | Token movement animation callback now uses `TokenDocument` | https://github.com/foundryvtt/foundryvtt/issues/13337 | `packages/foundry-module/src/main.ts`, `packages/foundry-module/src/queries.ts` | Audit any movement animation hooks or option callbacks. |
-| todo | `parseHTML` can return `null` | https://github.com/foundryvtt/foundryvtt/issues/13145 | `packages/foundry-module/src/queries.ts`, `packages/mcp-server/src/tools/character.ts` | Add null checks before traversing parsed nodes. |
-| todo | Chat visibility modes replace historical roll mode assumptions | https://github.com/foundryvtt/foundryvtt/issues/8856 | `packages/foundry-module/src/queries.ts` | Re-test chat outputs and visibility constraints in GM/player contexts. |
+| Status | Breaking Change                                                                 | Upstream Issue                                        | Primary Repo Areas                                                                              | Notes                                                                           |
+| ------ | ------------------------------------------------------------------------------- | ----------------------------------------------------- | ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| todo   | DataModel update operators changed (`-=` and `==` deprecated in `updateSource`) | https://github.com/foundryvtt/foundryvtt/issues/13090 | `packages/foundry-module/src/queries.ts`, `packages/foundry-module/src/data-access.ts`          | Search for operator-style update payloads and replace with v14-safe semantics.  |
+| todo   | ActiveEffect legacy transferral retired                                         | https://github.com/foundryvtt/foundryvtt/issues/13280 | `packages/foundry-module/src/queries.ts`, `packages/mcp-server/src/tools/token-manipulation.ts` | Validate status toggle and effect transfer behavior for token/actor operations. |
+| todo   | `TokenDocument.detectionModes` changed to `TypedObjectField`                    | https://github.com/foundryvtt/foundryvtt/issues/12976 | `packages/foundry-module/src/queries.ts`                                                        | Confirm read/write shape and defensive guards for missing/invalid modes.        |
+| todo   | Token movement animation callback now uses `TokenDocument`                      | https://github.com/foundryvtt/foundryvtt/issues/13337 | `packages/foundry-module/src/main.ts`, `packages/foundry-module/src/queries.ts`                 | Audit any movement animation hooks or option callbacks.                         |
+| todo   | `parseHTML` can return `null`                                                   | https://github.com/foundryvtt/foundryvtt/issues/13145 | `packages/foundry-module/src/queries.ts`, `packages/mcp-server/src/tools/character.ts`          | Add null checks before traversing parsed nodes.                                 |
+| todo   | Chat visibility modes replace historical roll mode assumptions                  | https://github.com/foundryvtt/foundryvtt/issues/8856  | `packages/foundry-module/src/queries.ts`                                                        | Re-test chat outputs and visibility constraints in GM/player contexts.          |
 
 Implementation checklist:
 
@@ -152,6 +152,7 @@ All items must be true before changing module compatibility metadata.
 5. Known issues are documented with severity and workarounds.
 
 If any gate fails:
+
 1. Keep metadata pinned to v13.
 2. Track blockers in a dedicated v14 issue list.
 3. Re-test after fixes.

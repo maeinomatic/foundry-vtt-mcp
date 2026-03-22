@@ -36,6 +36,9 @@ jobs:
       - name: Check version consistency
         run: npm run version:check
 
+      - name: Build shared workspace
+        run: npm run build --workspace=shared
+
       - name: Typecheck
         run: npm run typecheck
 

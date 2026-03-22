@@ -1,6 +1,7 @@
 # Environment and Release Reference
 
 This document explains:
+
 - what the `.env` files in this repository do,
 - which variables are actually used by the MCP server,
 - and what the Foundry package registry release API step is doing in CI.
@@ -10,10 +11,12 @@ This document explains:
 ### Where environment variables are loaded
 
 The MCP server reads environment variables in `packages/mcp-server/src/config.ts` using:
+
 - `.env.local` first
 - `.env` second
 
 That means:
+
 - the MCP runtime behavior is controlled by process environment variables,
 - local `.env` files are optional helpers for local development,
 - and `.env.local` values override `.env` values.
@@ -21,6 +24,7 @@ That means:
 ### Why there are two `.env.example` files
 
 This repository currently has:
+
 - root `.env.example`
 - `packages/mcp-server/.env.example`
 
@@ -35,12 +39,14 @@ If both examples are kept, they should remain identical to avoid drift.
 These are consumed in `packages/mcp-server/src/config.ts`.
 
 ### Logging
+
 - `LOG_LEVEL`: `error|warn|info|debug` (default: `warn`)
 - `LOG_FORMAT`: `json|simple` (default: `simple`)
 - `ENABLE_FILE_LOGGING`: `true|false` (default: `false`)
 - `LOG_FILE_PATH`: optional path
 
 ### Foundry connection
+
 - `FOUNDRY_HOST`: host name (default: `localhost`)
 - `FOUNDRY_PORT`: websocket/webrtc signaling port (default: `31415`)
 - `FOUNDRY_NAMESPACE`: socket namespace (default: `/foundry-mcp`)
@@ -55,12 +61,14 @@ These are consumed in `packages/mcp-server/src/config.ts`.
 - `FOUNDRY_STUN_SERVERS`: comma-separated STUN list for WebRTC
 
 ### ComfyUI
+
 - `COMFYUI_PORT`: service port (default: `31411`)
 - `COMFYUI_INSTALL_PATH`: optional install path override
 - `COMFYUI_HOST`: host (default: `127.0.0.1`)
 - `COMFYUI_PYTHON_COMMAND`: Python executable (platform dependent)
 
 ### Server metadata and output shaping
+
 - `SERVER_NAME`: logical server name (default: `foundry-mcp-server`)
 - `SERVER_VERSION`: optional override for display/runtime version string
 - `TOOL_RESPONSE_MAX_CHARS`: truncation guard for large tool output (default: `20000`)
@@ -70,11 +78,13 @@ These are consumed in `packages/mcp-server/src/config.ts`.
 This repository uses root `package.json` as the canonical release version.
 
 Required alignment:
+
 - root `package.json` `version`
 - `packages/mcp-server/package.json` `version`
 - `packages/foundry-module/module.json` `version`
 
 Commands:
+
 - `npm run version:sync` updates package/module versions from root
 - `npm run version:check` validates all versions are aligned
 
@@ -94,6 +104,7 @@ Use GitHub repository secrets only.
 In this project, CI posts a JSON payload to that endpoint after creating a tagged GitHub release.
 
 The payload includes:
+
 - package id (`module.json` `id`)
 - release version
 - manifest URL for the released `module.json`
@@ -101,16 +112,19 @@ The payload includes:
 - compatibility range (`minimum`, `verified`, `maximum`)
 
 Practical effect:
+
 - this tells Foundry's package registry that a new release exists,
 - so users can discover and update the module through Foundry's package browser.
 
 Notes:
+
 - The endpoint itself is not a human-readable documentation page.
 - It is intended as an authenticated machine endpoint.
 
 ## 5) Release workflow standards applied
 
 The release workflow now follows these standards:
+
 - Repository metadata in released `module.json` is made repo-aware at release time.
 - Registry auth token is passed as a step environment variable, not embedded inline in command text.
 - API calls include retries and timeout bounds.
@@ -119,14 +133,17 @@ The release workflow now follows these standards:
 ### Canonical release path
 
 This repository uses a single canonical release workflow:
+
 - `.github/workflows/build-complete-release.yml`
 
 Trigger model:
+
 - Tagged release (`vX.Y.Z`) for publishing artifacts and GitHub release.
 - Manual dispatch defaults to build-only verification.
 - Manual dispatch can optionally create a GitHub pre-release when `publish_prerelease=true` and a `version` is provided.
 
 Safety rules:
+
 - Foundry package registry update runs only for tagged releases.
 - Manual pre-releases never push Foundry registry updates.
 
@@ -135,9 +152,11 @@ The quality workflow (`.github/workflows/ci-quality-gates.yml`) remains responsi
 ### Release smoke-test path
 
 For non-tag validation, use:
+
 - `.github/workflows/release-smoke-test.yml`
 
 Purpose:
+
 - Build server/module artifacts and verify release file naming.
 - Simulate release metadata updates for `module.json`.
 - Generate a Foundry registry payload preview JSON.

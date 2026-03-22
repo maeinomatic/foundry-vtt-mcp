@@ -3,15 +3,6 @@
   "compilerOptions": {
     "noEmit": true
   },
-  "include": [
-    "packages/**/*.ts",
-    "packages/**/*.d.ts",
-    "shared/**/*.ts",
-    "shared/**/*.d.ts"
-  ],
-  "exclude": [
-    "**/dist/**",
-    "**/build/**",
-    "**/node_modules/**"
-  ]
+  "include": ["packages/**/*.ts", "packages/**/*.d.ts", "shared/**/*.ts", "shared/**/*.d.ts"],
+  "exclude": ["**/dist/**", "**/build/**", "**/node_modules/**"]
 }

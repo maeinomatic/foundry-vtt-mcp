@@ -3,6 +3,7 @@
 This document proposes a focused set of GitHub issues to create next.
 
 Scope sources:
+
 - `docs/process/TOOL_INVENTORY.md` (DnD5e missing endpoint tracker)
 - `docs/foundry-v14-compatibility-plan.md` (official v14 breaking-change watch list)
 - `docs/process/MAINTENANCE_ROADMAP.md` (quality and release guardrails)
@@ -41,27 +42,27 @@ Create in this order to maximize immediate value for DnD workflows:
 
 Created on 2026-03-21 in planned wave order.
 
-| Plan Issue ID | Title (short) | GitHub Issue |
-|---|---|---|
-| 16 | Convert DSA5 filter test file into real Vitest suite | #1 - https://github.com/maeinomatic/foundry-vtt-mcp/issues/1 |
-| 17 | Add CI quality gates | #2 - https://github.com/maeinomatic/foundry-vtt-mcp/issues/2 |
-| 1 | Add generic `update-actor` MCP tool | #3 - https://github.com/maeinomatic/foundry-vtt-mcp/issues/3 |
-| 3 | Add actor embedded item CRUD MCP tools | #4 - https://github.com/maeinomatic/foundry-vtt-mcp/issues/4 |
-| 19 | Add generic `post-chat-message` MCP tool | #5 - https://github.com/maeinomatic/foundry-vtt-mcp/issues/5 |
-| 2 | Add generic `update-actor-resources` MCP tool | #6 - https://github.com/maeinomatic/foundry-vtt-mcp/issues/6 |
-| 4 | Add `batch-update-actor-items` transactional MCP tool | #7 - https://github.com/maeinomatic/foundry-vtt-mcp/issues/7 |
-| 5 | Add `dnd5e-level-up-character` MCP tool | #8 - https://github.com/maeinomatic/foundry-vtt-mcp/issues/8 |
-| 6 | Add `dnd5e-add-class-levels` MCP tool | #9 - https://github.com/maeinomatic/foundry-vtt-mcp/issues/9 |
-| 7 | Add `dnd5e-apply-advancement` MCP tool | #10 - https://github.com/maeinomatic/foundry-vtt-mcp/issues/10 |
-| 8 | Add DnD5e spell lifecycle MCP tools | #11 - https://github.com/maeinomatic/foundry-vtt-mcp/issues/11 |
-| 9 | Add DnD build safety MCP tools | #12 - https://github.com/maeinomatic/foundry-vtt-mcp/issues/12 |
-| 10 | v14 DataModel operator audit/fix | #13 - https://github.com/maeinomatic/foundry-vtt-mcp/issues/13 |
-| 11 | v14 ActiveEffect transferral validation | #14 - https://github.com/maeinomatic/foundry-vtt-mcp/issues/14 |
-| 13 | v14 `parseHTML` null safety | #15 - https://github.com/maeinomatic/foundry-vtt-mcp/issues/15 |
-| 12 | v14 token detection modes type changes | #16 - https://github.com/maeinomatic/foundry-vtt-mcp/issues/16 |
-| 14 | v14 chat visibility assumptions retest | #17 - https://github.com/maeinomatic/foundry-vtt-mcp/issues/17 |
-| 15 | Execute/publish DnD-focused v14 matrix | #18 - https://github.com/maeinomatic/foundry-vtt-mcp/issues/18 |
-| 18 | Execute safe dependency update batches (A/B/C) | #19 - https://github.com/maeinomatic/foundry-vtt-mcp/issues/19 |
+| Plan Issue ID | Title (short)                                         | GitHub Issue                                                   |
+| ------------- | ----------------------------------------------------- | -------------------------------------------------------------- |
+| 16            | Convert DSA5 filter test file into real Vitest suite  | #1 - https://github.com/maeinomatic/foundry-vtt-mcp/issues/1   |
+| 17            | Add CI quality gates                                  | #2 - https://github.com/maeinomatic/foundry-vtt-mcp/issues/2   |
+| 1             | Add generic `update-actor` MCP tool                   | #3 - https://github.com/maeinomatic/foundry-vtt-mcp/issues/3   |
+| 3             | Add actor embedded item CRUD MCP tools                | #4 - https://github.com/maeinomatic/foundry-vtt-mcp/issues/4   |
+| 19            | Add generic `post-chat-message` MCP tool              | #5 - https://github.com/maeinomatic/foundry-vtt-mcp/issues/5   |
+| 2             | Add generic `update-actor-resources` MCP tool         | #6 - https://github.com/maeinomatic/foundry-vtt-mcp/issues/6   |
+| 4             | Add `batch-update-actor-items` transactional MCP tool | #7 - https://github.com/maeinomatic/foundry-vtt-mcp/issues/7   |
+| 5             | Add `dnd5e-level-up-character` MCP tool               | #8 - https://github.com/maeinomatic/foundry-vtt-mcp/issues/8   |
+| 6             | Add `dnd5e-add-class-levels` MCP tool                 | #9 - https://github.com/maeinomatic/foundry-vtt-mcp/issues/9   |
+| 7             | Add `dnd5e-apply-advancement` MCP tool                | #10 - https://github.com/maeinomatic/foundry-vtt-mcp/issues/10 |
+| 8             | Add DnD5e spell lifecycle MCP tools                   | #11 - https://github.com/maeinomatic/foundry-vtt-mcp/issues/11 |
+| 9             | Add DnD build safety MCP tools                        | #12 - https://github.com/maeinomatic/foundry-vtt-mcp/issues/12 |
+| 10            | v14 DataModel operator audit/fix                      | #13 - https://github.com/maeinomatic/foundry-vtt-mcp/issues/13 |
+| 11            | v14 ActiveEffect transferral validation               | #14 - https://github.com/maeinomatic/foundry-vtt-mcp/issues/14 |
+| 13            | v14 `parseHTML` null safety                           | #15 - https://github.com/maeinomatic/foundry-vtt-mcp/issues/15 |
+| 12            | v14 token detection modes type changes                | #16 - https://github.com/maeinomatic/foundry-vtt-mcp/issues/16 |
+| 14            | v14 chat visibility assumptions retest                | #17 - https://github.com/maeinomatic/foundry-vtt-mcp/issues/17 |
+| 15            | Execute/publish DnD-focused v14 matrix                | #18 - https://github.com/maeinomatic/foundry-vtt-mcp/issues/18 |
+| 18            | Execute safe dependency update batches (A/B/C)        | #19 - https://github.com/maeinomatic/foundry-vtt-mcp/issues/19 |
 
 Parent wave trackers:
 
@@ -81,6 +82,7 @@ This is the implementation order (not just issue creation order).
 2. Issue 17: Add CI quality gates for typecheck/test/build/audit.
 
 Exit gate:
+
 - CI is enforcing typecheck, tests, and build on PRs.
 - Test suite has real assertions and passes consistently.
 
@@ -93,10 +95,12 @@ Exit gate:
 5. Issue 4: `batch-update-actor-items`
 
 Dependencies:
+
 - Issue 4 depends on Issue 3.
 - Issue 19 is independent and can be implemented in parallel with Issues 1-3.
 
 Exit gate:
+
 - Core GM edits can be performed without manual Foundry UI edits.
 - Integration tests cover actor + embedded-item mutation flows.
 
@@ -109,6 +113,7 @@ Exit gate:
 5. Issue 9: build safety/preview/transaction tools
 
 Dependencies:
+
 - Issue 5 depends on Issue 3 (class items manipulation).
 - Issue 6 depends on Issues 3 and 5.
 - Issue 7 depends on Issues 5 and 6.
@@ -116,6 +121,7 @@ Dependencies:
 - Issue 9 should land after Issues 5-8 to validate full flows.
 
 Exit gate:
+
 - A full DnD level-up (including multiclass and advancement choice handling) is executable through MCP tools.
 
 ### Wave 3: v14 compatibility blockers (DnD-first)
@@ -128,9 +134,11 @@ Exit gate:
 6. Issue 15: publish DnD-focused v14 matrix results
 
 Dependencies:
+
 - Issue 15 depends on completion of Issues 10-14.
 
 Exit gate:
+
 - DnD-focused v14 matrix completed with pass/partial/blocked evidence linked to issues.
 
 ### Wave 4: Safe maintenance updates
@@ -138,31 +146,39 @@ Exit gate:
 1. Issue 18: safe dependency updates in batches A, B, C.
 
 Dependencies:
+
 - Run after Waves 0-3 to reduce debugging noise during feature work.
 
 Exit gate:
+
 - All batches pass typecheck/tests/build/schema smoke.
 
 ## Suggested Sprint Cut (if you want a smaller first cycle)
 
 Sprint 1:
+
 1. Issues 16, 17, 1, 3
 
 Sprint 2:
+
 1. Issues 2, 4, 5, 6
 
 Sprint 3:
+
 1. Issues 7, 8, 9
 
 Sprint 4:
+
 1. Issues 10, 11, 13, 12, 14, 15
 
 Sprint 5:
+
 1. Issue 18
 
 ## A. DnD Tool Coverage Issues (Highest Priority)
 
 ### 1) Add generic `update-actor` MCP tool
+
 - Priority: `priority:high`
 - Labels: `api`, `dnd5e`, `enhancement`
 - Milestone: `DnD Tooling Baseline`
@@ -178,6 +194,7 @@ Sprint 5:
   - Unit tests for success and failure paths.
 
 ### 2) Add generic `update-actor-resources` MCP tool
+
 - Priority: `priority:high`
 - Labels: `api`, `dnd5e`, `enhancement`
 - Milestone: `DnD Tooling Baseline`
@@ -191,6 +208,7 @@ Sprint 5:
   - Includes validation tests.
 
 ### 3) Add actor embedded item CRUD: `add-item-to-actor`, `update-actor-item`, `remove-item-from-actor`
+
 - Priority: `priority:high`
 - Labels: `api`, `dnd5e`, `enhancement`
 - Milestone: `DnD Tooling Baseline`
@@ -205,6 +223,7 @@ Sprint 5:
   - Integration tests for create/update/delete sequence.
 
 ### 4) Add `batch-update-actor-items` transactional tool
+
 - Priority: `priority:high`
 - Labels: `api`, `dnd5e`, `enhancement`
 - Milestone: `DnD Tooling Baseline`
@@ -218,6 +237,7 @@ Sprint 5:
   - Covered by tests.
 
 ### 5) Add DnD5e leveling orchestrator: `dnd5e-level-up-character`
+
 - Priority: `priority:high`
 - Labels: `dnd5e`, `api`, `enhancement`
 - Milestone: `DnD Tooling Baseline`
@@ -231,6 +251,7 @@ Sprint 5:
   - Tests for single-level and invalid scenarios.
 
 ### 6) Add multiclass support tool: `dnd5e-add-class-levels`
+
 - Priority: `priority:high`
 - Labels: `dnd5e`, `api`, `enhancement`
 - Milestone: `DnD Tooling Baseline`
@@ -244,6 +265,7 @@ Sprint 5:
   - Tests for both paths.
 
 ### 7) Add advancement application tool: `dnd5e-apply-advancement`
+
 - Priority: `priority:high`
 - Labels: `dnd5e`, `api`, `enhancement`
 - Milestone: `DnD Tooling Baseline`
@@ -256,6 +278,7 @@ Sprint 5:
   - Reports unresolved advancement choices.
 
 ### 8) Add DnD5e spell lifecycle tools
+
 - Priority: `priority:medium`
 - Labels: `dnd5e`, `api`, `enhancement`
 - Milestone: `DnD Tooling Baseline`
@@ -271,6 +294,7 @@ Sprint 5:
   - Update slot max/current for at least one spell level.
 
 ### 9) Add DnD build safety tools
+
 - Priority: `priority:medium`
 - Labels: `dnd5e`, `api`, `enhancement`, `testing`
 - Milestone: `DnD Tooling Baseline`
@@ -286,6 +310,7 @@ Sprint 5:
   - Transaction mode supports rollback on failure.
 
 ### 19) Add generic `post-chat-message` MCP tool
+
 - Priority: `priority:high`
 - Labels: `api`, `dnd5e`, `enhancement`
 - Milestone: `DnD Tooling Baseline`
@@ -305,6 +330,7 @@ Sprint 5:
 ## B. v14 Readiness Issues (DnD-Focused)
 
 ### 10) Audit and patch DataModel update operator usage for v14
+
 - Priority: `priority:high`
 - Labels: `v14`, `breaking-change`, `api`, `priority:high`
 - Milestone: `Foundry v14 Readiness`
@@ -319,6 +345,7 @@ Sprint 5:
   - v14 smoke tests pass for touched flows.
 
 ### 11) Validate ActiveEffect behavior after legacy transferral retirement
+
 - Priority: `priority:high`
 - Labels: `v14`, `breaking-change`, `dnd5e`, `priority:high`
 - Milestone: `Foundry v14 Readiness`
@@ -331,6 +358,7 @@ Sprint 5:
   - No effect duplication/loss in basic test cases.
 
 ### 12) Handle token detection modes type changes in token tooling
+
 - Priority: `priority:medium`
 - Labels: `v14`, `breaking-change`, `api`
 - Milestone: `Foundry v14 Readiness`
@@ -341,6 +369,7 @@ Sprint 5:
   - Defensive guards added and tested.
 
 ### 13) Add null-safety for `parseHTML` call sites
+
 - Priority: `priority:medium`
 - Labels: `v14`, `breaking-change`, `api`
 - Milestone: `Foundry v14 Readiness`
@@ -351,6 +380,7 @@ Sprint 5:
   - Unit tests include null parse scenario.
 
 ### 14) Re-test chat visibility mode assumptions for DnD workflows
+
 - Priority: `priority:medium`
 - Labels: `v14`, `breaking-change`, `dnd5e`
 - Milestone: `Foundry v14 Readiness`
@@ -361,6 +391,7 @@ Sprint 5:
   - Any limitations documented.
 
 ### 15) Execute and publish v14 DnD test matrix results
+
 - Priority: `priority:high`
 - Labels: `v14`, `testing`, `dnd5e`
 - Milestone: `Foundry v14 Readiness`
@@ -373,6 +404,7 @@ Sprint 5:
 ## C. Quality and Platform Issues (Needed to Ship Safely)
 
 ### 16) Convert DSA5 filter test file into real Vitest suite
+
 - Priority: `priority:high`
 - Labels: `testing`, `tooling`
 - Milestone: `Quality and Stability`
@@ -383,6 +415,7 @@ Sprint 5:
   - No "No test suite found" output.
 
 ### 17) Add CI quality gates for typecheck/test/build/audit
+
 - Priority: `priority:high`
 - Labels: `tooling`, `testing`, `security`
 - Milestone: `Quality and Stability`
@@ -391,6 +424,7 @@ Sprint 5:
   - `npm audit --workspaces --audit-level=high` integrated.
 
 ### 18) Execute safe dependency update batches (A/B/C)
+
 - Priority: `priority:medium`
 - Labels: `security`, `tooling`
 - Milestone: `Quality and Stability`

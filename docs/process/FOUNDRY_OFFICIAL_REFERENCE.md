@@ -72,11 +72,11 @@ From module-development docs:
 Current project syntax template:
 
 {
-  "compatibility": {
-    "minimum": "13",
-    "verified": "13",
-    "maximum": "13"
-  }
+"compatibility": {
+"minimum": "13",
+"verified": "13",
+"maximum": "13"
+}
 }
 
 Practical repo rule:

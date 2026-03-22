@@ -22,8 +22,6 @@
     }
   },
   "include": ["src/**/*"],
-  "references": [
-    { "path": "../../shared" }
-  ],
+  "references": [{ "path": "../../shared" }],
   "exclude": ["dist", "**/*.test.*", "**/*.spec.*"]
 }
