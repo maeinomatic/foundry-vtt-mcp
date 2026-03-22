@@ -1,12 +1,15 @@
 name: Release Smoke Test
 
+# This workflow does not publish anything.
+# It simulates the release packaging path so we can verify release file names,
+# manifest metadata, and artifact creation before cutting a real release.
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version to simulate (example: v1.2.3-rc.1)"
+        description: 'Version to simulate (example: v1.2.3-rc.1)'
         required: false
-        default: "v0.0.0-rc.1"
+        default: 'v0.0.0-rc.1'
 
 concurrency:
   group: release-smoke-${{ github.ref }}
@@ -15,23 +18,29 @@ concurrency:
 jobs:
   smoke-test:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
+      # Pull the repository state that we want to simulate a release from.
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
+      # Use the same Node major version as the CI and release workflows.
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: "20"
+          node-version: '24'
           cache: npm
 
+      # Install all workspace dependencies from the lockfile for a reproducible packaging run.
       - name: Install dependencies
         run: npm ci --workspaces --include-workspace-root
 
+      # Make sure version metadata is synchronized before building artifacts.
       - name: Check version consistency
         run: npm run version:check
 
+      # Resolve the version label that all simulated release assets should use.
       - name: Resolve smoke version
         id: version
         run: |
@@ -53,15 +62,19 @@ jobs:
           echo "version_no_v=${VERSION#v}" >> "$GITHUB_OUTPUT"
           echo "Resolved smoke version: $VERSION"
 
+      # Shared declarations must exist before the module and server builds run.
       - name: Build shared types
         run: npm run build --workspace=shared
 
+      # Build the standalone MCP server bundle used by release ZIP packaging.
       - name: Build MCP Server bundle
         run: npm run build:bundle --workspace=packages/mcp-server
 
+      # Build the Foundry module output that will be zipped for distribution.
       - name: Build Foundry Module
         run: npm run build --workspace=packages/foundry-module
 
+      # Rewrite manifest URLs so the simulated artifact points back to this repository context.
       - name: Prepare release manifest metadata (simulation)
         env:
           GH_SERVER_URL: ${{ github.server_url }}
@@ -90,6 +103,7 @@ jobs:
           console.log('Prepared manifest metadata for smoke test context.');
           EOF
 
+      # Create the exact Foundry ZIP shape we expect to publish in a real release.
       - name: Create Foundry module ZIP
         run: |
           cd packages/foundry-module
@@ -98,6 +112,7 @@ jobs:
           test -f foundry-vtt-mcp.zip
           ls -lh foundry-vtt-mcp.zip
 
+      # Create the manual-installation MCP server ZIP used outside the installers.
       - name: Create standalone MCP server ZIP
         run: |
           VERSION="${{ steps.version.outputs.version }}"
@@ -133,6 +148,7 @@ jobs:
           test -f "foundry-mcp-server-$VERSION.zip"
           ls -lh "foundry-mcp-server-$VERSION.zip"
 
+      # Build the payload shape that would be sent to the Foundry package registry.
       - name: Generate Foundry registry payload (simulation)
         run: |
           VERSION="${{ steps.version.outputs.version }}"
@@ -164,6 +180,7 @@ jobs:
           echo "Generated foundry-registry-payload-smoke.json"
           cat foundry-registry-payload-smoke.json
 
+      # Sanity-check the file names expected by the real release workflow.
       - name: Validate expected release file names
         run: |
           VERSION="${{ steps.version.outputs.version }}"
@@ -173,8 +190,9 @@ jobs:
           echo "- FoundryMCPServer-Setup-$VERSION.exe"
           echo "- FoundryMCPServer-$VERSION.dmg"
 
+      # Preserve the smoke-test artifacts for inspection without creating a release.
       - name: Upload smoke artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: release-smoke-${{ steps.version.outputs.version }}
           path: |
