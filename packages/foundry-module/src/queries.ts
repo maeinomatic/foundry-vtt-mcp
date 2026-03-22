@@ -8,9 +8,13 @@ import type {
   FoundryActorCreationResult,
   FoundryCharacterInfo,
   FoundryCreateActorFromCompendiumRequest,
+  FoundryCreateActorEmbeddedItemRequest,
+  FoundryCreateActorEmbeddedItemResponse,
   FoundryCompendiumSearchRequest,
   FoundryCreatureSearchCriteria,
   FoundryCompendiumEntryFull,
+  FoundryDeleteActorEmbeddedItemRequest,
+  FoundryDeleteActorEmbeddedItemResponse,
   FoundryGetCharacterAdvancementOptionsRequest,
   FoundryGetCharacterAdvancementOptionsResponse,
   FoundryGetCharacterInfoRequest,
@@ -180,8 +184,12 @@ export class QueryHandlers {
     CONFIG.queries[`${modulePrefix}.applyCharacterAdvancementChoice`] =
       this.handleApplyCharacterAdvancementChoice.bind(this);
     CONFIG.queries[`${modulePrefix}.updateActor`] = this.handleUpdateActor.bind(this);
+    CONFIG.queries[`${modulePrefix}.createActorEmbeddedItem`] =
+      this.handleCreateActorEmbeddedItem.bind(this);
     CONFIG.queries[`${modulePrefix}.updateActorEmbeddedItem`] =
       this.handleUpdateActorEmbeddedItem.bind(this);
+    CONFIG.queries[`${modulePrefix}.deleteActorEmbeddedItem`] =
+      this.handleDeleteActorEmbeddedItem.bind(this);
     CONFIG.queries[`${modulePrefix}.getCompendiumDocumentFull`] =
       this.handleGetCompendiumDocumentFull.bind(this);
     CONFIG.queries[`${modulePrefix}.addActorsToScene`] = this.handleAddActorsToScene.bind(this);
@@ -726,6 +734,58 @@ export class QueryHandlers {
   }
 
   /**
+   * Handle embedded item creation request
+   */
+  private async handleCreateActorEmbeddedItem(
+    data: FoundryCreateActorEmbeddedItemRequest
+  ): Promise<FoundryCreateActorEmbeddedItemResponse | QueryErrorResult> {
+    try {
+      const gmCheck = this.validateGMAccess();
+      if (!gmCheck.allowed) {
+        return { error: 'Access denied', success: false };
+      }
+
+      this.dataAccess.validateFoundryState();
+
+      const permissionCheck = await this.dataAccess.validateWritePermissions('updateActor');
+      if (!permissionCheck.allowed) {
+        return {
+          error: permissionCheck.reason ?? 'Actor update not allowed',
+          success: false,
+        };
+      }
+
+      if (!data.actorIdentifier) {
+        throw new Error('actorIdentifier is required');
+      }
+
+      if (!data.sourceUuid && !data.itemData) {
+        throw new Error('sourceUuid or itemData is required');
+      }
+
+      if (
+        data.itemData !== undefined &&
+        (!data.itemData || typeof data.itemData !== 'object' || Array.isArray(data.itemData))
+      ) {
+        throw new Error('itemData must be an object');
+      }
+
+      if (
+        data.overrides !== undefined &&
+        (!data.overrides || typeof data.overrides !== 'object' || Array.isArray(data.overrides))
+      ) {
+        throw new Error('overrides must be an object');
+      }
+
+      return await this.dataAccess.createActorEmbeddedItem(data);
+    } catch (error) {
+      throw new Error(
+        `Failed to create actor embedded item: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+    }
+  }
+
+  /**
    * Handle embedded item update request
    */
   private async handleUpdateActorEmbeddedItem(
@@ -763,6 +823,44 @@ export class QueryHandlers {
     } catch (error) {
       throw new Error(
         `Failed to update actor embedded item: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+    }
+  }
+
+  /**
+   * Handle embedded item deletion request
+   */
+  private async handleDeleteActorEmbeddedItem(
+    data: FoundryDeleteActorEmbeddedItemRequest
+  ): Promise<FoundryDeleteActorEmbeddedItemResponse | QueryErrorResult> {
+    try {
+      const gmCheck = this.validateGMAccess();
+      if (!gmCheck.allowed) {
+        return { error: 'Access denied', success: false };
+      }
+
+      this.dataAccess.validateFoundryState();
+
+      const permissionCheck = await this.dataAccess.validateWritePermissions('updateActor');
+      if (!permissionCheck.allowed) {
+        return {
+          error: permissionCheck.reason ?? 'Actor update not allowed',
+          success: false,
+        };
+      }
+
+      if (!data.actorIdentifier) {
+        throw new Error('actorIdentifier is required');
+      }
+
+      if (!data.itemIdentifier) {
+        throw new Error('itemIdentifier is required');
+      }
+
+      return await this.dataAccess.deleteActorEmbeddedItem(data);
+    } catch (error) {
+      throw new Error(
+        `Failed to delete actor embedded item: ${error instanceof Error ? error.message : 'Unknown error'}`
       );
     }
   }

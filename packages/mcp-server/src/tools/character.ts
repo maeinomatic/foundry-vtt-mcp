@@ -7,6 +7,10 @@ import type {
   FoundryActorSystemBase,
   FoundryCharacterEffect,
   FoundryCharacterInfo,
+  FoundryCreateActorEmbeddedItemRequest,
+  FoundryCreateActorEmbeddedItemResponse,
+  FoundryDeleteActorEmbeddedItemRequest,
+  FoundryDeleteActorEmbeddedItemResponse,
   FoundryGetCharacterAdvancementOptionsRequest,
   FoundryGetCharacterAdvancementOptionsResponse,
   FoundryItemDocumentBase,
@@ -381,6 +385,220 @@ export class CharacterTools {
             },
           },
           required: ['characterIdentifier'],
+        },
+      },
+      {
+        name: 'add-character-item',
+        description:
+          'Add an owned item to a character from a source UUID or raw item data. Useful for gear, feats, spells, features, and other embedded items.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            actorIdentifier: {
+              type: 'string',
+              description: 'Character name or ID to receive the item',
+            },
+            sourceUuid: {
+              type: 'string',
+              description: 'Compendium or world UUID of the source item to clone',
+            },
+            itemData: {
+              type: 'object',
+              description: 'Raw item data to create when no source UUID is available',
+            },
+            overrides: {
+              type: 'object',
+              description: 'Optional overrides merged into the item before creation',
+            },
+            itemType: {
+              type: 'string',
+              description: 'Optional expected item type validation, for example spell or feat',
+            },
+            reason: {
+              type: 'string',
+              description: 'Optional audit reason for the change',
+            },
+          },
+          required: ['actorIdentifier'],
+        },
+      },
+      {
+        name: 'update-character-item',
+        description:
+          'Update an owned character item by name or ID. Useful for quantity, equipped state, prepared state, and other item-level fields.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            actorIdentifier: {
+              type: 'string',
+              description: 'Character name or ID',
+            },
+            itemIdentifier: {
+              type: 'string',
+              description: 'Owned item name or ID',
+            },
+            itemType: {
+              type: 'string',
+              description: 'Optional item type filter, for example spell or weapon',
+            },
+            updates: {
+              type: 'object',
+              description: 'Update payload applied to the owned item document',
+            },
+            reason: {
+              type: 'string',
+              description: 'Optional audit reason for the change',
+            },
+          },
+          required: ['actorIdentifier', 'itemIdentifier', 'updates'],
+        },
+      },
+      {
+        name: 'remove-character-item',
+        description: 'Remove an owned item from a character by name or ID.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            actorIdentifier: {
+              type: 'string',
+              description: 'Character name or ID',
+            },
+            itemIdentifier: {
+              type: 'string',
+              description: 'Owned item name or ID',
+            },
+            itemType: {
+              type: 'string',
+              description: 'Optional item type filter, for example spell or feat',
+            },
+            reason: {
+              type: 'string',
+              description: 'Optional audit reason for the change',
+            },
+          },
+          required: ['actorIdentifier', 'itemIdentifier'],
+        },
+      },
+      {
+        name: 'learn-dnd5e-spell',
+        description:
+          'DnD5e only: add a spell to a character from a spell UUID and optionally set whether it starts prepared or which class spell list it belongs to.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            actorIdentifier: {
+              type: 'string',
+              description: 'Character name or ID',
+            },
+            spellUuid: {
+              type: 'string',
+              description: 'Compendium or world UUID of the spell to add',
+            },
+            prepared: {
+              type: 'boolean',
+              description: 'Whether the new spell should start prepared',
+            },
+            sourceClass: {
+              type: 'string',
+              description: 'Optional source class identifier or name for multiclass spellbooks',
+            },
+            reason: {
+              type: 'string',
+              description: 'Optional audit reason for the change',
+            },
+          },
+          required: ['actorIdentifier', 'spellUuid'],
+        },
+      },
+      {
+        name: 'prepare-dnd5e-spell',
+        description: 'DnD5e only: prepare or unprepare a spell on a character.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            actorIdentifier: {
+              type: 'string',
+              description: 'Character name or ID',
+            },
+            spellIdentifier: {
+              type: 'string',
+              description: 'Owned spell name or ID',
+            },
+            prepared: {
+              type: 'boolean',
+              description: 'True to prepare the spell, false to unprepare it',
+            },
+            reason: {
+              type: 'string',
+              description: 'Optional audit reason for the change',
+            },
+          },
+          required: ['actorIdentifier', 'spellIdentifier', 'prepared'],
+        },
+      },
+      {
+        name: 'forget-dnd5e-spell',
+        description: 'DnD5e only: remove a spell from a character by name or ID.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            actorIdentifier: {
+              type: 'string',
+              description: 'Character name or ID',
+            },
+            spellIdentifier: {
+              type: 'string',
+              description: 'Owned spell name or ID',
+            },
+            reason: {
+              type: 'string',
+              description: 'Optional audit reason for the change',
+            },
+          },
+          required: ['actorIdentifier', 'spellIdentifier'],
+        },
+      },
+      {
+        name: 'set-dnd5e-spell-slots',
+        description:
+          'DnD5e only: update current spell slot counts and optional slot overrides for a character.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            actorIdentifier: {
+              type: 'string',
+              description: 'Character name or ID',
+            },
+            slot: {
+              type: 'string',
+              enum: [
+                'level1',
+                'level2',
+                'level3',
+                'level4',
+                'level5',
+                'level6',
+                'level7',
+                'level8',
+                'level9',
+                'pact',
+              ],
+              description: 'The DnD5e spell slot track to update',
+            },
+            value: {
+              type: 'number',
+              description: 'Optional current remaining slot count',
+            },
+            override: {
+              type: ['number', 'null'],
+              description: 'Optional explicit slot max override, or null to clear it',
+            },
+            reason: {
+              type: 'string',
+              description: 'Optional audit reason for the change',
+            },
+          },
+          required: ['actorIdentifier', 'slot'],
         },
       },
       {
@@ -978,6 +1196,372 @@ export class CharacterTools {
         `Failed to search items for "${characterIdentifier}": ${error instanceof Error ? error.message : 'Unknown error'}`
       );
     }
+  }
+
+  async handleAddCharacterItem(args: unknown): Promise<UnknownRecord> {
+    const itemDataSchema = z
+      .object({
+        name: z.string().min(1, 'itemData.name cannot be empty'),
+        type: z.string().min(1, 'itemData.type cannot be empty'),
+        img: z.string().min(1).optional(),
+        system: z.record(z.string(), z.unknown()).optional(),
+        flags: z.record(z.string(), z.unknown()).optional(),
+        effects: z.array(z.unknown()).optional(),
+      })
+      .passthrough();
+
+    const schema = z
+      .object({
+        actorIdentifier: z.string().min(1, 'Actor identifier cannot be empty'),
+        sourceUuid: z.string().min(1).optional(),
+        itemData: itemDataSchema.optional(),
+        overrides: z.record(z.string(), z.unknown()).optional(),
+        itemType: z.string().min(1).optional(),
+        reason: z.string().min(1).optional(),
+      })
+      .refine(
+        value => (value.sourceUuid !== undefined) !== (value.itemData !== undefined),
+        'Provide exactly one of sourceUuid or itemData'
+      );
+
+    const parsed = schema.parse(args);
+
+    this.logger.info('Adding character item', {
+      actorIdentifier: parsed.actorIdentifier,
+      sourceUuid: parsed.sourceUuid,
+      itemType: parsed.itemType,
+    });
+
+    const normalizedItemData =
+      parsed.itemData !== undefined
+        ? (Object.fromEntries(
+            Object.entries(parsed.itemData).filter(([, value]) => value !== undefined)
+          ) as FoundryCreateActorEmbeddedItemRequest['itemData'])
+        : undefined;
+
+    const request: FoundryCreateActorEmbeddedItemRequest = {
+      actorIdentifier: parsed.actorIdentifier,
+      ...(parsed.sourceUuid !== undefined ? { sourceUuid: parsed.sourceUuid } : {}),
+      ...(normalizedItemData !== undefined ? { itemData: normalizedItemData } : {}),
+      ...(parsed.overrides !== undefined ? { overrides: parsed.overrides } : {}),
+      ...(parsed.itemType !== undefined ? { itemType: parsed.itemType } : {}),
+      ...(parsed.reason !== undefined ? { reason: parsed.reason } : {}),
+    };
+
+    const result = await this.foundryClient.query<FoundryCreateActorEmbeddedItemResponse>(
+      'foundry-mcp-bridge.createActorEmbeddedItem',
+      request
+    );
+
+    return {
+      success: true,
+      actor: {
+        id: result.actorId,
+        name: result.actorName,
+      },
+      item: {
+        id: result.itemId,
+        name: result.itemName,
+        type: result.itemType,
+      },
+      createdFrom: result.createdFrom,
+      ...(result.sourceUuid ? { sourceUuid: result.sourceUuid } : {}),
+      ...(result.appliedOverrides ? { appliedOverrides: result.appliedOverrides } : {}),
+    };
+  }
+
+  async handleUpdateCharacterItem(args: unknown): Promise<UnknownRecord> {
+    const schema = z.object({
+      actorIdentifier: z.string().min(1, 'Actor identifier cannot be empty'),
+      itemIdentifier: z.string().min(1, 'Item identifier cannot be empty'),
+      itemType: z.string().min(1).optional(),
+      updates: z.record(z.string(), z.unknown()),
+      reason: z.string().min(1).optional(),
+    });
+
+    const parsed = schema.parse(args);
+
+    this.logger.info('Updating character item', {
+      actorIdentifier: parsed.actorIdentifier,
+      itemIdentifier: parsed.itemIdentifier,
+      itemType: parsed.itemType,
+    });
+
+    const request: FoundryUpdateActorEmbeddedItemRequest = {
+      actorIdentifier: parsed.actorIdentifier,
+      itemIdentifier: parsed.itemIdentifier,
+      updates: parsed.updates,
+      ...(parsed.itemType !== undefined ? { itemType: parsed.itemType } : {}),
+      ...(parsed.reason !== undefined ? { reason: parsed.reason } : {}),
+    };
+
+    const result = await this.foundryClient.query<FoundryUpdateActorEmbeddedItemResponse>(
+      'foundry-mcp-bridge.updateActorEmbeddedItem',
+      request
+    );
+
+    return {
+      success: true,
+      actor: {
+        id: result.actorId,
+        name: result.actorName,
+      },
+      item: {
+        id: result.itemId,
+        name: result.itemName,
+        type: result.itemType,
+      },
+      updatedFields: result.updatedFields,
+      appliedUpdates: result.appliedUpdates,
+    };
+  }
+
+  async handleRemoveCharacterItem(args: unknown): Promise<UnknownRecord> {
+    const schema = z.object({
+      actorIdentifier: z.string().min(1, 'Actor identifier cannot be empty'),
+      itemIdentifier: z.string().min(1, 'Item identifier cannot be empty'),
+      itemType: z.string().min(1).optional(),
+      reason: z.string().min(1).optional(),
+    });
+
+    const parsed = schema.parse(args);
+
+    this.logger.info('Removing character item', {
+      actorIdentifier: parsed.actorIdentifier,
+      itemIdentifier: parsed.itemIdentifier,
+      itemType: parsed.itemType,
+    });
+
+    const request: FoundryDeleteActorEmbeddedItemRequest = {
+      actorIdentifier: parsed.actorIdentifier,
+      itemIdentifier: parsed.itemIdentifier,
+      ...(parsed.itemType !== undefined ? { itemType: parsed.itemType } : {}),
+      ...(parsed.reason !== undefined ? { reason: parsed.reason } : {}),
+    };
+
+    const result = await this.foundryClient.query<FoundryDeleteActorEmbeddedItemResponse>(
+      'foundry-mcp-bridge.deleteActorEmbeddedItem',
+      request
+    );
+
+    return {
+      success: true,
+      actor: {
+        id: result.actorId,
+        name: result.actorName,
+      },
+      item: {
+        id: result.itemId,
+        name: result.itemName,
+        type: result.itemType,
+      },
+      removed: true,
+    };
+  }
+
+  async handleLearnDnD5eSpell(args: unknown): Promise<UnknownRecord> {
+    const schema = z.object({
+      actorIdentifier: z.string().min(1, 'Actor identifier cannot be empty'),
+      spellUuid: z.string().min(1, 'spellUuid cannot be empty'),
+      prepared: z.boolean().default(true),
+      sourceClass: z.string().min(1).optional(),
+      reason: z.string().min(1).optional(),
+    });
+
+    const parsed = schema.parse(args);
+    const gameSystem = await this.getGameSystem();
+    if (gameSystem !== 'dnd5e') {
+      throw new Error(
+        'UNSUPPORTED_CAPABILITY: learn-dnd5e-spell is only available when the active system is dnd5e.'
+      );
+    }
+
+    const request: FoundryCreateActorEmbeddedItemRequest = {
+      actorIdentifier: parsed.actorIdentifier,
+      sourceUuid: parsed.spellUuid,
+      itemType: 'spell',
+      overrides: {
+        system: {
+          preparation: {
+            prepared: parsed.prepared,
+          },
+          ...(parsed.sourceClass !== undefined ? { sourceClass: parsed.sourceClass } : {}),
+        },
+      },
+      ...(parsed.reason !== undefined ? { reason: parsed.reason } : {}),
+    };
+
+    const result = await this.foundryClient.query<FoundryCreateActorEmbeddedItemResponse>(
+      'foundry-mcp-bridge.createActorEmbeddedItem',
+      request
+    );
+
+    return {
+      success: true,
+      actor: {
+        id: result.actorId,
+        name: result.actorName,
+      },
+      spell: {
+        id: result.itemId,
+        name: result.itemName,
+      },
+      prepared: parsed.prepared,
+      ...(parsed.sourceClass !== undefined ? { sourceClass: parsed.sourceClass } : {}),
+    };
+  }
+
+  async handlePrepareDnD5eSpell(args: unknown): Promise<UnknownRecord> {
+    const schema = z.object({
+      actorIdentifier: z.string().min(1, 'Actor identifier cannot be empty'),
+      spellIdentifier: z.string().min(1, 'Spell identifier cannot be empty'),
+      prepared: z.boolean(),
+      reason: z.string().min(1).optional(),
+    });
+
+    const parsed = schema.parse(args);
+    const gameSystem = await this.getGameSystem();
+    if (gameSystem !== 'dnd5e') {
+      throw new Error(
+        'UNSUPPORTED_CAPABILITY: prepare-dnd5e-spell is only available when the active system is dnd5e.'
+      );
+    }
+
+    const request: FoundryUpdateActorEmbeddedItemRequest = {
+      actorIdentifier: parsed.actorIdentifier,
+      itemIdentifier: parsed.spellIdentifier,
+      itemType: 'spell',
+      updates: {
+        'system.preparation.prepared': parsed.prepared,
+      },
+      ...(parsed.reason !== undefined ? { reason: parsed.reason } : {}),
+    };
+
+    const result = await this.foundryClient.query<FoundryUpdateActorEmbeddedItemResponse>(
+      'foundry-mcp-bridge.updateActorEmbeddedItem',
+      request
+    );
+
+    return {
+      success: true,
+      actor: {
+        id: result.actorId,
+        name: result.actorName,
+      },
+      spell: {
+        id: result.itemId,
+        name: result.itemName,
+      },
+      prepared: parsed.prepared,
+      updatedFields: result.updatedFields,
+    };
+  }
+
+  async handleForgetDnD5eSpell(args: unknown): Promise<UnknownRecord> {
+    const schema = z.object({
+      actorIdentifier: z.string().min(1, 'Actor identifier cannot be empty'),
+      spellIdentifier: z.string().min(1, 'Spell identifier cannot be empty'),
+      reason: z.string().min(1).optional(),
+    });
+
+    const parsed = schema.parse(args);
+    const gameSystem = await this.getGameSystem();
+    if (gameSystem !== 'dnd5e') {
+      throw new Error(
+        'UNSUPPORTED_CAPABILITY: forget-dnd5e-spell is only available when the active system is dnd5e.'
+      );
+    }
+
+    const request: FoundryDeleteActorEmbeddedItemRequest = {
+      actorIdentifier: parsed.actorIdentifier,
+      itemIdentifier: parsed.spellIdentifier,
+      itemType: 'spell',
+      ...(parsed.reason !== undefined ? { reason: parsed.reason } : {}),
+    };
+
+    const result = await this.foundryClient.query<FoundryDeleteActorEmbeddedItemResponse>(
+      'foundry-mcp-bridge.deleteActorEmbeddedItem',
+      request
+    );
+
+    return {
+      success: true,
+      actor: {
+        id: result.actorId,
+        name: result.actorName,
+      },
+      spell: {
+        id: result.itemId,
+        name: result.itemName,
+      },
+      removed: true,
+    };
+  }
+
+  async handleSetDnD5eSpellSlots(args: unknown): Promise<UnknownRecord> {
+    const schema = z
+      .object({
+        actorIdentifier: z.string().min(1, 'Actor identifier cannot be empty'),
+        slot: z.enum([
+          'level1',
+          'level2',
+          'level3',
+          'level4',
+          'level5',
+          'level6',
+          'level7',
+          'level8',
+          'level9',
+          'pact',
+        ]),
+        value: z.number().int().nonnegative().optional(),
+        override: z.number().int().nonnegative().nullable().optional(),
+        reason: z.string().min(1).optional(),
+      })
+      .refine(
+        value => value.value !== undefined || value.override !== undefined,
+        'Provide value or override'
+      );
+
+    const parsed = schema.parse(args);
+    const gameSystem = await this.getGameSystem();
+    if (gameSystem !== 'dnd5e') {
+      throw new Error(
+        'UNSUPPORTED_CAPABILITY: set-dnd5e-spell-slots is only available when the active system is dnd5e.'
+      );
+    }
+
+    const slotKey = parsed.slot === 'pact' ? 'pact' : `spell${parsed.slot.replace('level', '')}`;
+    const updates: Record<string, unknown> = {
+      ...(parsed.value !== undefined ? { [`system.spells.${slotKey}.value`]: parsed.value } : {}),
+      ...(parsed.override !== undefined
+        ? { [`system.spells.${slotKey}.override`]: parsed.override }
+        : {}),
+    };
+
+    const request: FoundryUpdateActorRequest = {
+      identifier: parsed.actorIdentifier,
+      updates,
+      ...(parsed.reason !== undefined ? { reason: parsed.reason } : {}),
+    };
+
+    const result = await this.foundryClient.query<FoundryUpdateActorResponse>(
+      'foundry-mcp-bridge.updateActor',
+      request
+    );
+
+    return {
+      success: true,
+      actor: {
+        id: result.actorId,
+        name: result.actorName,
+        type: result.actorType,
+      },
+      slot: parsed.slot,
+      ...(parsed.value !== undefined ? { value: parsed.value } : {}),
+      ...(parsed.override !== undefined ? { override: parsed.override } : {}),
+      updatedFields: result.updatedFields,
+    };
   }
 
   async handlePreviewCharacterProgression(args: unknown): Promise<UnknownRecord> {

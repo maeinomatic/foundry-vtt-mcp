@@ -16,8 +16,12 @@ import type {
   FoundryCompendiumSearchResult,
   FoundryConnectionInfo,
   FoundryCreateActorFromCompendiumRequest,
+  FoundryCreateActorEmbeddedItemRequest,
+  FoundryCreateActorEmbeddedItemResponse,
   FoundryCreatureSearchCriteria,
   FoundryCreatureSearchEnvelope,
+  FoundryDeleteActorEmbeddedItemRequest,
+  FoundryDeleteActorEmbeddedItemResponse,
   FoundryGetCharacterAdvancementOptionsRequest,
   FoundryGetCharacterAdvancementOptionsResponse,
   FoundryGetCharacterInfoRequest,
@@ -102,6 +106,10 @@ export class FoundryClient {
     data: FoundryUpdateActorRequest
   ): Promise<FoundryUpdateActorResponse>;
   async query(
+    method: 'foundry-mcp-bridge.createActorEmbeddedItem',
+    data: FoundryCreateActorEmbeddedItemRequest
+  ): Promise<FoundryCreateActorEmbeddedItemResponse>;
+  async query(
     method: 'foundry-mcp-bridge.previewCharacterProgression',
     data: FoundryPreviewCharacterProgressionRequest
   ): Promise<FoundryPreviewCharacterProgressionResponse>;
@@ -117,6 +125,10 @@ export class FoundryClient {
     method: 'foundry-mcp-bridge.updateActorEmbeddedItem',
     data: FoundryUpdateActorEmbeddedItemRequest
   ): Promise<FoundryUpdateActorEmbeddedItemResponse>;
+  async query(
+    method: 'foundry-mcp-bridge.deleteActorEmbeddedItem',
+    data: FoundryDeleteActorEmbeddedItemRequest
+  ): Promise<FoundryDeleteActorEmbeddedItemResponse>;
   async query(
     method: 'foundry-mcp-bridge.searchCompendium',
     data: FoundryCompendiumSearchRequest

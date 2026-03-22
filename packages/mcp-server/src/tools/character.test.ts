@@ -115,6 +115,378 @@ describe('CharacterTools', () => {
     });
   });
 
+  it('uses the shared add-character-item bridge request shape', async () => {
+    const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
+      if (method === 'foundry-mcp-bridge.createActorEmbeddedItem') {
+        expect(data).toEqual({
+          actorIdentifier: 'Aldric',
+          sourceUuid: 'Compendium.dnd5e.items.Item.longsword',
+          itemType: 'weapon',
+          overrides: {
+            system: {
+              quantity: 2,
+            },
+          },
+        });
+        return Promise.resolve({
+          success: true,
+          actorId: 'actor-1',
+          actorName: 'Aldric',
+          itemId: 'item-weapon-1',
+          itemName: 'Longsword',
+          itemType: 'weapon',
+          createdFrom: 'uuid',
+          sourceUuid: 'Compendium.dnd5e.items.Item.longsword',
+          appliedOverrides: {
+            system: {
+              quantity: 2,
+            },
+          },
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected query: ${method}`));
+    });
+
+    const tools = new CharacterTools({
+      foundryClient: { query } as unknown as FoundryClient,
+      logger: createLoggerStub(),
+    });
+
+    const result = (await tools.handleAddCharacterItem({
+      actorIdentifier: 'Aldric',
+      sourceUuid: 'Compendium.dnd5e.items.Item.longsword',
+      itemType: 'weapon',
+      overrides: {
+        system: {
+          quantity: 2,
+        },
+      },
+    })) as Record<string, unknown>;
+
+    expect(result).toMatchObject({
+      success: true,
+      actor: {
+        id: 'actor-1',
+        name: 'Aldric',
+      },
+      item: {
+        id: 'item-weapon-1',
+        name: 'Longsword',
+        type: 'weapon',
+      },
+      createdFrom: 'uuid',
+    });
+  });
+
+  it('uses the shared update-character-item bridge request shape', async () => {
+    const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
+      if (method === 'foundry-mcp-bridge.updateActorEmbeddedItem') {
+        expect(data).toEqual({
+          actorIdentifier: 'Aldric',
+          itemIdentifier: 'Longsword',
+          itemType: 'weapon',
+          updates: {
+            'system.quantity': 3,
+          },
+        });
+        return Promise.resolve({
+          success: true,
+          actorId: 'actor-1',
+          actorName: 'Aldric',
+          itemId: 'item-weapon-1',
+          itemName: 'Longsword',
+          itemType: 'weapon',
+          appliedUpdates: {
+            'system.quantity': 3,
+          },
+          updatedFields: ['system.quantity'],
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected query: ${method}`));
+    });
+
+    const tools = new CharacterTools({
+      foundryClient: { query } as unknown as FoundryClient,
+      logger: createLoggerStub(),
+    });
+
+    const result = (await tools.handleUpdateCharacterItem({
+      actorIdentifier: 'Aldric',
+      itemIdentifier: 'Longsword',
+      itemType: 'weapon',
+      updates: {
+        'system.quantity': 3,
+      },
+    })) as Record<string, unknown>;
+
+    expect(result).toMatchObject({
+      success: true,
+      item: {
+        id: 'item-weapon-1',
+        name: 'Longsword',
+        type: 'weapon',
+      },
+      updatedFields: ['system.quantity'],
+    });
+  });
+
+  it('uses the shared remove-character-item bridge request shape', async () => {
+    const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
+      if (method === 'foundry-mcp-bridge.deleteActorEmbeddedItem') {
+        expect(data).toEqual({
+          actorIdentifier: 'Aldric',
+          itemIdentifier: 'Longsword',
+          itemType: 'weapon',
+        });
+        return Promise.resolve({
+          success: true,
+          actorId: 'actor-1',
+          actorName: 'Aldric',
+          itemId: 'item-weapon-1',
+          itemName: 'Longsword',
+          itemType: 'weapon',
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected query: ${method}`));
+    });
+
+    const tools = new CharacterTools({
+      foundryClient: { query } as unknown as FoundryClient,
+      logger: createLoggerStub(),
+    });
+
+    const result = (await tools.handleRemoveCharacterItem({
+      actorIdentifier: 'Aldric',
+      itemIdentifier: 'Longsword',
+      itemType: 'weapon',
+    })) as Record<string, unknown>;
+
+    expect(result).toMatchObject({
+      success: true,
+      item: {
+        id: 'item-weapon-1',
+        name: 'Longsword',
+        type: 'weapon',
+      },
+      removed: true,
+    });
+  });
+
+  it('learns a DnD5e spell through the generic item-create bridge', async () => {
+    const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
+      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+        return Promise.resolve({ system: 'dnd5e' });
+      }
+
+      if (method === 'foundry-mcp-bridge.createActorEmbeddedItem') {
+        expect(data).toEqual({
+          actorIdentifier: 'Laeral',
+          sourceUuid: 'Compendium.dnd5e.spells.Item.fireball',
+          itemType: 'spell',
+          overrides: {
+            system: {
+              preparation: {
+                prepared: false,
+              },
+              sourceClass: 'Wizard',
+            },
+          },
+        });
+        return Promise.resolve({
+          success: true,
+          actorId: 'actor-3',
+          actorName: 'Laeral',
+          itemId: 'spell-1',
+          itemName: 'Fireball',
+          itemType: 'spell',
+          createdFrom: 'uuid',
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected query: ${method}`));
+    });
+
+    const tools = new CharacterTools({
+      foundryClient: { query } as unknown as FoundryClient,
+      logger: createLoggerStub(),
+    });
+
+    const result = (await tools.handleLearnDnD5eSpell({
+      actorIdentifier: 'Laeral',
+      spellUuid: 'Compendium.dnd5e.spells.Item.fireball',
+      prepared: false,
+      sourceClass: 'Wizard',
+    })) as Record<string, unknown>;
+
+    expect(result).toMatchObject({
+      success: true,
+      spell: {
+        id: 'spell-1',
+        name: 'Fireball',
+      },
+      prepared: false,
+      sourceClass: 'Wizard',
+    });
+  });
+
+  it('updates DnD5e spell preparation through the shared item-update bridge', async () => {
+    const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
+      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+        return Promise.resolve({ system: 'dnd5e' });
+      }
+
+      if (method === 'foundry-mcp-bridge.updateActorEmbeddedItem') {
+        expect(data).toEqual({
+          actorIdentifier: 'Laeral',
+          itemIdentifier: 'Fireball',
+          itemType: 'spell',
+          updates: {
+            'system.preparation.prepared': true,
+          },
+        });
+        return Promise.resolve({
+          success: true,
+          actorId: 'actor-3',
+          actorName: 'Laeral',
+          itemId: 'spell-1',
+          itemName: 'Fireball',
+          itemType: 'spell',
+          appliedUpdates: {
+            'system.preparation.prepared': true,
+          },
+          updatedFields: ['system.preparation.prepared'],
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected query: ${method}`));
+    });
+
+    const tools = new CharacterTools({
+      foundryClient: { query } as unknown as FoundryClient,
+      logger: createLoggerStub(),
+    });
+
+    const result = (await tools.handlePrepareDnD5eSpell({
+      actorIdentifier: 'Laeral',
+      spellIdentifier: 'Fireball',
+      prepared: true,
+    })) as Record<string, unknown>;
+
+    expect(result).toMatchObject({
+      success: true,
+      spell: {
+        id: 'spell-1',
+        name: 'Fireball',
+      },
+      prepared: true,
+      updatedFields: ['system.preparation.prepared'],
+    });
+  });
+
+  it('forgets a DnD5e spell through the shared item-delete bridge', async () => {
+    const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
+      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+        return Promise.resolve({ system: 'dnd5e' });
+      }
+
+      if (method === 'foundry-mcp-bridge.deleteActorEmbeddedItem') {
+        expect(data).toEqual({
+          actorIdentifier: 'Laeral',
+          itemIdentifier: 'Fireball',
+          itemType: 'spell',
+        });
+        return Promise.resolve({
+          success: true,
+          actorId: 'actor-3',
+          actorName: 'Laeral',
+          itemId: 'spell-1',
+          itemName: 'Fireball',
+          itemType: 'spell',
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected query: ${method}`));
+    });
+
+    const tools = new CharacterTools({
+      foundryClient: { query } as unknown as FoundryClient,
+      logger: createLoggerStub(),
+    });
+
+    const result = (await tools.handleForgetDnD5eSpell({
+      actorIdentifier: 'Laeral',
+      spellIdentifier: 'Fireball',
+    })) as Record<string, unknown>;
+
+    expect(result).toMatchObject({
+      success: true,
+      spell: {
+        id: 'spell-1',
+        name: 'Fireball',
+      },
+      removed: true,
+    });
+  });
+
+  it('updates DnD5e spell slots through the shared actor-update bridge', async () => {
+    const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
+      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+        return Promise.resolve({ system: 'dnd5e' });
+      }
+
+      if (method === 'foundry-mcp-bridge.updateActor') {
+        expect(data).toEqual({
+          identifier: 'Laeral',
+          updates: {
+            'system.spells.spell3.value': 2,
+            'system.spells.spell3.override': 3,
+          },
+        });
+        return Promise.resolve({
+          success: true,
+          actorId: 'actor-3',
+          actorName: 'Laeral',
+          actorType: 'character',
+          appliedUpdates: {
+            'system.spells.spell3.value': 2,
+            'system.spells.spell3.override': 3,
+          },
+          updatedFields: ['system.spells.spell3.value', 'system.spells.spell3.override'],
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected query: ${method}`));
+    });
+
+    const tools = new CharacterTools({
+      foundryClient: { query } as unknown as FoundryClient,
+      logger: createLoggerStub(),
+    });
+
+    const result = (await tools.handleSetDnD5eSpellSlots({
+      actorIdentifier: 'Laeral',
+      slot: 'level3',
+      value: 2,
+      override: 3,
+    })) as Record<string, unknown>;
+
+    expect(result).toMatchObject({
+      success: true,
+      actor: {
+        id: 'actor-3',
+        name: 'Laeral',
+        type: 'character',
+      },
+      slot: 'level3',
+      value: 2,
+      override: 3,
+      updatedFields: ['system.spells.spell3.value', 'system.spells.spell3.override'],
+    });
+  });
+
   it('exposes DnD5e progression preview as a dedicated tool response', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
       if (method === 'foundry-mcp-bridge.getCharacterInfo') {

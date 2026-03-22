@@ -429,6 +429,52 @@ export interface FoundryUpdateActorEmbeddedItemResponse extends UnknownRecord {
   updatedFields: string[];
 }
 
+export interface FoundryCreateActorEmbeddedItemData extends UnknownRecord {
+  name: string;
+  type: string;
+  img?: string;
+  system?: UnknownRecord;
+  flags?: UnknownRecord;
+  effects?: unknown[];
+}
+
+export interface FoundryCreateActorEmbeddedItemRequest {
+  actorIdentifier: string;
+  sourceUuid?: string;
+  itemData?: FoundryCreateActorEmbeddedItemData;
+  overrides?: UnknownRecord;
+  itemType?: string;
+  reason?: string;
+}
+
+export interface FoundryCreateActorEmbeddedItemResponse extends UnknownRecord {
+  success: boolean;
+  actorId: string;
+  actorName: string;
+  itemId: string;
+  itemName: string;
+  itemType: string;
+  createdFrom: 'uuid' | 'raw';
+  sourceUuid?: string;
+  appliedOverrides?: UnknownRecord;
+}
+
+export interface FoundryDeleteActorEmbeddedItemRequest {
+  actorIdentifier: string;
+  itemIdentifier: string;
+  itemType?: string;
+  reason?: string;
+}
+
+export interface FoundryDeleteActorEmbeddedItemResponse extends UnknownRecord {
+  success: boolean;
+  actorId: string;
+  actorName: string;
+  itemId: string;
+  itemName: string;
+  itemType: string;
+}
+
 export interface FoundryCompendiumSearchFilters {
   challengeRating?: number | { min?: number; max?: number };
   creatureType?: string;

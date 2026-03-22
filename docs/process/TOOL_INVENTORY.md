@@ -35,8 +35,19 @@ For DnD5e character progression, the current toolset now also supports:
 - previewing class level-up steps
 - listing concrete advancement options for pending steps
 - applying advancement choices for ASI/feat, subclass, hit points, item choice, item grant, and trait selections
+- applying supported size selections
 - finalizing class level updates after required advancement steps are complete
-- auto-applying deterministic item-grant follow-up steps
+- auto-applying deterministic item-grant and size follow-up steps
+
+For broader character management, the current toolset now also supports:
+
+- adding owned actor items from source UUIDs or raw item data
+- updating owned actor item fields
+- removing owned actor items
+- DnD5e spell learning via spell UUID
+- DnD5e spell prepare / unprepare
+- DnD5e spell removal
+- DnD5e spell slot and override updates
 
 ## DnD5e Missing Endpoint Tracker
 
@@ -66,22 +77,7 @@ This section tracks capabilities needed for practical DnD5e character management
 
 ### Priority A: Actor Item Management (system-agnostic surface)
 
-1. `add-item-to-actor`
-
-- Purpose: Add Item to actor from compendium, world item, or raw item payload.
-- Why needed: Give equipment, spells, feats, class features.
-
-2. `update-actor-item`
-
-- Purpose: Update embedded item fields (quantity, equipped, attunement, uses, preparation mode).
-- Why needed: Inventory and spell management automation.
-
-3. `remove-item-from-actor`
-
-- Purpose: Remove embedded items by id/name.
-- Why needed: Undo grants, consumed/replaced items, cleanup.
-
-4. `batch-update-actor-items`
+1. `batch-update-actor-items`
 
 - Purpose: Atomic multi-item update for safe complex changes.
 - Why needed: Level-up steps often touch multiple embedded documents.
@@ -100,22 +96,18 @@ This section tracks capabilities needed for practical DnD5e character management
 
 3. `dnd5e-handle-scale-advancement`
 
-- Purpose: Complete support for DnD5e advancement types that expose level-scaled values.
-- Why needed: Scale Value is part of the official advancement model and should be surfaced or finalized consistently.
+- Purpose: Keep Scale Value surfaced consistently as informational/system-derived during advancement flows.
+- Why needed: Official DnD5e docs indicate Scale Value has no player choice payload, so this is a consistency/documentation concern more than a missing manual write path.
 
 ### Priority B: DnD5e Spell Management
 
-1. `dnd5e-learn-spell`
+1. `dnd5e-spellbook-organization`
 
-- Purpose: Add spell to actor from compendium or payload with class/context validation.
+- Purpose: Higher-level spellbook operations such as assigning source class or reorganizing spell ownership context after multiclass changes.
 
-2. `dnd5e-manage-prepared-spells`
+2. `dnd5e-spell-validation`
 
-- Purpose: Prepare/unprepare, known vs prepared behavior, pact/class slots considerations.
-
-3. `dnd5e-set-spell-slots`
-
-- Purpose: Update spell slot max/current per level and pact slots where applicable.
+- Purpose: Validate learned/prepared spell state against class progression and available spellcasting context.
 
 ### Priority B: Item Authoring and Homebrew
 
@@ -158,10 +150,10 @@ DnD5e adds system-specific needs on top:
 
 - advancement and class-level orchestration
 - multiclass progression logic
-- spell preparation/slot management
+- spell slot management and higher-level spellbook validation
 
-If we only add one thing first, add `update-actor` plus `add-item-to-actor`/`update-actor-item`/`remove-item-from-actor`.
-Those unblock most practical edits immediately (including character descriptions), while DnD5e-specific leveling can be layered next.
+The repo now has the generic actor item CRUD layer plus first-pass DnD5e spell learning/preparation/removal.
+The next most valuable gaps are `update-actor`, multiclass add-class flow, proficiencies, and spell slot management.
 
 ## Overview
 

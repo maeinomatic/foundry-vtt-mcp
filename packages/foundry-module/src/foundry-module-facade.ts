@@ -9,6 +9,7 @@ import {
   type SceneTokenPlacement,
   type TokenPlacementResult,
 } from './services/actor-creation-service.js';
+import { FoundryActorItemService } from './services/actor-item-service.js';
 import { FoundryActorProgressionService } from './services/actor-progression-service.js';
 import { FoundryActorUpdateService } from './services/actor-update-service.js';
 import { FoundryCharacterService } from './services/character-service.js';
@@ -31,8 +32,12 @@ import type {
   FoundryCompendiumSearchFilters,
   FoundryCompendiumSearchResult,
   FoundryCharacterInfo,
+  FoundryCreateActorEmbeddedItemRequest,
+  FoundryCreateActorEmbeddedItemResponse,
   FoundryCreatureSearchCriteria,
   FoundryCreatureSearchResponse,
+  FoundryDeleteActorEmbeddedItemRequest,
+  FoundryDeleteActorEmbeddedItemResponse,
   FoundryCompendiumEntryFull,
   FoundryGetCharacterAdvancementOptionsRequest,
   FoundryGetCharacterAdvancementOptionsResponse,
@@ -83,6 +88,7 @@ export class FoundryModuleFacade {
   private moduleId: string = MODULE_ID;
   private actorDirectoryService: FoundryActorDirectoryService;
   private actorCreationService: FoundryActorCreationService;
+  private actorItemService: FoundryActorItemService;
   private actorProgressionService: FoundryActorProgressionService;
   private actorUpdateService: FoundryActorUpdateService;
   private characterService: FoundryCharacterService;
@@ -112,6 +118,17 @@ export class FoundryModuleFacade {
         this.compendiumService.getCompendiumDocumentFull(packId, documentId),
       searchCompendium: (query: string, packType?: string): Promise<CompendiumSearchResult[]> =>
         this.compendiumService.searchCompendium(query, packType),
+    });
+    this.actorItemService = new FoundryActorItemService({
+      auditLog: (
+        action: string,
+        data: unknown,
+        status: 'success' | 'failure',
+        errorMessage?: string
+      ): void => this.auditLog(action, data, status, errorMessage),
+      findActorByIdentifier: (identifier: string): ActorLookupLike | null =>
+        this.findActorByIdentifier(identifier),
+      validateFoundryState: (): void => this.validateFoundryState(),
     });
     this.actorProgressionService = new FoundryActorProgressionService({
       auditLog: (
@@ -545,6 +562,18 @@ export class FoundryModuleFacade {
     request: FoundryUpdateActorEmbeddedItemRequest
   ): Promise<FoundryUpdateActorEmbeddedItemResponse> {
     return this.actorUpdateService.updateActorEmbeddedItem(request);
+  }
+
+  async createActorEmbeddedItem(
+    request: FoundryCreateActorEmbeddedItemRequest
+  ): Promise<FoundryCreateActorEmbeddedItemResponse> {
+    return this.actorItemService.createActorEmbeddedItem(request);
+  }
+
+  async deleteActorEmbeddedItem(
+    request: FoundryDeleteActorEmbeddedItemRequest
+  ): Promise<FoundryDeleteActorEmbeddedItemResponse> {
+    return this.actorItemService.deleteActorEmbeddedItem(request);
   }
 
   /**
