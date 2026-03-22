@@ -3,6 +3,9 @@ import type {
   FoundryCharacterAction,
   FoundryCharacterEffect,
   FoundryCharacterInfo,
+  FoundryCharacterItemSearchMatch,
+  FoundrySearchCharacterItemsRequest,
+  FoundrySearchCharacterItemsResponse,
   UnknownRecord,
 } from '@foundry-mcp/shared';
 import { getCharacterSystemStrategy } from './character-system-strategies/character-system-strategy-registry.js';
@@ -264,21 +267,9 @@ export class FoundryCharacterService {
     return Promise.resolve(characterData);
   }
 
-  searchCharacterItems(params: {
-    characterIdentifier: string;
-    query?: string | undefined;
-    type?: string | undefined;
-    category?: string | undefined;
-    limit?: number | undefined;
-  }): Promise<{
-    characterId: string;
-    characterName: string;
-    query?: string;
-    type?: string;
-    category?: string;
-    matches: Array<Record<string, unknown>>;
-    totalMatches: number;
-  }> {
+  searchCharacterItems(
+    params: FoundrySearchCharacterItemsRequest
+  ): Promise<FoundrySearchCharacterItemsResponse> {
     this.context.validateFoundryState();
 
     const { characterIdentifier, query, type, category, limit = 20 } = params;
@@ -290,7 +281,7 @@ export class FoundryCharacterService {
     const actorSystem = actor.system as ModuleCharacterSystemData | UnknownRecord | undefined;
     const systemId = (game as { system?: { id?: string } }).system?.id ?? '';
     const systemStrategy = getCharacterSystemStrategy(systemId);
-    const matches: Array<Record<string, unknown>> = [];
+    const matches: FoundryCharacterItemSearchMatch[] = [];
 
     const actorItems = getActorItems(actor);
 
@@ -351,7 +342,7 @@ export class FoundryCharacterService {
       const description = getDescriptionText(itemSystem?.description);
       if (!matchesQuery(itemAny.name) && !matchesQuery(description)) continue;
 
-      const result: Record<string, unknown> = {
+      const result: FoundryCharacterItemSearchMatch = {
         id: itemAny.id,
         name: itemAny.name,
         type: itemAny.type,
@@ -437,7 +428,7 @@ export class FoundryCharacterService {
         const actionName = actionAny.name ?? actionAny.label ?? '';
         if (!matchesQuery(actionName)) continue;
 
-        const result: Record<string, unknown> = {
+        const result: FoundryCharacterItemSearchMatch = {
           id: actionAny.id ?? actionAny.slug ?? actionName,
           name: actionName,
           type: 'action',
@@ -464,10 +455,12 @@ export class FoundryCharacterService {
         if (!matchesQuery(effectAny.name ?? effectAny.label)) continue;
 
         matches.push({
-          id: effectAny.id,
-          name: effectAny.name ?? effectAny.label,
           type: 'effect',
-          description: effectAny.description ?? undefined,
+          ...(effectAny.id ? { id: effectAny.id } : {}),
+          ...((effectAny.name ?? effectAny.label)
+            ? { name: effectAny.name ?? effectAny.label }
+            : {}),
+          ...(effectAny.description ? { description: effectAny.description } : {}),
         });
       }
     }
@@ -484,15 +477,7 @@ export class FoundryCharacterService {
       'success'
     );
 
-    const result: {
-      characterId: string;
-      characterName: string;
-      query?: string;
-      type?: string;
-      category?: string;
-      matches: Array<Record<string, unknown>>;
-      totalMatches: number;
-    } = {
+    const result: FoundrySearchCharacterItemsResponse = {
       characterId: actor.id ?? '',
       characterName: actor.name ?? '',
       matches,

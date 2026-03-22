@@ -2,8 +2,11 @@ import { z } from 'zod';
 import { FoundryClient } from '../foundry-client.js';
 import type {
   FoundryActorSystemBase,
-  FoundryCompendiumDocumentBase,
+  FoundryCompendiumEntryFull,
   FoundryCompendiumPackSummary,
+  FoundryCompendiumSearchResult,
+  FoundryCreatureSearchCriteria,
+  FoundryCreatureSearchResult,
   FoundryDescriptionField,
   FoundryPriceData,
   FoundryTraitsData,
@@ -51,38 +54,32 @@ interface CompendiumEntitySystem extends FoundryActorSystemBase {
   ac?: { value?: number };
 }
 
-interface CompendiumEntity extends FoundryCompendiumDocumentBase<CompendiumEntitySystem> {
-  pack?: string;
-  packLabel?: string;
-  challengeRating?: number;
-  creatureType?: string;
-  size?: string;
-  hasSpells?: boolean;
-  hasLegendaryActions?: boolean;
-  response?: {
-    creatures?: CompendiumEntity[];
-    searchSummary?: {
-      packsSearched?: number;
-      topPacks?: unknown[];
-      totalCreaturesFound?: number;
-    };
-  };
-}
-
-type CriteriaParams = {
-  challengeRating?: number | { min?: number; max?: number } | undefined;
-  level?: number | { min?: number; max?: number } | undefined;
-  creatureType?: string | undefined;
-  size?: string | undefined;
-  traits?: string[] | undefined;
-  rarity?: 'common' | 'uncommon' | 'rare' | 'unique' | undefined;
-  hasSpells?: boolean | undefined;
-  hasLegendaryActions?: boolean | undefined;
-  limit?: number | undefined;
-};
+type CompendiumSearchEntity = FoundryCompendiumSearchResult<CompendiumEntitySystem>;
+type CompendiumFullEntity = FoundryCompendiumEntryFull<
+  CompendiumEntitySystem,
+  UnknownRecord,
+  UnknownRecord
+>;
+type CreatureSearchEntity = FoundryCreatureSearchResult<CompendiumEntitySystem>;
+type CriteriaParams = FoundryCreatureSearchCriteria;
 
 const toRecord = (value: unknown): UnknownRecord =>
   value !== null && typeof value === 'object' ? (value as UnknownRecord) : {};
+
+const isCompendiumSearchEntity = (value: unknown): value is CompendiumSearchEntity => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return false;
+  }
+
+  const record = value as Record<string, unknown>;
+  return (
+    typeof record.id === 'string' &&
+    typeof record.name === 'string' &&
+    typeof record.type === 'string' &&
+    typeof record.pack === 'string' &&
+    typeof record.packLabel === 'string'
+  );
+};
 
 export class CompendiumTools {
   private foundryClient: FoundryClient;
@@ -128,13 +125,13 @@ export class CompendiumTools {
 
   private formatWithAdapter(
     adapter: SystemAdapter,
-    entity: CompendiumEntity,
+    entity: CompendiumSearchEntity | CompendiumFullEntity | CreatureSearchEntity,
     mode: 'search' | 'criteria' | 'compact' | 'details'
   ): Record<string, unknown> {
     return adapter.formatRawCompendiumCreature(entity, mode);
   }
 
-  private isCreatureEntity(item: CompendiumEntity): boolean {
+  private isCreatureEntity(item: { type: string }): boolean {
     return item.type === 'npc' || item.type === 'character';
   }
 
@@ -470,16 +467,13 @@ export class CompendiumTools {
     });
 
     try {
-      const rawResults = await this.foundryClient.query<CompendiumEntity[]>(
-        'foundry-mcp-bridge.searchCompendium',
-        {
-          query,
-          packType,
-          filters,
-        }
-      );
+      const rawResults = await this.foundryClient.query('foundry-mcp-bridge.searchCompendium', {
+        query,
+        packType,
+        filters,
+      });
 
-      const results = Array.isArray(rawResults) ? rawResults : [];
+      const results = Array.isArray(rawResults) ? rawResults.filter(isCompendiumSearchEntity) : [];
 
       // Limit results
       const limitedResults = results.slice(0, limit);
@@ -520,13 +514,10 @@ export class CompendiumTools {
     try {
       const gameSystem = await this.getGameSystem();
       // Use the proper document retrieval method that already exists in actor creation
-      const item = await this.foundryClient.query<CompendiumEntity | null>(
-        'foundry-mcp-bridge.getCompendiumDocumentFull',
-        {
-          packId,
-          documentId: itemId,
-        }
-      );
+      const item = await this.foundryClient.query('foundry-mcp-bridge.getCompendiumDocumentFull', {
+        packId,
+        documentId: itemId,
+      });
 
       if (!item) {
         throw new Error(`Item ${itemId} not found in pack ${packId}`);
@@ -743,7 +734,7 @@ export class CompendiumTools {
     });
 
     try {
-      const results = await this.foundryClient.query<CompendiumEntity | CompendiumEntity[]>(
+      const results = await this.foundryClient.query(
         'foundry-mcp-bridge.listCreaturesByCriteria',
         params
       );
@@ -751,24 +742,15 @@ export class CompendiumTools {
       this.logger.debug('Creature criteria search completed', {
         gameSystem,
         criteriaCount: Object.keys(params).length,
-        totalFound: Array.isArray(results)
-          ? results.length
-          : (results.response?.creatures?.length ?? 0),
+        totalFound: results.response.creatures.length,
         limit: params.limit,
-        packsSearched: Array.isArray(results)
-          ? 0
-          : (results.response?.searchSummary?.packsSearched ?? 0),
+        packsSearched: results.response.searchSummary.packsSearched,
       });
 
       // Extract search summary for transparency
-      const responsePayload = Array.isArray(results) ? undefined : results.response;
-      const resultCreatures = Array.isArray(results) ? results : (responsePayload?.creatures ?? []);
-
-      const searchSummary = responsePayload?.searchSummary ?? {
-        packsSearched: 0,
-        topPacks: [],
-        totalCreaturesFound: resultCreatures.length,
-      };
+      const responsePayload = results.response;
+      const resultCreatures = responsePayload.creatures;
+      const searchSummary = responsePayload.searchSummary;
 
       return {
         gameSystem, // Include detected system
@@ -837,7 +819,7 @@ export class CompendiumTools {
   }
 
   private formatCompendiumItem(
-    item: CompendiumEntity,
+    item: CompendiumSearchEntity,
     gameSystem?: GameSystem
   ): Record<string, unknown> {
     const formatted: Record<string, unknown> = {
@@ -867,7 +849,15 @@ export class CompendiumTools {
     return formatted;
   }
 
-  private extractDescription(item: CompendiumEntity): string {
+  private extractDescription(item: CompendiumSearchEntity | CompendiumFullEntity): string {
+    if (
+      'description' in item &&
+      typeof item.description === 'string' &&
+      item.description.trim().length > 0
+    ) {
+      return this.truncateText(this.stripHtml(item.description), 200);
+    }
+
     const system = item.system ?? {};
 
     const description = this.getSystemDescription(system);
@@ -875,7 +865,7 @@ export class CompendiumTools {
     return this.truncateText(this.stripHtml(description), 200);
   }
 
-  private extractFullDescription(item: CompendiumEntity): string {
+  private extractFullDescription(item: CompendiumFullEntity): string {
     const system = item.system ?? {};
 
     const description = this.getSystemDescription(system);
@@ -883,7 +873,11 @@ export class CompendiumTools {
     return this.stripHtml(description);
   }
 
-  private createItemSummary(item: CompendiumEntity): string {
+  private createItemSummary(item: CompendiumSearchEntity | CompendiumFullEntity): string {
+    if ('summary' in item && typeof item.summary === 'string' && item.summary.trim().length > 0) {
+      return item.summary;
+    }
+
     const parts = [];
 
     parts.push(`${item.type ?? 'unknown'} from ${item.packLabel ?? 'unknown pack'}`);
@@ -921,7 +915,7 @@ export class CompendiumTools {
   }
 
   private formatCreatureListItem(
-    creature: CompendiumEntity,
+    creature: CreatureSearchEntity,
     gameSystem?: GameSystem
   ): Record<string, unknown> {
     const formatted: Record<string, unknown> = {
@@ -952,7 +946,7 @@ export class CompendiumTools {
     return system.details?.description ?? '';
   }
 
-  private extractItemProperties(item: CompendiumEntity): Record<string, unknown> {
+  private extractItemProperties(item: CompendiumFullEntity): Record<string, unknown> {
     const system = item.system ?? {};
     const properties: Record<string, unknown> = {};
 

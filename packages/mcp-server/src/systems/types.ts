@@ -10,8 +10,10 @@ import type {
   FoundryActorAttributesBase,
   FoundryActorDocumentBase,
   FoundryActorSystemBase,
+  FoundryCharacterInfo,
   FoundryCompendiumDocumentBase,
   FoundryCompendiumPackSummary,
+  FoundryCompendiumSearchResult,
   FoundryDescriptionField,
   FoundryItemDocumentBase,
   FoundryItemSystemBase,
@@ -70,6 +72,16 @@ export interface SystemCharacterAction extends FoundryCharacterAction {}
 export interface SystemSpellData extends FoundrySpellInfo {}
 
 export interface SystemSpellcastingEntry extends FoundrySpellcastingEntry {}
+
+export type SystemCharacterInfo = FoundryCharacterInfo<
+  FoundryActorSystemBase,
+  FoundryItemSystemBase,
+  UnknownRecord
+>;
+
+export type SystemCompendiumCreatureEntity =
+  | FoundryCompendiumDocumentBase<UnknownRecord, UnknownRecord, UnknownRecord>
+  | FoundryCompendiumSearchResult<UnknownRecord>;
 
 export interface DnD5eAbilityData extends UnknownRecord {
   value?: number;
@@ -313,7 +325,7 @@ export interface SystemAdapter {
    * `mode=details` is used by get-compendium-item full actor responses.
    */
   formatRawCompendiumCreature(
-    entity: FoundryCompendiumDocumentBase,
+    entity: SystemCompendiumCreatureEntity,
     mode: 'search' | 'criteria' | 'compact' | 'details'
   ): Record<string, unknown>;
 
@@ -331,13 +343,13 @@ export interface SystemAdapter {
    * Used by get-character and list-characters tools
    * @param actorData - Raw Foundry actor data
    */
-  extractCharacterStats(actorData: FoundryActorDocumentBase): Record<string, unknown>;
+  extractCharacterStats(actorData: SystemCharacterInfo): Record<string, unknown>;
 
   /**
    * Format basic character info for compact character responses.
    * Used by get-character for system-specific basic info shaping.
    */
-  formatCharacterBasicInfo(actorData: FoundryActorDocumentBase): Record<string, unknown>;
+  formatCharacterBasicInfo(actorData: SystemCharacterInfo): Record<string, unknown>;
 
   /**
    * Format a character item for compact list responses.

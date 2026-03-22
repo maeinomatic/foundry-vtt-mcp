@@ -134,6 +134,17 @@ export interface FoundryWorldDetails {
   users: FoundryWorldUser[];
 }
 
+export interface FoundryActorSummary {
+  id: string;
+  name: string;
+  type: string;
+  img?: string;
+}
+
+export interface FoundryListActorsRequest {
+  type?: string;
+}
+
 export interface FoundryCharacterAction extends UnknownRecord {
   name: string;
   type?: string;
@@ -191,6 +202,128 @@ export interface FoundryCharacterInfo<
   itemVariants?: unknown[];
   itemToggles?: unknown[];
   spellcasting?: FoundrySpellcastingEntry[];
+}
+
+export interface FoundryGetCharacterInfoRequest {
+  identifier: string;
+}
+
+export interface FoundryCharacterItemSearchMatch extends UnknownRecord {
+  id?: string;
+  name?: string;
+  type: string;
+  description?: string;
+  actionType?: string;
+  actionCost?: number | string;
+  level?: number;
+  prepared?: boolean;
+  expended?: boolean;
+  traits?: string[];
+  range?: string;
+  target?: string;
+  area?: string;
+  quantity?: number;
+  equipped?: boolean;
+  invested?: boolean;
+}
+
+export interface FoundrySearchCharacterItemsRequest {
+  characterIdentifier: string;
+  query?: string;
+  type?: string;
+  category?: string;
+  limit?: number;
+}
+
+export interface FoundrySearchCharacterItemsResponse extends UnknownRecord {
+  characterId: string;
+  characterName: string;
+  query?: string;
+  type?: string;
+  category?: string;
+  matches: FoundryCharacterItemSearchMatch[];
+  totalMatches: number;
+}
+
+export interface FoundryCompendiumSearchFilters {
+  challengeRating?: number | { min?: number; max?: number };
+  creatureType?: string;
+  size?: string;
+  alignment?: string;
+  hasLegendaryActions?: boolean;
+  spellcaster?: boolean;
+}
+
+export interface FoundryCreatureSearchCriteria extends FoundryCompendiumSearchFilters {
+  level?: number | { min?: number; max?: number };
+  traits?: string[];
+  rarity?: string;
+  hasSpells?: boolean;
+  limit?: number;
+}
+
+export interface FoundryCompendiumSearchRequest {
+  query: string;
+  packType?: string;
+  filters?: FoundryCompendiumSearchFilters;
+}
+
+export interface FoundryGetCompendiumDocumentRequest {
+  packId: string;
+  documentId: string;
+}
+
+export interface FoundryCompendiumSearchResult<SystemData extends UnknownRecord = UnknownRecord>
+  extends UnknownRecord {
+  id: string;
+  name: string;
+  type: string;
+  img?: string;
+  pack: string;
+  packLabel: string;
+  system?: SystemData;
+  summary?: string;
+  hasImage?: boolean;
+  description?: string;
+}
+
+export interface FoundryCreatureSearchResult<SystemData extends UnknownRecord = UnknownRecord>
+  extends FoundryCompendiumSearchResult<SystemData> {
+  level?: number;
+  traits?: string[];
+  rarity?: string;
+  challengeRating?: number;
+  hasLegendaryActions?: boolean;
+  creatureType?: string;
+  size?: string;
+  hitPoints?: number;
+  armorClass?: number;
+  hasSpells?: boolean;
+  alignment?: string;
+}
+
+export interface FoundryCreatureSearchSummary {
+  packsSearched: number;
+  topPacks: Array<{ id: string; label: string; priority: number }>;
+  totalCreaturesFound: number;
+  resultsByPack: Record<string, number>;
+  criteria: FoundryCreatureSearchCriteria;
+  searchMethod: 'enhanced_persistent_index' | 'basic_fallback';
+  fallback?: boolean;
+  indexMetadata?: {
+    totalIndexedCreatures: number;
+    searchMethod: 'enhanced_persistent_index';
+  };
+}
+
+export interface FoundryCreatureSearchResponse<SystemData extends UnknownRecord = UnknownRecord> {
+  creatures: FoundryCreatureSearchResult<SystemData>[];
+  searchSummary: FoundryCreatureSearchSummary;
+}
+
+export interface FoundryCreatureSearchEnvelope<SystemData extends UnknownRecord = UnknownRecord>
+  extends UnknownRecord {
+  response: FoundryCreatureSearchResponse<SystemData>;
 }
 
 export type FoundryConnectionType = 'websocket' | 'webrtc' | null;

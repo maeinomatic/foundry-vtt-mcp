@@ -5,9 +5,13 @@ import { notifyGM } from './gm-notifications.js';
 import type {
   FoundryActorCreationResult,
   FoundryCharacterInfo,
+  FoundryCompendiumSearchRequest,
+  FoundryCreatureSearchCriteria,
   FoundryCompendiumEntryFull,
+  FoundryGetCharacterInfoRequest,
   FoundryJournalEntryResponse,
   FoundryJournalSummary,
+  FoundrySearchCharacterItemsRequest,
   FoundryWorldDetails,
 } from '@foundry-mcp/shared';
 
@@ -263,10 +267,14 @@ export class QueryHandlers {
   /**
    * Handle character information request
    */
-  private async handleGetCharacterInfo(data: {
-    characterName?: string;
-    characterId?: string;
-  }): Promise<FoundryCharacterInfo | QueryErrorResult> {
+  private async handleGetCharacterInfo(
+    data:
+      | FoundryGetCharacterInfoRequest
+      | {
+          characterName?: string;
+          characterId?: string;
+        }
+  ): Promise<FoundryCharacterInfo | QueryErrorResult> {
     try {
       // SECURITY: Silent GM validation
       const gmCheck = this.validateGMAccess();
@@ -276,9 +284,12 @@ export class QueryHandlers {
 
       this.dataAccess.validateFoundryState();
 
-      const identifier = data.characterName ?? data.characterId;
+      const identifier =
+        ('identifier' in data ? data.identifier : undefined) ??
+        ('characterName' in data ? data.characterName : undefined) ??
+        ('characterId' in data ? data.characterId : undefined);
       if (!identifier) {
-        throw new Error('characterName or characterId is required');
+        throw new Error('identifier is required');
       }
 
       const characterInfo = await this.dataAccess.getCharacterInfo(identifier);
@@ -321,18 +332,7 @@ export class QueryHandlers {
   /**
    * Handle compendium search request
    */
-  private async handleSearchCompendium(data: {
-    query: string;
-    packType?: string;
-    filters?: {
-      challengeRating?: number | { min?: number; max?: number };
-      creatureType?: string;
-      size?: string;
-      alignment?: string;
-      hasLegendaryActions?: boolean;
-      spellcaster?: boolean;
-    };
-  }): Promise<unknown> {
+  private async handleSearchCompendium(data: FoundryCompendiumSearchRequest): Promise<unknown> {
     try {
       // SECURITY: Silent GM validation
       const gmCheck = this.validateGMAccess();
@@ -362,14 +362,9 @@ export class QueryHandlers {
   /**
    * Handle list creatures by criteria request
    */
-  private async handleListCreaturesByCriteria(data: {
-    challengeRating?: number | { min?: number; max?: number };
-    creatureType?: string;
-    size?: string;
-    hasSpells?: boolean;
-    hasLegendaryActions?: boolean;
-    limit?: number;
-  }): Promise<unknown> {
+  private async handleListCreaturesByCriteria(
+    data: FoundryCreatureSearchCriteria
+  ): Promise<unknown> {
     try {
       // SECURITY: Silent GM validation
       const gmCheck = this.validateGMAccess();
@@ -1562,13 +1557,9 @@ export class QueryHandlers {
   /**
    * Handle search character items request
    */
-  private async handleSearchCharacterItems(data: {
-    characterIdentifier: string;
-    query?: string;
-    type?: string;
-    category?: string;
-    limit?: number;
-  }): Promise<unknown> {
+  private async handleSearchCharacterItems(
+    data: FoundrySearchCharacterItemsRequest
+  ): Promise<unknown> {
     try {
       // SECURITY: Silent GM validation
       const gmCheck = this.validateGMAccess();
@@ -1584,10 +1575,10 @@ export class QueryHandlers {
 
       return await this.dataAccess.searchCharacterItems({
         characterIdentifier: data.characterIdentifier,
-        query: data.query,
-        type: data.type,
-        category: data.category,
-        limit: data.limit,
+        ...(data.query !== undefined ? { query: data.query } : {}),
+        ...(data.type !== undefined ? { type: data.type } : {}),
+        ...(data.category !== undefined ? { category: data.category } : {}),
+        ...(data.limit !== undefined ? { limit: data.limit } : {}),
       });
     } catch (error) {
       throw new Error(

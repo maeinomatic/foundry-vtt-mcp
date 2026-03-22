@@ -1,4 +1,5 @@
 import type {
+  FoundryCharacterItemSearchMatch,
   FoundryDescriptionField,
   FoundryItemDocumentBase,
   FoundryItemSystemBase,
@@ -10,7 +11,7 @@ import type {
 
 export type SpellcastingEntry = FoundrySpellcastingEntry;
 export type SpellInfo = FoundrySpellInfo;
-export type CharacterItemSearchMatch = Record<string, unknown>;
+export type CharacterItemSearchMatch = FoundryCharacterItemSearchMatch;
 
 export interface ModuleRuleElement extends UnknownRecord {
   key?: string;

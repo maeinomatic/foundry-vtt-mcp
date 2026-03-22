@@ -4,10 +4,10 @@ import { transactionManager } from '../transaction-manager.js';
 import { getOrCreateFolder } from './folder-service.js';
 import type {
   FoundryActorCreationResult,
+  FoundryCompendiumSearchResult,
   FoundryCompendiumEntryFull,
   FoundryCreatedActorInfo,
 } from '@foundry-mcp/shared';
-import type { CompendiumSearchResult } from './compendium-service.js';
 
 type AuditStatus = 'success' | 'failure';
 
@@ -40,6 +40,8 @@ type CompendiumEntryFull = FoundryCompendiumEntryFull<
   Record<string, unknown>,
   Record<string, unknown>
 >;
+
+type CompendiumSearchResult = FoundryCompendiumSearchResult<Record<string, unknown>>;
 
 export interface SceneTokenPlacement {
   actorIds: string[];

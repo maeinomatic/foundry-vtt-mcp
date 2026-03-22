@@ -14,11 +14,12 @@ import type {
   DSA5CompendiumDocument,
   DSA5ItemDocument,
   SystemCharacterAction,
+  SystemCharacterInfo,
+  SystemCompendiumCreatureEntity,
   SystemSpellcastingEntry,
 } from '../types.js';
 import type {
   FoundryActorDocumentBase,
-  FoundryCompendiumDocumentBase,
   FoundryCompendiumPackSummary,
   FoundryItemDocumentBase,
   UnknownRecord,
@@ -276,7 +277,7 @@ export class DSA5Adapter implements SystemAdapter {
   }
 
   formatRawCompendiumCreature(
-    entity: FoundryCompendiumDocumentBase,
+    entity: SystemCompendiumCreatureEntity,
     mode: 'search' | 'criteria' | 'compact' | 'details'
   ): Record<string, unknown> {
     const creature = entity as DSA5CompendiumDocument;
@@ -363,7 +364,7 @@ export class DSA5Adapter implements SystemAdapter {
   /**
    * Extract character statistics from actor data
    */
-  extractCharacterStats(actorData: FoundryActorDocumentBase): Record<string, unknown> {
+  extractCharacterStats(actorData: SystemCharacterInfo): Record<string, unknown> {
     const actor = actorData as DSA5ActorDocument;
     const system = actor.system;
     const stats: Record<string, unknown> = {};
@@ -519,7 +520,7 @@ export class DSA5Adapter implements SystemAdapter {
     return stats;
   }
 
-  formatCharacterBasicInfo(actorData: FoundryActorDocumentBase): Record<string, unknown> {
+  formatCharacterBasicInfo(actorData: SystemCharacterInfo): Record<string, unknown> {
     const actor = actorData as DSA5ActorDocument;
     const system = actor.system;
     const basicInfo: Record<string, unknown> = {};

@@ -35,68 +35,79 @@ Preferred pattern:
    fields where versions may differ.
 4. Keep system-specific semantics inside adapters, not core tools.
 
+## Current State
+
+Completed foundation work:
+
+- Shared Foundry DTOs now exist in `shared/src/foundry-types.ts`.
+- The Foundry module and MCP server both consume the shared DTO layer.
+- `FoundryClient.query(...)` is generic, and the highest-value bridge methods are
+  now moving toward method-specific request/response typing.
+- The adapter contract is already typed against Foundry base documents and
+  system overlays instead of loose `unknown` inputs.
+- The Foundry module side has been decomposed into a facade + service +
+  strategy structure, which gives us a cleaner place to keep typed boundaries.
+
+This means the remaining work is no longer "create the typing foundation." The
+remaining work is "finish adopting the shared contract consistently and prove it
+with tests."
+
 ## Remaining Work
 
-### Phase 1: Shared Foundry Base Types
+### Phase 1: Shared Contract Adoption
 
-- Create a shared base-types module for:
-  - world info
-  - actor documents
-  - item documents
-  - active effects
-  - compendium pack summaries
-  - compendium document summaries/details
-  - common public `system` fragments we actually use
-- Replace duplicated tool-local shapes in:
-  - `packages/mcp-server/src/tools/character.ts`
-  - `packages/mcp-server/src/tools/compendium.ts`
-  - `packages/mcp-server/src/tools/actor-creation.ts`
-
-### Phase 2: Typed Client and Bridge Boundary
-
-- Make `FoundryClient.query<T>()` generic and use it consistently.
-- Add typed result models for the bridge methods we rely on most:
-  - `foundry-mcp-bridge.getWorldInfo`
+- Remove remaining MCP-tool-local DTO copies where a shared bridge DTO already
+  exists.
+- Prefer shared request/response models for these bridge methods first:
   - `foundry-mcp-bridge.getCharacterInfo`
-  - `foundry-mcp-bridge.listActors`
+  - `foundry-mcp-bridge.searchCharacterItems`
   - `foundry-mcp-bridge.searchCompendium`
-  - `foundry-mcp-bridge.getCompendiumDocumentFull`
   - `foundry-mcp-bridge.listCreaturesByCriteria`
+  - `foundry-mcp-bridge.getCompendiumDocumentFull`
   - `foundry-mcp-bridge.getAvailablePacks`
-- Reduce ad hoc `as Record<string, unknown>` parsing in:
+- Keep full compendium entry DTOs and lightweight search DTOs distinct. Do not
+  collapse them into one giant "compendium entity" type.
+
+### Phase 2: MCP Client Boundary Hardening
+
+- Add method-specific typing at the `FoundryClient` boundary for the bridge
+  methods we rely on most.
+- Reduce unnecessary explicit generic arguments in tool code when the method
+  name alone can provide the request/response type.
+- Continue shrinking ad hoc `Record<string, unknown>` parsing in:
   - `packages/mcp-server/src/foundry-client.ts`
   - `packages/mcp-server/src/foundry-connector.ts`
   - `packages/mcp-server/src/backend.ts`
 
-### Phase 3: Adapter Contract Typing
+### Phase 3: Tool and Adapter Cleanup
 
-- Replace generic `unknown` inputs in `packages/mcp-server/src/systems/types.ts`
-  with shared Foundry base document types where possible.
-- Update the three active adapters to accept typed base Foundry shapes:
-  - `packages/mcp-server/src/systems/dnd5e/adapter.ts`
-  - `packages/mcp-server/src/systems/pf2e/adapter.ts`
-  - `packages/mcp-server/src/systems/dsa5/adapter.ts`
-- Keep action/spellcasting helper inputs flexible until we have stable shared
-  DTOs for those bridge-specific payloads.
+- Continue replacing tool-local result models in:
+  - `packages/mcp-server/src/tools/character.ts`
+  - `packages/mcp-server/src/tools/compendium.ts`
+  - `packages/mcp-server/src/tools/actor-creation.ts`
+- Keep adapter inputs aligned with the richer bridge payloads the tools already
+  pass around, especially character info and compendium creature formatting.
+- Keep system-specific semantics adapter-owned even when improving typings.
 
-### Phase 4: System-Specific Typing
+### Phase 4: Contract Tests
 
-- Add typed `system` payload overlays for:
-  - D&D 5e
-  - PF2e
-  - DSA5
-- Move adapter internals away from repeated `asRecord/getNestedValue`
-  navigation when a typed field path is stable enough to justify it.
-- Keep version-sensitive or weakly documented areas optional and adapter-local.
-
-### Phase 5: Validation and Tests
-
-- Add contract tests for typed adapter formatting paths.
+- Add contract tests around the shared module/server boundary for:
+  - character info
+  - character item search
+  - compendium search
+  - full compendium entry fetch
+  - creature criteria search envelopes
 - Add tests for explicit unsupported-system and unsupported-capability behavior.
-- Run on every typing slice:
-  - `npm run build`
-  - `npm -w @foundry-mcp/server test -- --run`
-  - `npm run test:mcp:schema`
+
+### Phase 5: Ongoing Validation
+
+Run on every typing slice:
+
+- `npm run lint:strict`
+- `npm run typecheck`
+- `npm run build`
+- `npm -w @foundry-mcp/server test -- --run`
+- `npm run test:mcp:schema`
 
 ## Priority File List
 
@@ -109,10 +120,10 @@ Highest value next:
 
 Then:
 
+- `packages/mcp-server/src/tools/actor-creation.ts`
 - `packages/mcp-server/src/foundry-connector.ts`
 - `packages/mcp-server/src/backend.ts`
-- `packages/mcp-server/src/tools/actor-creation.ts`
-- `packages/mcp-server/src/systems/dsa5/character-creator.ts`
+- contract tests spanning `packages/foundry-module` and `packages/mcp-server`
 
 ## Guardrails
 

@@ -1,11 +1,13 @@
 import { z } from 'zod';
 import { FoundryClient } from '../foundry-client.js';
 import type {
-  FoundryActiveEffectDocumentBase,
   FoundryActorDocumentBase,
   FoundryActorSystemBase,
+  FoundryCharacterEffect,
+  FoundryCharacterInfo,
   FoundryItemDocumentBase,
   FoundryItemSystemBase,
+  FoundrySearchCharacterItemsResponse,
   UnknownRecord,
 } from '../foundry-types.js';
 import { Logger } from '../logger.js';
@@ -29,23 +31,22 @@ type CharacterSystem = FoundryActorSystemBase;
 
 type CharacterItemSystem = FoundryItemSystemBase;
 
-interface CharacterItem extends FoundryItemDocumentBase<CharacterItemSystem> {}
+type CharacterItem = FoundryItemDocumentBase<CharacterItemSystem>;
 
-interface CharacterEffect extends FoundryActiveEffectDocumentBase {
+type CharacterEffect = FoundryCharacterEffect<UnknownRecord> & {
   description?: string;
   traits?: string[];
   duration?: { type?: string; remaining?: number };
-}
+};
 
-interface CharacterInfoResponseCore
-  extends FoundryActorDocumentBase<CharacterSystem, CharacterItemSystem> {
-  items?: CharacterItem[];
-  effects?: CharacterEffect[];
+type CharacterInfoResponse = Omit<
+  FoundryCharacterInfo<CharacterSystem, CharacterItemSystem, UnknownRecord>,
+  'items' | 'effects' | 'actions' | 'spellcasting'
+> & {
+  items: CharacterItem[];
+  effects: CharacterEffect[];
   actions?: SystemCharacterAction[];
   spellcasting?: SystemSpellcastingEntry[];
-}
-
-type CharacterInfoResponse = CharacterInfoResponseCore & {
   // Optional producer-specific extras. Keep MCP behavior bound to core fields.
   itemVariants?: unknown[];
   itemToggles?: unknown[];
@@ -68,11 +69,6 @@ interface UseItemResponse extends UnknownRecord {
   actorName: string;
   itemName: string;
   targets?: string[];
-}
-
-interface SearchCharacterItemsResponse extends UnknownRecord {
-  characterName: string;
-  matches?: UnknownRecord[];
 }
 
 export class CharacterTools {
@@ -260,7 +256,7 @@ export class CharacterTools {
       const characterData = await this.foundryClient.query<CharacterInfoResponse>(
         'foundry-mcp-bridge.getCharacterInfo',
         {
-          characterName: identifier,
+          identifier,
         }
       );
 
@@ -292,7 +288,7 @@ export class CharacterTools {
       const characterData = await this.foundryClient.query<CharacterInfoResponse>(
         'foundry-mcp-bridge.getCharacterInfo',
         {
-          characterName: characterIdentifier,
+          identifier: characterIdentifier,
         }
       );
       const normalizedEntityIdentifier = entityIdentifier.toLowerCase();
@@ -436,7 +432,7 @@ export class CharacterTools {
     }
   }
 
-  async handleSearchCharacterItems(args: unknown): Promise<SearchCharacterItemsResponse> {
+  async handleSearchCharacterItems(args: unknown): Promise<FoundrySearchCharacterItemsResponse> {
     const schema = z.object({
       characterIdentifier: z.string().min(1, 'Character identifier cannot be empty'),
       query: z.string().optional(),
@@ -456,20 +452,20 @@ export class CharacterTools {
     });
 
     try {
-      const result = await this.foundryClient.query<SearchCharacterItemsResponse>(
-        'foundry-mcp-bridge.searchCharacterItems',
-        {
-          characterIdentifier,
-          query,
-          type,
-          category,
-          limit: limit ?? 20,
-        }
-      );
+      const request = {
+        characterIdentifier,
+        ...(query !== undefined ? { query } : {}),
+        ...(type !== undefined ? { type } : {}),
+        ...(category !== undefined ? { category } : {}),
+        limit: limit ?? 20,
+      };
+      const result = await this.foundryClient.query('foundry-mcp-bridge.searchCharacterItems', {
+        ...request,
+      });
 
       this.logger.debug('Successfully searched character items', {
         characterName: result.characterName,
-        matchCount: result.matches?.length ?? 0,
+        matchCount: result.matches.length,
       });
 
       return result;

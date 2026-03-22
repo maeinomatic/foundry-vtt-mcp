@@ -7,23 +7,17 @@ import {
 } from './creature-index-strategy-registry.js';
 import type {
   FoundryActiveEffectDocumentBase,
+  FoundryCompendiumSearchFilters,
+  FoundryCompendiumSearchResult,
   FoundryCompendiumEntryFull,
+  FoundryCreatureSearchCriteria,
+  FoundryCreatureSearchResponse,
+  FoundryCreatureSearchResult,
   FoundryItemDocumentBase,
   UnknownRecord,
 } from '@foundry-mcp/shared';
 
-export interface CompendiumSearchResult {
-  id: string;
-  name: string;
-  type: string;
-  img?: string;
-  pack: string;
-  packLabel: string;
-  system?: Record<string, unknown>;
-  summary?: string;
-  hasImage?: boolean;
-  description?: string;
-}
+export type CompendiumSearchResult = FoundryCompendiumSearchResult<Record<string, unknown>>;
 
 interface CompendiumIndexEntry {
   _id?: string;
@@ -34,14 +28,7 @@ interface CompendiumIndexEntry {
   system?: UnknownRecord;
 }
 
-export type CompendiumSearchFilters = {
-  challengeRating?: number | { min?: number; max?: number };
-  creatureType?: string;
-  size?: string;
-  alignment?: string;
-  hasLegendaryActions?: boolean;
-  spellcaster?: boolean;
-};
+export type CompendiumSearchFilters = FoundryCompendiumSearchFilters;
 
 interface IndexTextSearchCriteria {
   searchTerms?: string[];
@@ -51,47 +38,11 @@ interface IndexTextSearchCriteria {
   hasLegendaryActions?: boolean;
 }
 
-export type CreatureSearchCriteria = CompendiumSearchFilters & {
-  level?: number | { min?: number; max?: number };
-  traits?: string[];
-  rarity?: string;
-  hasSpells?: boolean;
-  limit?: number;
-};
+export type CreatureSearchCriteria = FoundryCreatureSearchCriteria;
 
-type CreatureSearchResult = CompendiumSearchResult &
-  Partial<{
-    level: number;
-    traits: string[];
-    rarity: string;
-    challengeRating: number;
-    hasLegendaryActions: boolean;
-    creatureType: string;
-    size: string;
-    hitPoints: number;
-    armorClass: number;
-    hasSpells: boolean;
-    alignment: string;
-  }>;
+type CreatureSearchResult = FoundryCreatureSearchResult<Record<string, unknown>>;
 
-type CreatureSearchSummary = {
-  packsSearched: number;
-  topPacks: Array<{ id: string; label: string; priority: number }>;
-  totalCreaturesFound: number;
-  resultsByPack: Record<string, number>;
-  criteria: CreatureSearchCriteria;
-  searchMethod: 'enhanced_persistent_index' | 'basic_fallback';
-  fallback?: boolean;
-  indexMetadata?: {
-    totalIndexedCreatures: number;
-    searchMethod: 'enhanced_persistent_index';
-  };
-};
-
-export type CreatureSearchResponse = {
-  creatures: CreatureSearchResult[];
-  searchSummary: CreatureSearchSummary;
-};
+export type CreatureSearchResponse = FoundryCreatureSearchResponse<Record<string, unknown>>;
 
 interface SearchableCompendiumPackIndexLike {
   size?: number;
@@ -798,7 +749,9 @@ export class FoundryCompendiumService {
 
           const enhancedResult = await this.listCreaturesByCriteria(criteria);
           return enhancedResult.creatures
-            .filter(creature => this.matchesSearchCriteria(creature, { searchTerms }))
+            .filter((creature: CreatureSearchResult) =>
+              this.matchesSearchCriteria(creature, { searchTerms })
+            )
             .slice(0, 50);
         } catch (error) {
           console.warn(
@@ -1228,7 +1181,7 @@ export class FoundryCompendiumService {
     }
 
     if (criteria.traits && criteria.traits.length > 0) {
-      const hasAllTraits = criteria.traits.every(requiredTrait =>
+      const hasAllTraits = criteria.traits.every((requiredTrait: string) =>
         creature.traits.some(t => t.toLowerCase() === requiredTrait.toLowerCase())
       );
       if (!hasAllTraits) {

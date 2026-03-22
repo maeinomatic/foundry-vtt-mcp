@@ -2,10 +2,23 @@ import { Logger } from './logger.js';
 import { Config } from './config.js';
 import { FoundryConnector } from './foundry-connector.js';
 import type {
+  FoundryActorSummary,
   FoundryBridgeMessage,
   FoundryBridgeQueryRequest,
   FoundryBridgeResponseEnvelope,
+  FoundryCharacterInfo,
+  FoundryCompendiumEntryFull,
+  FoundryCompendiumPackSummary,
+  FoundryCompendiumSearchRequest,
+  FoundryCompendiumSearchResult,
   FoundryConnectionInfo,
+  FoundryCreatureSearchCriteria,
+  FoundryCreatureSearchEnvelope,
+  FoundryGetCharacterInfoRequest,
+  FoundryGetCompendiumDocumentRequest,
+  FoundryListActorsRequest,
+  FoundrySearchCharacterItemsRequest,
+  FoundrySearchCharacterItemsResponse,
   UnknownRecord,
 } from './foundry-types.js';
 
@@ -64,7 +77,37 @@ export class FoundryClient {
     return this.connector.getConnectionType();
   }
 
-  async query<TResult = unknown, TData = unknown>(method: string, data?: TData): Promise<TResult> {
+  async query(
+    method: 'foundry-mcp-bridge.getCharacterInfo',
+    data: FoundryGetCharacterInfoRequest
+  ): Promise<FoundryCharacterInfo<UnknownRecord, UnknownRecord, UnknownRecord>>;
+  async query(
+    method: 'foundry-mcp-bridge.searchCharacterItems',
+    data: FoundrySearchCharacterItemsRequest
+  ): Promise<FoundrySearchCharacterItemsResponse>;
+  async query(
+    method: 'foundry-mcp-bridge.searchCompendium',
+    data: FoundryCompendiumSearchRequest
+  ): Promise<FoundryCompendiumSearchResult<UnknownRecord>[]>;
+  async query(
+    method: 'foundry-mcp-bridge.listCreaturesByCriteria',
+    data: FoundryCreatureSearchCriteria
+  ): Promise<FoundryCreatureSearchEnvelope<UnknownRecord>>;
+  async query(
+    method: 'foundry-mcp-bridge.getCompendiumDocumentFull',
+    data: FoundryGetCompendiumDocumentRequest
+  ): Promise<FoundryCompendiumEntryFull<UnknownRecord, UnknownRecord, UnknownRecord> | null>;
+  async query(
+    method: 'foundry-mcp-bridge.listActors',
+    data?: FoundryListActorsRequest
+  ): Promise<FoundryActorSummary[]>;
+  async query(
+    method: 'foundry-mcp-bridge.getAvailablePacks',
+    data?: undefined
+  ): Promise<FoundryCompendiumPackSummary[]>;
+  async query<TResult = unknown, TData = unknown>(method: string, data?: TData): Promise<TResult>;
+
+  async query(method: string, data?: unknown): Promise<unknown> {
     if (!this.connector.isConnected()) {
       throw new Error(
         'Foundry VTT module not connected. Please ensure Foundry is running and the MCP Bridge module is enabled.'
@@ -74,7 +117,7 @@ export class FoundryClient {
     this.logger.debug('Sending query to Foundry module', { method, data });
 
     try {
-      const result = await this.connector.query<TResult, TData>(method, data);
+      const result = await this.connector.query(method, data);
       this.logger.debug('Query successful', { method, hasResult: !!result });
       return result;
     } catch (error) {

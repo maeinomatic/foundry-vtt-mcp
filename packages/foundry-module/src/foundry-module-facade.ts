@@ -10,13 +10,7 @@ import {
   type TokenPlacementResult,
 } from './services/actor-creation-service.js';
 import { FoundryCharacterService } from './services/character-service.js';
-import {
-  FoundryCompendiumService,
-  type CompendiumSearchFilters,
-  type CompendiumSearchResult,
-  type CreatureSearchCriteria,
-  type CreatureSearchResponse,
-} from './services/compendium-service.js';
+import { FoundryCompendiumService } from './services/compendium-service.js';
 import { FoundryJournalService } from './services/journal-service.js';
 import {
   FoundryRollRequestService,
@@ -30,10 +24,16 @@ import {
   type WorldInfo,
 } from './services/world-service.js';
 import type {
+  FoundryCompendiumSearchFilters,
+  FoundryCompendiumSearchResult,
   FoundryCharacterInfo,
+  FoundryCreatureSearchCriteria,
+  FoundryCreatureSearchResponse,
   FoundryCompendiumEntryFull,
   FoundryJournalEntryResponse,
   FoundryJournalSummary,
+  FoundrySearchCharacterItemsRequest,
+  FoundrySearchCharacterItemsResponse,
   UnknownRecord,
 } from '@foundry-mcp/shared';
 
@@ -59,6 +59,10 @@ type CompendiumEntryFull = FoundryCompendiumEntryFull<
   Record<string, unknown>,
   Record<string, unknown>
 >;
+type CompendiumSearchFilters = FoundryCompendiumSearchFilters;
+type CompendiumSearchResult = FoundryCompendiumSearchResult<Record<string, unknown>>;
+type CreatureSearchCriteria = FoundryCreatureSearchCriteria;
+type CreatureSearchResponse = FoundryCreatureSearchResponse<Record<string, unknown>>;
 
 export class FoundryModuleFacade {
   private moduleId: string = MODULE_ID;
@@ -167,21 +171,9 @@ export class FoundryModuleFacade {
    * Search within a character's items, spells, actions, and effects
    * More token-efficient than getCharacterInfo when you need specific items
    */
-  searchCharacterItems(params: {
-    characterIdentifier: string;
-    query?: string | undefined;
-    type?: string | undefined;
-    category?: string | undefined;
-    limit?: number | undefined;
-  }): Promise<{
-    characterId: string;
-    characterName: string;
-    query?: string;
-    type?: string;
-    category?: string;
-    matches: Array<Record<string, unknown>>;
-    totalMatches: number;
-  }> {
+  searchCharacterItems(
+    params: FoundrySearchCharacterItemsRequest
+  ): Promise<FoundrySearchCharacterItemsResponse> {
     return this.characterService.searchCharacterItems(params);
   }
 
