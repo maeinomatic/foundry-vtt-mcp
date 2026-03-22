@@ -6,6 +6,8 @@ interface ActorDirectoryActorLike {
   type?: string;
   img?: string;
   hasPlayerOwner?: boolean;
+  ownership?: Record<string, number>;
+  update?: (data: Record<string, unknown>) => Promise<unknown>;
   testUserPermission?: (user: ActorDirectoryUserLike, permission: string) => boolean;
 }
 
@@ -123,6 +125,49 @@ function getActiveSceneTokens(): ActorDirectoryTokenLike[] {
 
 export class FoundryActorDirectoryAccess {
   constructor(private readonly context: ActorDirectoryAccessContext) {}
+
+  async setActorOwnership(data: {
+    actorId: string;
+    userId: string;
+    permission: number;
+  }): Promise<{ success: boolean; message: string; error?: string }> {
+    this.context.validateFoundryState();
+
+    try {
+      const actorRaw = getActorsCollection()?.get?.(data.actorId) ?? null;
+      const actor = isActorLike(actorRaw) ? actorRaw : null;
+      if (!actor) {
+        return { success: false, error: `Actor not found: ${data.actorId}`, message: '' };
+      }
+
+      const userRaw = getUsersCollection()?.get?.(data.userId) ?? null;
+      const user = isUserLike(userRaw) ? userRaw : null;
+      if (!user) {
+        return { success: false, error: `User not found: ${data.userId}`, message: '' };
+      }
+
+      const currentOwnership = actor.ownership ?? {};
+      const newOwnership = { ...currentOwnership, [data.userId]: data.permission };
+      await actor.update?.({ ownership: newOwnership });
+
+      const permissionNames = { 0: 'NONE', 1: 'LIMITED', 2: 'OBSERVER', 3: 'OWNER' };
+      const permissionName =
+        permissionNames[data.permission as keyof typeof permissionNames] ??
+        data.permission.toString();
+
+      return {
+        success: true,
+        message: `Set ${actor.name ?? 'Actor'} ownership to ${permissionName} for ${user.name ?? 'User'}`,
+      };
+    } catch (error) {
+      console.error(`[${MODULE_ID}] Error setting actor ownership:`, error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        message: '',
+      };
+    }
+  }
 
   findActorByIdentifier(identifier: string): ActorDirectoryActorLike | null {
     const actorsCollection = getActorsCollection();
