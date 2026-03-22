@@ -35,6 +35,8 @@ import type {
   FoundryJournalSummary,
   FoundrySearchCharacterItemsRequest,
   FoundrySearchCharacterItemsResponse,
+  FoundryUpdateActorEmbeddedItemRequest,
+  FoundryUpdateActorEmbeddedItemResponse,
   FoundryUpdateActorRequest,
   FoundryUpdateActorResponse,
   UnknownRecord,
@@ -496,6 +498,12 @@ export class FoundryModuleFacade {
 
   async updateActor(request: FoundryUpdateActorRequest): Promise<FoundryUpdateActorResponse> {
     return this.actorUpdateService.updateActor(request);
+  }
+
+  async updateActorEmbeddedItem(
+    request: FoundryUpdateActorEmbeddedItemRequest
+  ): Promise<FoundryUpdateActorEmbeddedItemResponse> {
+    return this.actorUpdateService.updateActorEmbeddedItem(request);
   }
 
   /**

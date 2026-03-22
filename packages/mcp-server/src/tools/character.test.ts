@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { FoundryClient } from '../foundry-client.js';
 import type { Logger } from '../logger.js';
+import { DnD5eAdapter } from '../systems/dnd5e/adapter.js';
 import { PF2eAdapter } from '../systems/pf2e/adapter.js';
 import { SystemRegistry } from '../systems/system-registry.js';
 import { clearSystemCache } from '../utils/system-detection.js';
@@ -191,6 +192,102 @@ describe('CharacterTools', () => {
         mode: 'set-level',
       },
       updatedFields: ['system.details.level.value'],
+    });
+  });
+
+  it('uses the DnD5e class-item advancement path for character leveling', async () => {
+    const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
+      if (method === 'foundry-mcp-bridge.getCharacterInfo') {
+        expect(data).toEqual({ identifier: 'Laeral' });
+        return Promise.resolve({
+          id: 'actor-3',
+          name: 'Laeral',
+          type: 'character',
+          system: {},
+          items: [
+            {
+              id: 'class-wizard',
+              name: 'Wizard',
+              type: 'class',
+              system: {
+                levels: 4,
+                advancement: [{ type: 'ItemGrant' }],
+              },
+            },
+          ],
+          effects: [],
+        });
+      }
+
+      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+        return Promise.resolve({ system: 'dnd5e' });
+      }
+
+      if (method === 'foundry-mcp-bridge.updateActorEmbeddedItem') {
+        expect(data).toEqual({
+          actorIdentifier: 'Laeral',
+          itemIdentifier: 'class-wizard',
+          itemType: 'class',
+          updates: {
+            'system.levels': 5,
+          },
+          reason: 'character progression update',
+        });
+        return Promise.resolve({
+          success: true,
+          actorId: 'actor-3',
+          actorName: 'Laeral',
+          itemId: 'class-wizard',
+          itemName: 'Wizard',
+          itemType: 'class',
+          appliedUpdates: {
+            'system.levels': 5,
+          },
+          updatedFields: ['system.levels'],
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected query: ${method}`));
+    });
+
+    const registry = new SystemRegistry();
+    registry.register(new DnD5eAdapter());
+
+    const tools = new CharacterTools({
+      foundryClient: { query } as unknown as FoundryClient,
+      logger: createLoggerStub(),
+      systemRegistry: registry,
+    });
+
+    const result = (await tools.handleUpdateCharacterProgression({
+      characterIdentifier: 'Laeral',
+      classIdentifier: 'Wizard',
+      targetLevel: 5,
+    })) as Record<string, unknown>;
+
+    expect(query).toHaveBeenCalledWith('foundry-mcp-bridge.updateActorEmbeddedItem', {
+      actorIdentifier: 'Laeral',
+      itemIdentifier: 'class-wizard',
+      itemType: 'class',
+      updates: {
+        'system.levels': 5,
+      },
+      reason: 'character progression update',
+    });
+    expect(result).toMatchObject({
+      success: true,
+      character: {
+        id: 'actor-3',
+        name: 'Laeral',
+      },
+      progression: {
+        classId: 'class-wizard',
+        className: 'Wizard',
+        previousLevel: 4,
+        targetLevel: 5,
+        mode: 'set-class-levels',
+      },
+      updatedFields: ['system.levels'],
     });
   });
 });

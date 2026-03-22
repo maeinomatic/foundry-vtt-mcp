@@ -20,6 +20,7 @@ import type {
   CharacterProgressionUpdateRequest,
   PreparedCharacterProgressionUpdate,
 } from '../types.js';
+import { createActorProgressionTarget } from '../types.js';
 import type {
   FoundryCompendiumPackSummary,
   FoundryActorDocumentBase,
@@ -697,27 +698,85 @@ export class DnD5eAdapter implements SystemAdapter {
     const targetLevel = request.targetLevel;
 
     if (targetLevel === undefined) {
+      throw new Error('UNSUPPORTED_CAPABILITY: DnD5e progression updates require a targetLevel.');
+    }
+
+    if (actor.type !== 'character') {
+      return {
+        target: createActorProgressionTarget(),
+        updates: {
+          'system.details.level': { value: targetLevel },
+        },
+        summary: {
+          targetLevel,
+          mode: 'set-level',
+        },
+        warnings: ['DnD5e non-character actors still use a direct actor level field update.'],
+      };
+    }
+
+    const classItems = (actor.items ?? []).filter(
+      (item): item is DnD5eItemDocument =>
+        item.type === 'class' && typeof item.id === 'string' && typeof item.name === 'string'
+    );
+
+    if (classItems.length === 0) {
       throw new Error(
-        'UNSUPPORTED_CAPABILITY: DnD5e progression updates require a targetLevel, and full DnD5e character advancement is not implemented yet.'
+        'UNSUPPORTED_CAPABILITY: No DnD5e class item was found on this character, so class advancement cannot be applied safely.'
       );
     }
 
-    if (actor.type === 'character') {
+    const requestedClass = request.classIdentifier?.toLowerCase();
+    const classItem =
+      requestedClass !== undefined
+        ? classItems.find(
+            item =>
+              item.id.toLowerCase() === requestedClass || item.name.toLowerCase() === requestedClass
+          )
+        : classItems.length === 1
+          ? classItems[0]
+          : null;
+
+    if (!classItem) {
+      if (requestedClass) {
+        throw new Error(
+          `UNSUPPORTED_CAPABILITY: Class "${request.classIdentifier}" was not found on this DnD5e character.`
+        );
+      }
+
       throw new Error(
-        'UNSUPPORTED_CAPABILITY: DnD5e character leveling is class-item advancement based and is not safe to apply through a raw actor level update.'
+        'UNSUPPORTED_CAPABILITY: DnD5e multiclass characters require classIdentifier so the correct class item can be advanced.'
       );
     }
+
+    const currentLevel = toNumber(classItem.system?.levels);
+    const advancementRules = Array.isArray(classItem.system?.advancement)
+      ? classItem.system.advancement.length
+      : 0;
 
     return {
+      target: {
+        kind: 'embedded-item',
+        itemIdentifier: classItem.id,
+        itemType: 'class',
+      },
       updates: {
-        'system.details.level': { value: targetLevel },
+        'system.levels': targetLevel,
       },
       summary: {
+        classId: classItem.id,
+        className: classItem.name,
+        ...(currentLevel !== undefined ? { previousLevel: currentLevel } : {}),
         targetLevel,
-        mode: 'set-level',
+        mode: 'set-class-levels',
       },
       warnings: [
-        'DnD5e support is currently limited to non-character actors. Full class advancement is not implemented in this tool yet.',
+        'DnD5e progression is applied to the owned class item, not the actor level field.',
+        ...(advancementRules > 0
+          ? [
+              `This class has ${advancementRules} advancement definition(s). Additional DnD5e advancement choices or feature grants may still need confirmation in Foundry.`,
+            ]
+          : []),
       ],
     };
   }

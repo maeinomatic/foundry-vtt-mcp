@@ -8,6 +8,8 @@ import type {
   FoundryItemDocumentBase,
   FoundryItemSystemBase,
   FoundrySearchCharacterItemsResponse,
+  FoundryUpdateActorEmbeddedItemRequest,
+  FoundryUpdateActorEmbeddedItemResponse,
   FoundryUpdateActorRequest,
   FoundryUpdateActorResponse,
   UnknownRecord,
@@ -247,7 +249,7 @@ export class CharacterTools {
       {
         name: 'update-character-progression',
         description:
-          'Update character progression using system-aware adapter logic. Supports PF2e level updates and DSA5 AP/Erfahrungsgrad updates. DnD5e character class advancement is not yet supported by this tool.',
+          'Update character progression using system-aware adapter logic. Supports PF2e level updates, DSA5 AP/Erfahrungsgrad updates, and DnD5e class-level updates through owned class items.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -258,6 +260,11 @@ export class CharacterTools {
             targetLevel: {
               type: 'number',
               description: 'Target level when the active system supports direct level updates',
+            },
+            classIdentifier: {
+              type: 'string',
+              description:
+                'DnD5e only: class item name or ID. Required for multiclass characters and recommended for explicit class targeting.',
             },
             experiencePoints: {
               type: 'number',
@@ -513,6 +520,7 @@ export class CharacterTools {
       .object({
         characterIdentifier: z.string().min(1, 'Character identifier cannot be empty'),
         targetLevel: z.number().int().positive().optional(),
+        classIdentifier: z.string().min(1).optional(),
         experiencePoints: z.number().int().nonnegative().optional(),
         experienceSpent: z.number().int().nonnegative().optional(),
       })
@@ -534,6 +542,7 @@ export class CharacterTools {
 
     const progressionRequest: CharacterProgressionUpdateRequest = {
       ...(parsed.targetLevel !== undefined ? { targetLevel: parsed.targetLevel } : {}),
+      ...(parsed.classIdentifier !== undefined ? { classIdentifier: parsed.classIdentifier } : {}),
       ...(parsed.experiencePoints !== undefined
         ? { experiencePoints: parsed.experiencePoints }
         : {}),
@@ -541,24 +550,21 @@ export class CharacterTools {
     };
 
     const prepared = await this.prepareProgressionUpdate(characterData, progressionRequest);
-    const request: FoundryUpdateActorRequest = {
-      identifier: parsed.characterIdentifier,
-      updates: prepared.updates,
-      reason: 'character progression update',
-    };
-
-    const result = await this.foundryClient.query<FoundryUpdateActorResponse>(
-      'foundry-mcp-bridge.updateActor',
-      request
-    );
+    const result = await this.applyProgressionUpdate(parsed.characterIdentifier, prepared);
 
     return {
       success: result.success,
-      character: {
-        id: result.actorId,
-        name: result.actorName,
-        type: result.actorType,
-      },
+      character:
+        'actorType' in result
+          ? {
+              id: result.actorId,
+              name: result.actorName,
+              type: result.actorType,
+            }
+          : {
+              id: result.actorId,
+              name: result.actorName,
+            },
       progression: prepared.summary,
       appliedUpdates: result.appliedUpdates,
       updatedFields: result.updatedFields,
@@ -579,6 +585,37 @@ export class CharacterTools {
           'UNSUPPORTED_CAPABILITY: No system adapter is available for progression updates in this world.'
         );
       }
+    );
+  }
+
+  private async applyProgressionUpdate(
+    characterIdentifier: string,
+    prepared: PreparedCharacterProgressionUpdate
+  ): Promise<FoundryUpdateActorResponse | FoundryUpdateActorEmbeddedItemResponse> {
+    if (prepared.target.kind === 'actor') {
+      const request: FoundryUpdateActorRequest = {
+        identifier: characterIdentifier,
+        updates: prepared.updates,
+        reason: 'character progression update',
+      };
+
+      return this.foundryClient.query<FoundryUpdateActorResponse>(
+        'foundry-mcp-bridge.updateActor',
+        request
+      );
+    }
+
+    const request: FoundryUpdateActorEmbeddedItemRequest = {
+      actorIdentifier: characterIdentifier,
+      itemIdentifier: prepared.target.itemIdentifier,
+      updates: prepared.updates,
+      ...(prepared.target.itemType ? { itemType: prepared.target.itemType } : {}),
+      reason: 'character progression update',
+    };
+
+    return this.foundryClient.query<FoundryUpdateActorEmbeddedItemResponse>(
+      'foundry-mcp-bridge.updateActorEmbeddedItem',
+      request
     );
   }
 

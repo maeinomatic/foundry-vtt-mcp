@@ -22,6 +22,8 @@ import type {
   FoundrySearchCharacterItemsRequest,
   FoundrySearchCharacterItemsResponse,
   FoundryUpdateActorRequest,
+  FoundryUpdateActorEmbeddedItemRequest,
+  FoundryUpdateActorEmbeddedItemResponse,
   FoundryUpdateActorResponse,
   UnknownRecord,
 } from './foundry-types.js';
@@ -93,6 +95,10 @@ export class FoundryClient {
     method: 'foundry-mcp-bridge.updateActor',
     data: FoundryUpdateActorRequest
   ): Promise<FoundryUpdateActorResponse>;
+  async query(
+    method: 'foundry-mcp-bridge.updateActorEmbeddedItem',
+    data: FoundryUpdateActorEmbeddedItemRequest
+  ): Promise<FoundryUpdateActorEmbeddedItemResponse>;
   async query(
     method: 'foundry-mcp-bridge.searchCompendium',
     data: FoundryCompendiumSearchRequest

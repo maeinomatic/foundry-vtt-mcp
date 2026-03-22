@@ -13,6 +13,8 @@ import type {
   FoundryJournalEntryResponse,
   FoundryJournalSummary,
   FoundrySearchCharacterItemsRequest,
+  FoundryUpdateActorEmbeddedItemRequest,
+  FoundryUpdateActorEmbeddedItemResponse,
   FoundryUpdateActorRequest,
   FoundryUpdateActorResponse,
   FoundryWorldDetails,
@@ -166,6 +168,8 @@ export class QueryHandlers {
     CONFIG.queries[`${modulePrefix}.createActorFromCompendium`] =
       this.handleCreateActorFromCompendium.bind(this);
     CONFIG.queries[`${modulePrefix}.updateActor`] = this.handleUpdateActor.bind(this);
+    CONFIG.queries[`${modulePrefix}.updateActorEmbeddedItem`] =
+      this.handleUpdateActorEmbeddedItem.bind(this);
     CONFIG.queries[`${modulePrefix}.getCompendiumDocumentFull`] =
       this.handleGetCompendiumDocumentFull.bind(this);
     CONFIG.queries[`${modulePrefix}.addActorsToScene`] = this.handleAddActorsToScene.bind(this);
@@ -557,6 +561,48 @@ export class QueryHandlers {
     } catch (error) {
       throw new Error(
         `Failed to update actor: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+    }
+  }
+
+  /**
+   * Handle embedded item update request
+   */
+  private async handleUpdateActorEmbeddedItem(
+    data: FoundryUpdateActorEmbeddedItemRequest
+  ): Promise<FoundryUpdateActorEmbeddedItemResponse | QueryErrorResult> {
+    try {
+      const gmCheck = this.validateGMAccess();
+      if (!gmCheck.allowed) {
+        return { error: 'Access denied', success: false };
+      }
+
+      this.dataAccess.validateFoundryState();
+
+      const permissionCheck = await this.dataAccess.validateWritePermissions('updateActor');
+      if (!permissionCheck.allowed) {
+        return {
+          error: permissionCheck.reason ?? 'Actor update not allowed',
+          success: false,
+        };
+      }
+
+      if (!data.actorIdentifier) {
+        throw new Error('actorIdentifier is required');
+      }
+
+      if (!data.itemIdentifier) {
+        throw new Error('itemIdentifier is required');
+      }
+
+      if (!data.updates || typeof data.updates !== 'object' || Array.isArray(data.updates)) {
+        throw new Error('updates must be an object');
+      }
+
+      return await this.dataAccess.updateActorEmbeddedItem(data);
+    } catch (error) {
+      throw new Error(
+        `Failed to update actor embedded item: ${error instanceof Error ? error.message : 'Unknown error'}`
       );
     }
   }

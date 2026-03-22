@@ -20,6 +20,7 @@ import type {
   CharacterProgressionUpdateRequest,
   PreparedCharacterProgressionUpdate,
 } from '../types.js';
+import { createActorProgressionTarget } from '../types.js';
 import type {
   FoundryActorDocumentBase,
   FoundryCompendiumPackSummary,
@@ -779,6 +780,7 @@ export class DSA5Adapter implements SystemAdapter {
         : undefined;
 
     return {
+      target: createActorProgressionTarget(),
       updates,
       summary,
       ...(warnings ? { warnings } : {}),

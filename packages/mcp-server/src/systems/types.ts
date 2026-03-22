@@ -77,9 +77,19 @@ export interface CharacterProgressionUpdateRequest {
   targetLevel?: number;
   experiencePoints?: number;
   experienceSpent?: number;
+  classIdentifier?: string;
+}
+
+export type PreparedCharacterProgressionTarget =
+  | { kind: 'actor' }
+  | { kind: 'embedded-item'; itemIdentifier: string; itemType?: string };
+
+export function createActorProgressionTarget(): PreparedCharacterProgressionTarget {
+  return { kind: 'actor' };
 }
 
 export interface PreparedCharacterProgressionUpdate {
+  target: PreparedCharacterProgressionTarget;
   updates: UnknownRecord;
   summary: Record<string, unknown>;
   warnings?: string[];
@@ -135,9 +145,11 @@ export interface DnD5eItemSystemData extends FoundryItemSystemBase {
   description?: FoundryDescriptionField | string;
   quantity?: number;
   equipped?: boolean;
+  levels?: number;
   attunement?: number | string;
   actionType?: string | FoundryValueField<string>;
   actions?: number | FoundryValueField<number>;
+  advancement?: unknown[];
 }
 
 export type DnD5eActorDocument = FoundryActorDocumentBase<

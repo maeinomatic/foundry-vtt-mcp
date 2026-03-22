@@ -260,6 +260,25 @@ export interface FoundryUpdateActorResponse extends UnknownRecord {
   updatedFields: string[];
 }
 
+export interface FoundryUpdateActorEmbeddedItemRequest {
+  actorIdentifier: string;
+  itemIdentifier: string;
+  updates: UnknownRecord;
+  itemType?: string;
+  reason?: string;
+}
+
+export interface FoundryUpdateActorEmbeddedItemResponse extends UnknownRecord {
+  success: boolean;
+  actorId: string;
+  actorName: string;
+  itemId: string;
+  itemName: string;
+  itemType: string;
+  appliedUpdates: UnknownRecord;
+  updatedFields: string[];
+}
+
 export interface FoundryCompendiumSearchFilters {
   challengeRating?: number | { min?: number; max?: number };
   creatureType?: string;

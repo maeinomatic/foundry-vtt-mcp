@@ -20,6 +20,7 @@ import type {
   CharacterProgressionUpdateRequest,
   PreparedCharacterProgressionUpdate,
 } from '../types.js';
+import { createActorProgressionTarget } from '../types.js';
 import type {
   FoundryActorDocumentBase,
   FoundryCompendiumPackSummary,
@@ -748,6 +749,7 @@ export class PF2eAdapter implements SystemAdapter {
     }
 
     return {
+      target: createActorProgressionTarget(),
       updates: {
         'system.details.level.value': targetLevel,
       },
