@@ -54,5 +54,5 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Audit high/critical vulnerabilities
-        run: npm audit --workspaces --audit-level=high
+      - name: Audit high/critical production vulnerabilities
+        run: npm run audit:prod

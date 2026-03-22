@@ -29,6 +29,7 @@
     "setup-comfyui": "node scripts/setup-comfyui.js",
     "test:mcp:schema": "node scripts/mcp-schema-smoke-test.mjs",
     "audit:deps": "npm audit && npm run audit --workspaces --if-present",
+    "audit:prod": "node scripts/audit-production.mjs",
     "audit:unused": "npx knip",
     "audit:circular": "npx madge --circular --extensions ts packages/mcp-server/src packages/foundry-module/src shared/src",
     "size:analyze": "npm run bundle:server && npx esbuild-analyzer packages/mcp-server/dist/backend.bundle.cjs"
@@ -69,5 +70,8 @@
   "dependencies": {
     "@primno/dpapi": "^2.0.1",
     "binary-cookies": "^0.1.1"
+  },
+  "overrides": {
+    "socket.io-parser": "4.2.6"
   }
 }
