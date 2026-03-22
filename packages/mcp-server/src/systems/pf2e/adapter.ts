@@ -10,6 +10,9 @@ import type {
   SystemMetadata,
   SystemCreatureIndex,
   PF2eCreatureIndex,
+  PF2eActorDocument,
+  PF2eCompendiumDocument,
+  PF2eItemDocument,
   SystemCharacterAction,
   SystemSpellcastingEntry,
 } from '../types.js';
@@ -44,18 +47,6 @@ function asRecord(value: unknown): UnknownRecord | undefined {
   return typeof value === 'object' && value !== null ? (value as UnknownRecord) : undefined;
 }
 
-function getNestedValue(source: UnknownRecord | undefined, path: string[]): unknown {
-  let current: unknown = source;
-  for (const segment of path) {
-    const currentRecord = asRecord(current);
-    if (!currentRecord) {
-      return undefined;
-    }
-    current = currentRecord[segment];
-  }
-  return current;
-}
-
 function toNumber(value: unknown): number | undefined {
   if (typeof value === 'number' && Number.isFinite(value)) {
     return value;
@@ -71,6 +62,24 @@ function toNumber(value: unknown): number | undefined {
 
 function toStringValue(value: unknown): string | undefined {
   return typeof value === 'string' ? value : undefined;
+}
+
+function toNumberField(value: unknown): number | undefined {
+  const record = asRecord(value);
+  if (record && 'value' in record) {
+    return toNumber(record.value);
+  }
+
+  return toNumber(value);
+}
+
+function toStringField(value: unknown): string | undefined {
+  const record = asRecord(value);
+  if (record && 'value' in record) {
+    return toStringValue(record.value);
+  }
+
+  return toStringValue(value);
 }
 
 function toStringArray(value: unknown): string[] {
@@ -262,33 +271,26 @@ export class PF2eAdapter implements SystemAdapter {
     entity: FoundryCompendiumDocumentBase,
     mode: 'search' | 'criteria' | 'compact' | 'details'
   ): Record<string, unknown> {
-    const record = asRecord(entity);
-    const system = asRecord(record?.system);
+    const creature = entity as PF2eCompendiumDocument;
+    const system = creature.system;
+    const attributes = system?.attributes;
 
-    const level =
-      toNumber(getNestedValue(system, ['details', 'level', 'value'])) ??
-      toNumber(getNestedValue(system, ['details', 'level'])) ??
-      toNumber(getNestedValue(system, ['level']));
-    const traits = toStringArray(getNestedValue(system, ['traits', 'value']));
+    const level = toNumberField(system?.details?.level) ?? toNumber(system?.level);
+    const traits = toStringArray(system?.traits?.value);
     const primaryType = traits.find(t => PF2E_CREATURE_TRAITS.includes(t.toLowerCase()));
-    const size =
-      toStringValue(getNestedValue(system, ['traits', 'size', 'value'])) ??
-      toStringValue(getNestedValue(system, ['traits', 'size'])) ??
-      toStringValue(getNestedValue(system, ['size']));
-    const rarity =
-      toStringValue(getNestedValue(system, ['traits', 'rarity'])) ??
-      toStringValue(getNestedValue(system, ['rarity']));
+    const size = toStringField(system?.traits?.size) ?? toStringField(system?.size);
+    const rarity = toStringValue(system?.traits?.rarity) ?? toStringValue(system?.rarity);
 
-    const hpCurrent = toNumber(getNestedValue(system, ['attributes', 'hp', 'value']));
-    const hpMax = toNumber(getNestedValue(system, ['attributes', 'hp', 'max']));
-    const armorClass = toNumber(getNestedValue(system, ['attributes', 'ac', 'value']));
-    const movement = asRecord(getNestedValue(system, ['attributes', 'movement']));
+    const hpCurrent = toNumber(attributes?.hp?.value);
+    const hpMax = toNumber(attributes?.hp?.max);
+    const armorClass = toNumberField(attributes?.ac);
+    const movement = asRecord(attributes?.movement);
 
-    const spellcasting = asRecord(getNestedValue(system, ['spellcasting']));
+    const spellcasting = asRecord(system?.spellcasting);
     const hasSpellcasting = Boolean(spellcasting && Object.keys(spellcasting).length > 0);
 
     const significantAbilities: Record<string, unknown> = {};
-    const abilities = asRecord(getNestedValue(system, ['abilities']));
+    const abilities = system?.abilities;
     if (abilities) {
       for (const [key, abilityValue] of Object.entries(abilities)) {
         const ability = asRecord(abilityValue);
@@ -388,25 +390,22 @@ export class PF2eAdapter implements SystemAdapter {
    * Extract character statistics from actor data
    */
   extractCharacterStats(actorData: FoundryActorDocumentBase): Record<string, unknown> {
-    const actor = asRecord(actorData);
-    const system = asRecord(actor?.system);
+    const actor = actorData as PF2eActorDocument;
+    const system = actor.system;
     const stats: Record<string, unknown> = {};
 
     // Basic info
-    stats.name = toStringValue(actor?.name);
-    stats.type = toStringValue(actor?.type);
+    stats.name = actor.name;
+    stats.type = actor.type;
 
     // Level
-    const level =
-      toNumber(getNestedValue(system, ['details', 'level', 'value'])) ??
-      toNumber(getNestedValue(system, ['details', 'level'])) ??
-      toNumber(getNestedValue(system, ['level']));
+    const level = toNumberField(system?.details?.level) ?? toNumber(system?.level);
     if (level !== undefined) {
       stats.level = level;
     }
 
     // Hit Points
-    const hp = asRecord(getNestedValue(system, ['attributes', 'hp']));
+    const hp = system?.attributes?.hp;
     if (hp) {
       stats.hitPoints = {
         current: toNumber(hp.value) ?? 0,
@@ -416,15 +415,13 @@ export class PF2eAdapter implements SystemAdapter {
     }
 
     // Armor Class
-    const ac =
-      toNumber(getNestedValue(system, ['attributes', 'ac', 'value'])) ??
-      toNumber(getNestedValue(system, ['attributes', 'ac']));
+    const ac = toNumberField(system?.attributes?.ac);
     if (ac !== undefined) {
       stats.armorClass = ac;
     }
 
     // Abilities (STR, DEX, CON, INT, WIS, CHA)
-    const abilities = asRecord(getNestedValue(system, ['abilities']));
+    const abilities = system?.abilities;
     if (abilities) {
       const abilityStats: Record<string, UnknownRecord> = {};
       for (const [key, ability] of Object.entries(abilities)) {
@@ -438,7 +435,7 @@ export class PF2eAdapter implements SystemAdapter {
     }
 
     // Skills
-    const skills = asRecord(getNestedValue(system, ['skills']));
+    const skills = system?.skills;
     if (skills) {
       const skillStats: Record<string, UnknownRecord> = {};
       for (const [key, skill] of Object.entries(skills)) {
@@ -454,7 +451,7 @@ export class PF2eAdapter implements SystemAdapter {
     }
 
     // Perception
-    const perception = asRecord(getNestedValue(system, ['perception']));
+    const perception = system?.perception;
     if (perception) {
       stats.perception = {
         modifier: toNumber(perception.value) ?? toNumber(perception.mod) ?? 0,
@@ -463,7 +460,7 @@ export class PF2eAdapter implements SystemAdapter {
     }
 
     // Saves
-    const saves = asRecord(getNestedValue(system, ['saves']));
+    const saves = system?.saves;
     if (saves) {
       const saveStats: Record<string, UnknownRecord> = {};
       for (const [key, save] of Object.entries(saves)) {
@@ -477,8 +474,8 @@ export class PF2eAdapter implements SystemAdapter {
     }
 
     // Creature-specific info
-    if (toStringValue(actor?.type) === 'npc') {
-      const traits = toStringArray(getNestedValue(system, ['traits', 'value']));
+    if (actor.type === 'npc') {
+      const traits = toStringArray(system?.traits?.value);
       if (traits.length > 0) {
         stats.traits = traits;
 
@@ -489,28 +486,24 @@ export class PF2eAdapter implements SystemAdapter {
         }
       }
 
-      const size =
-        toStringValue(getNestedValue(system, ['traits', 'size', 'value'])) ??
-        toStringValue(getNestedValue(system, ['traits', 'size']));
+      const size = toStringField(system?.traits?.size);
       if (size) {
         stats.size = size;
       }
 
-      const alignment =
-        toStringValue(getNestedValue(system, ['details', 'alignment', 'value'])) ??
-        toStringValue(getNestedValue(system, ['details', 'alignment']));
+      const alignment = toStringField(system?.details?.alignment);
       if (alignment) {
         stats.alignment = alignment;
       }
 
-      const rarity = toStringValue(getNestedValue(system, ['traits', 'rarity']));
+      const rarity = toStringValue(system?.traits?.rarity);
       if (rarity) {
         stats.rarity = rarity;
       }
     }
 
     // Spellcasting
-    const spellcasting = asRecord(getNestedValue(system, ['spellcasting'])) ?? {};
+    const spellcasting = asRecord(system?.spellcasting) ?? {};
     const hasSpells = Object.keys(spellcasting).length > 0;
     if (hasSpells) {
       stats.spellcasting = {
@@ -523,11 +516,11 @@ export class PF2eAdapter implements SystemAdapter {
   }
 
   formatCharacterBasicInfo(actorData: FoundryActorDocumentBase): Record<string, unknown> {
-    const actor = asRecord(actorData);
-    const system = asRecord(actor?.system);
+    const actor = actorData as PF2eActorDocument;
+    const system = actor.system;
     const basicInfo: Record<string, unknown> = {};
 
-    const hp = asRecord(getNestedValue(system, ['attributes', 'hp']));
+    const hp = system?.attributes?.hp;
     if (hp) {
       basicInfo.hitPoints = {
         current: toNumber(hp.value),
@@ -536,27 +529,22 @@ export class PF2eAdapter implements SystemAdapter {
       };
     }
 
-    const ac =
-      toNumber(getNestedValue(system, ['attributes', 'ac', 'value'])) ??
-      toNumber(getNestedValue(system, ['attributes', 'ac']));
+    const ac = toNumberField(system?.attributes?.ac);
     if (ac !== undefined) {
       basicInfo.armorClass = ac;
     }
 
-    const level =
-      toNumber(getNestedValue(system, ['details', 'level', 'value'])) ??
-      toNumber(getNestedValue(system, ['details', 'level'])) ??
-      toNumber(getNestedValue(system, ['level']));
+    const level = toNumberField(system?.details?.level) ?? toNumber(system?.level);
     if (level !== undefined) {
       basicInfo.level = level;
     }
 
-    const ancestry = toStringValue(getNestedValue(system, ['details', 'ancestry']));
+    const ancestry = toStringValue(system?.details?.ancestry);
     if (ancestry) {
       basicInfo.ancestry = ancestry;
     }
 
-    const className = toStringValue(getNestedValue(system, ['details', 'class']));
+    const className = toStringValue(system?.details?.class);
     if (className) {
       basicInfo.class = className;
     }
@@ -565,43 +553,41 @@ export class PF2eAdapter implements SystemAdapter {
   }
 
   formatCharacterItemForList(itemData: FoundryItemDocumentBase): Record<string, unknown> {
-    const item = asRecord(itemData);
-    const system = asRecord(item?.system);
+    const item = itemData as PF2eItemDocument;
+    const system = item.system;
 
     const formatted: Record<string, unknown> = {
-      id: toStringValue(item?.id) ?? '',
-      name: toStringValue(item?.name) ?? 'Unknown Item',
-      type: toStringValue(item?.type) ?? 'unknown',
+      id: item.id,
+      name: item.name,
+      type: item.type,
     };
 
-    const quantity = toNumber(getNestedValue(system, ['quantity']));
+    const quantity = toNumber(system?.quantity);
     if (quantity !== undefined && quantity !== 1) {
       formatted.quantity = quantity;
     }
 
-    const traits = toStringArray(getNestedValue(system, ['traits', 'value']));
+    const traits = toStringArray(system?.traits?.value);
     if (traits.length > 0) {
       formatted.traits = traits;
     }
 
-    const rarity = toStringValue(getNestedValue(system, ['traits', 'rarity']));
+    const rarity = toStringValue(system?.traits?.rarity);
     if (rarity) {
       formatted.rarity = rarity;
     }
 
-    const level =
-      toNumber(getNestedValue(system, ['level', 'value'])) ??
-      toNumber(getNestedValue(system, ['level']));
+    const level = toNumberField(system?.level);
     if (level !== undefined) {
       formatted.level = level;
     }
 
-    const actionType = toStringValue(getNestedValue(system, ['actionType', 'value']));
+    const actionType = toStringField(system?.actionType);
     if (actionType) {
       formatted.actionType = actionType;
     }
 
-    const equipped = getNestedValue(system, ['equipped']);
+    const equipped = system?.equipped;
     if (typeof equipped === 'boolean') {
       formatted.equipped = equipped;
     }
@@ -610,26 +596,23 @@ export class PF2eAdapter implements SystemAdapter {
   }
 
   formatCharacterItemForDetails(itemData: FoundryItemDocumentBase): Record<string, unknown> {
-    const item = asRecord(itemData);
-    const system = asRecord(item?.system);
+    const item = itemData as PF2eItemDocument;
+    const system = item.system;
     const formatted = this.formatCharacterItemForList(itemData);
 
-    const description = getNestedValue(system, ['description']);
+    const description = system?.description;
     if (typeof description === 'string') {
       formatted.description = description;
     } else {
-      const descriptionRecord = asRecord(description);
-      formatted.description = toStringValue(descriptionRecord?.value) ?? '';
+      formatted.description = toStringField(description) ?? '';
     }
 
-    const actions =
-      toNumber(getNestedValue(system, ['actions', 'value'])) ??
-      toNumber(getNestedValue(system, ['actions']));
+    const actions = toNumberField(system?.actions);
     if (actions !== undefined) {
       formatted.actions = actions;
     }
 
-    formatted.hasImage = Boolean(item?.img);
+    formatted.hasImage = Boolean(item.img);
     formatted.system = system ?? {};
 
     return formatted;

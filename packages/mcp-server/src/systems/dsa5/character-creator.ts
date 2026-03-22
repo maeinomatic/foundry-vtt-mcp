@@ -2,12 +2,14 @@ import { z } from 'zod';
 import { FoundryClient } from '../../foundry-client.js';
 import type {
   FoundryActorCreationResult,
+  FoundryCompendiumDocumentBase,
   FoundryCompendiumEntryFull,
   FoundryCompendiumPackSummary,
   UnknownRecord,
 } from '../../foundry-types.js';
 import { Logger } from '../../logger.js';
 import { ErrorHandler } from '../../utils/error-handler.js';
+import type { DSA5ActorSystemData, DSA5ItemSystemData } from '../types.js';
 
 export interface DSA5CharacterCreatorOptions {
   foundryClient: FoundryClient;
@@ -27,7 +29,9 @@ interface Dsa5Customization {
   profession?: string;
 }
 
-type ArchetypeData = FoundryCompendiumEntryFull;
+type ArchetypeData = FoundryCompendiumEntryFull<DSA5ActorSystemData, DSA5ItemSystemData>;
+
+type ArchetypeIndexEntry = FoundryCompendiumDocumentBase<DSA5ActorSystemData, DSA5ItemSystemData>;
 
 type ActorCreationResponse = FoundryActorCreationResult;
 
@@ -294,26 +298,20 @@ export class DSA5CharacterCreator {
       // Get archetypes from each pack
       for (const pack of characterPacks) {
         try {
-          const packIndexResult = await this.foundryClient.query(
+          const packIndexResult = await this.foundryClient.query<ArchetypeIndexEntry[]>(
             'foundry-mcp-bridge.getPackIndex',
             {
               packId: pack.id,
             }
           );
-          const packIndex = Array.isArray(packIndexResult)
-            ? packIndexResult.filter(
-                (entry): entry is UnknownRecord => entry !== null && typeof entry === 'object'
-              )
-            : [];
+          const packIndex = Array.isArray(packIndexResult) ? packIndexResult : [];
 
           // Filter archetypes
           const packArchetypes = packIndex
-            .filter((entry: UnknownRecord) => entry.type === 'character')
-            .filter((entry: UnknownRecord) => {
-              const system = this.asRecord(entry.system);
-              const details = this.asRecord(system.details);
-              const species = this.getString(this.asRecord(details.species).value, 'Unknown');
-              const profession = this.getString(this.asRecord(details.career).value, 'Unknown');
+            .filter((entry: ArchetypeIndexEntry) => entry.type === 'character')
+            .filter((entry: ArchetypeIndexEntry) => {
+              const species = this.getSpeciesLabel(entry.system);
+              const profession = this.getProfessionLabel(entry.system);
 
               if (filterBySpecies && species !== filterBySpecies) {
                 return false;
@@ -323,18 +321,15 @@ export class DSA5CharacterCreator {
               }
               return true;
             })
-            .map((entry: UnknownRecord) => {
-              const system = this.asRecord(entry.system);
-              const details = this.asRecord(system.details);
-
+            .map((entry: ArchetypeIndexEntry) => {
               return {
-                id: this.getString(entry.id, ''),
-                name: this.getString(entry.name, 'Unknown'),
+                id: entry.id,
+                name: entry.name,
                 packId: pack.id,
                 packLabel: pack.label,
-                species: this.getString(this.asRecord(details.species).value, 'Unknown'),
-                profession: this.getString(this.asRecord(details.career).value, 'Unknown'),
-                img: this.getString(entry.img, ''),
+                species: this.getSpeciesLabel(entry.system),
+                profession: this.getProfessionLabel(entry.system),
+                ...(entry.img ? { img: entry.img } : {}),
               };
             })
             .filter((entry: ArchetypeListItem) => entry.id.length > 0);
@@ -524,12 +519,12 @@ export class DSA5CharacterCreator {
     };
   }
 
-  private asRecord(value: unknown): UnknownRecord {
-    return value !== null && typeof value === 'object' ? (value as UnknownRecord) : {};
+  private getSpeciesLabel(system?: DSA5ActorSystemData): string {
+    return system?.details?.species?.value ?? 'Unknown';
   }
 
-  private getString(value: unknown, fallback: string): string {
-    return typeof value === 'string' ? value : fallback;
+  private getProfessionLabel(system?: DSA5ActorSystemData): string {
+    return system?.details?.career?.value ?? 'Unknown';
   }
 
   private isPackSummary(value: unknown): value is PackSummary {

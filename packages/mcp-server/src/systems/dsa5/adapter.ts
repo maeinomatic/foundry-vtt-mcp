@@ -10,6 +10,9 @@ import type {
   SystemMetadata,
   SystemCreatureIndex,
   DSA5CreatureIndex,
+  DSA5ActorDocument,
+  DSA5CompendiumDocument,
+  DSA5ItemDocument,
   SystemCharacterAction,
   SystemSpellcastingEntry,
 } from '../types.js';
@@ -27,18 +30,6 @@ function asRecord(value: unknown): UnknownRecord | undefined {
   return typeof value === 'object' && value !== null ? (value as UnknownRecord) : undefined;
 }
 
-function getNestedValue(source: UnknownRecord | undefined, path: string[]): unknown {
-  let current: unknown = source;
-  for (const segment of path) {
-    const currentRecord = asRecord(current);
-    if (!currentRecord) {
-      return undefined;
-    }
-    current = currentRecord[segment];
-  }
-  return current;
-}
-
 function toNumber(value: unknown): number | undefined {
   if (typeof value === 'number' && Number.isFinite(value)) {
     return value;
@@ -54,6 +45,24 @@ function toNumber(value: unknown): number | undefined {
 
 function toStringValue(value: unknown): string | undefined {
   return typeof value === 'string' ? value : undefined;
+}
+
+function toNumberField(value: unknown): number | undefined {
+  const record = asRecord(value);
+  if (record && 'value' in record) {
+    return toNumber(record.value);
+  }
+
+  return toNumber(value);
+}
+
+function toStringField(value: unknown): string | undefined {
+  const record = asRecord(value);
+  if (record && 'value' in record) {
+    return toStringValue(record.value);
+  }
+
+  return toStringValue(value);
 }
 
 /**
@@ -270,31 +279,25 @@ export class DSA5Adapter implements SystemAdapter {
     entity: FoundryCompendiumDocumentBase,
     mode: 'search' | 'criteria' | 'compact' | 'details'
   ): Record<string, unknown> {
-    const record = asRecord(entity);
-    const system = asRecord(record?.system);
-
-    const experiencePoints =
-      toNumber(getNestedValue(system, ['details', 'experience', 'total'])) ??
-      toNumber(getNestedValue(system, ['details', 'experience']));
+    const creature = entity as DSA5CompendiumDocument;
+    const system = creature.system;
+    const experiencePoints = toNumber(system?.details?.experience?.total);
     const level =
       experiencePoints !== undefined
         ? getExperienceLevel(experiencePoints).level
-        : toNumber(getNestedValue(system, ['level']));
-    const species = toStringValue(getNestedValue(system, ['details', 'species', 'value']));
-    const size =
-      toStringValue(getNestedValue(system, ['status', 'size', 'value'])) ??
-      toStringValue(getNestedValue(system, ['size']));
+        : toNumber(system?.level);
+    const species = toStringField(system?.details?.species);
+    const size = toStringField(system?.status?.size) ?? toStringField(system?.size);
 
-    const lifePointsCurrent = toNumber(getNestedValue(system, ['status', 'wounds', 'value']));
-    const lifePointsMax = toNumber(getNestedValue(system, ['status', 'wounds', 'max']));
-    const speed = toNumber(getNestedValue(system, ['status', 'speed', 'value']));
+    const wounds = system?.status?.wounds;
+    const lifePointsCurrent = toNumber(wounds?.value);
+    const lifePointsMax = toNumber(wounds?.max);
+    const speed = toNumberField(system?.status?.speed);
 
-    const hasSpellcasting = Boolean(
-      getNestedValue(system, ['tradition', 'magical']) ||
-        getNestedValue(system, ['tradition', 'clerical']) ||
-        (toNumber(getNestedValue(system, ['status', 'astralenergy', 'max'])) ?? 0) > 0 ||
-        (toNumber(getNestedValue(system, ['status', 'karmaenergy', 'max'])) ?? 0) > 0
-    );
+    const hasSpellcasting =
+      Boolean(system?.tradition?.magical ?? system?.tradition?.clerical) ||
+      (toNumber(system?.status?.astralenergy?.max) ?? 0) > 0 ||
+      (toNumber(system?.status?.karmaenergy?.max) ?? 0) > 0;
 
     if (mode === 'search') {
       const stats: Record<string, unknown> = {};
@@ -361,17 +364,17 @@ export class DSA5Adapter implements SystemAdapter {
    * Extract character statistics from actor data
    */
   extractCharacterStats(actorData: FoundryActorDocumentBase): Record<string, unknown> {
-    const actor = asRecord(actorData);
-    const system = asRecord(actor?.system);
+    const actor = actorData as DSA5ActorDocument;
+    const system = actor.system;
     const stats: Record<string, unknown> = {};
 
     // Basic info
-    stats.name = toStringValue(actor?.name);
-    stats.type = toStringValue(actor?.type);
+    stats.name = actor.name;
+    stats.type = actor.type;
 
     // Experience and Level
-    const totalAP = toNumber(getNestedValue(system, ['details', 'experience', 'total'])) ?? 0;
-    const spentAP = toNumber(getNestedValue(system, ['details', 'experience', 'spent'])) ?? 0;
+    const totalAP = toNumber(system?.details?.experience?.total) ?? 0;
+    const spentAP = toNumber(system?.details?.experience?.spent) ?? 0;
 
     if (totalAP > 0) {
       const expLevel = getExperienceLevel(totalAP);
@@ -386,7 +389,7 @@ export class DSA5Adapter implements SystemAdapter {
     }
 
     // LeP (Lebensenergie) - wounds.current contains actual current LeP
-    const wounds = asRecord(getNestedValue(system, ['status', 'wounds']));
+    const wounds = system?.status?.wounds;
     if (wounds) {
       stats.lifePoints = {
         current: toNumber(wounds.current) ?? 0,
@@ -395,7 +398,7 @@ export class DSA5Adapter implements SystemAdapter {
     }
 
     // AsP (Astralenergie)
-    const astral = asRecord(getNestedValue(system, ['status', 'astralenergy']));
+    const astral = system?.status?.astralenergy;
     if ((toNumber(astral?.max) ?? 0) > 0) {
       stats.astralEnergy = {
         current: toNumber(astral?.value) ?? 0,
@@ -404,7 +407,7 @@ export class DSA5Adapter implements SystemAdapter {
     }
 
     // KaP (Karmaenergie)
-    const karma = asRecord(getNestedValue(system, ['status', 'karmaenergy']));
+    const karma = system?.status?.karmaenergy;
     if ((toNumber(karma?.max) ?? 0) > 0) {
       stats.karmaEnergy = {
         current: toNumber(karma?.value) ?? 0,
@@ -413,7 +416,7 @@ export class DSA5Adapter implements SystemAdapter {
     }
 
     // Eigenschaften (Characteristics: MU, KL, IN, CH, FF, GE, KO, KK)
-    const characteristics = asRecord(getNestedValue(system, ['characteristics']));
+    const characteristics = system?.characteristics;
     if (characteristics) {
       const characteristicStats: Record<string, UnknownRecord> = {};
       for (const [key, eigenschaft] of Object.entries(characteristics)) {
@@ -431,50 +434,42 @@ export class DSA5Adapter implements SystemAdapter {
     }
 
     // Combat values
-    const initiative =
-      toNumber(getNestedValue(system, ['status', 'initiative', 'value'])) ??
-      toNumber(getNestedValue(system, ['status', 'initiative']));
+    const initiative = toNumberField(system?.status?.initiative);
     if (initiative !== undefined) {
       stats.initiative = initiative;
     }
 
-    const speed =
-      toNumber(getNestedValue(system, ['status', 'speed', 'value'])) ??
-      toNumber(getNestedValue(system, ['status', 'speed']));
+    const speed = toNumberField(system?.status?.speed);
     if (speed !== undefined) {
       stats.speed = speed;
     }
 
-    const dodge =
-      toNumber(getNestedValue(system, ['status', 'dodge', 'value'])) ??
-      toNumber(getNestedValue(system, ['status', 'dodge']));
+    const dodge = toNumberField(system?.status?.dodge);
     if (dodge !== undefined) {
       stats.dodge = dodge;
     }
 
     const armor =
-      toNumber(getNestedValue(system, ['status', 'armour', 'value'])) ??
-      toNumber(getNestedValue(system, ['status', 'armor', 'value'])) ??
-      0;
+      toNumberField(system?.status?.armour) ?? toNumberField(system?.status?.armor) ?? 0;
     if (armor) {
       stats.armor = armor;
     }
 
     // Identity info
-    if (asRecord(getNestedValue(system, ['details']))) {
+    if (system?.details) {
       const identity: Record<string, unknown> = {};
 
-      const species = toStringValue(getNestedValue(system, ['details', 'species', 'value']));
+      const species = toStringField(system.details.species);
       if (species) {
         identity.species = species;
       }
 
-      const culture = toStringValue(getNestedValue(system, ['details', 'culture', 'value']));
+      const culture = toStringField(system.details.culture);
       if (culture) {
         identity.culture = culture;
       }
 
-      const career = toStringValue(getNestedValue(system, ['details', 'career', 'value']));
+      const career = toStringField(system.details.career);
       if (career) {
         identity.profession = career;
       }
@@ -485,13 +480,13 @@ export class DSA5Adapter implements SystemAdapter {
     }
 
     // Size
-    const size = toNumber(getNestedValue(system, ['status', 'size', 'value']));
+    const size = toNumberField(system?.status?.size);
     if (size) {
       stats.size = size;
     }
 
     // Tradition (magical/clerical)
-    const traditionData = asRecord(getNestedValue(system, ['tradition']));
+    const traditionData = system?.tradition;
     if (traditionData) {
       const tradition: Record<string, unknown> = {};
 
@@ -525,11 +520,11 @@ export class DSA5Adapter implements SystemAdapter {
   }
 
   formatCharacterBasicInfo(actorData: FoundryActorDocumentBase): Record<string, unknown> {
-    const actor = asRecord(actorData);
-    const system = asRecord(actor?.system);
+    const actor = actorData as DSA5ActorDocument;
+    const system = actor.system;
     const basicInfo: Record<string, unknown> = {};
 
-    const wounds = asRecord(getNestedValue(system, ['status', 'wounds']));
+    const wounds = system?.status?.wounds;
     if (wounds) {
       basicInfo.lifePoints = {
         current: toNumber(wounds.current) ?? toNumber(wounds.value),
@@ -537,27 +532,27 @@ export class DSA5Adapter implements SystemAdapter {
       };
     }
 
-    const size = toNumber(getNestedValue(system, ['status', 'size', 'value']));
+    const size = toNumberField(system?.status?.size);
     if (size !== undefined) {
       basicInfo.size = size;
     }
 
-    const species = toStringValue(getNestedValue(system, ['details', 'species', 'value']));
+    const species = toStringField(system?.details?.species);
     if (species) {
       basicInfo.species = species;
     }
 
-    const culture = toStringValue(getNestedValue(system, ['details', 'culture', 'value']));
+    const culture = toStringField(system?.details?.culture);
     if (culture) {
       basicInfo.culture = culture;
     }
 
-    const profession = toStringValue(getNestedValue(system, ['details', 'career', 'value']));
+    const profession = toStringField(system?.details?.career);
     if (profession) {
       basicInfo.profession = profession;
     }
 
-    const totalAP = toNumber(getNestedValue(system, ['details', 'experience', 'total']));
+    const totalAP = toNumber(system?.details?.experience?.total);
     if (totalAP !== undefined) {
       basicInfo.experience = { total: totalAP };
     }
@@ -566,28 +561,26 @@ export class DSA5Adapter implements SystemAdapter {
   }
 
   formatCharacterItemForList(itemData: FoundryItemDocumentBase): Record<string, unknown> {
-    const item = asRecord(itemData);
-    const system = asRecord(item?.system);
+    const item = itemData as DSA5ItemDocument;
+    const system = item.system;
 
     const formatted: Record<string, unknown> = {
-      id: toStringValue(item?.id) ?? '',
-      name: toStringValue(item?.name) ?? 'Unknown Item',
-      type: toStringValue(item?.type) ?? 'unknown',
+      id: item.id,
+      name: item.name,
+      type: item.type,
     };
 
-    const quantity = toNumber(getNestedValue(system, ['quantity']));
+    const quantity = toNumber(system?.quantity);
     if (quantity !== undefined && quantity !== 1) {
       formatted.quantity = quantity;
     }
 
-    const level =
-      toNumber(getNestedValue(system, ['level', 'value'])) ??
-      toNumber(getNestedValue(system, ['level']));
+    const level = toNumberField(system?.level);
     if (level !== undefined) {
       formatted.level = level;
     }
 
-    const equipped = getNestedValue(system, ['equipped']);
+    const equipped = system?.equipped;
     if (typeof equipped === 'boolean') {
       formatted.equipped = equipped;
     }
@@ -596,31 +589,28 @@ export class DSA5Adapter implements SystemAdapter {
   }
 
   formatCharacterItemForDetails(itemData: FoundryItemDocumentBase): Record<string, unknown> {
-    const item = asRecord(itemData);
-    const system = asRecord(item?.system);
+    const item = itemData as DSA5ItemDocument;
+    const system = item.system;
     const formatted = this.formatCharacterItemForList(itemData);
 
-    const description = getNestedValue(system, ['description']);
+    const description = system?.description;
     if (typeof description === 'string') {
       formatted.description = description;
     } else {
-      const descriptionRecord = asRecord(description);
-      formatted.description = toStringValue(descriptionRecord?.value) ?? '';
+      formatted.description = toStringField(description) ?? '';
     }
 
-    const actionType = toStringValue(getNestedValue(system, ['actionType', 'value']));
+    const actionType = toStringField(system?.actionType);
     if (actionType) {
       formatted.actionType = actionType;
     }
 
-    const actions =
-      toNumber(getNestedValue(system, ['actions', 'value'])) ??
-      toNumber(getNestedValue(system, ['actions']));
+    const actions = toNumberField(system?.actions);
     if (actions !== undefined) {
       formatted.actions = actions;
     }
 
-    formatted.hasImage = Boolean(item?.img);
+    formatted.hasImage = Boolean(item.img);
     formatted.system = system ?? {};
 
     return formatted;

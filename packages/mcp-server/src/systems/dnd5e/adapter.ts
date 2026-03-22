@@ -10,13 +10,16 @@ import type {
   SystemMetadata,
   SystemCreatureIndex,
   DnD5eCreatureIndex,
+  DnD5eActorDocument,
+  DnD5eCompendiumDocument,
+  DnD5eItemDocument,
   SystemCharacterAction,
   SystemSpellcastingEntry,
 } from '../types.js';
 import type {
-  FoundryActorDocumentBase,
   FoundryCompendiumDocumentBase,
   FoundryCompendiumPackSummary,
+  FoundryActorDocumentBase,
   FoundryItemDocumentBase,
   UnknownRecord,
 } from '../../foundry-types.js';
@@ -24,18 +27,6 @@ import { DnD5eFiltersSchema, matchesDnD5eFilters, describeDnD5eFilters } from '.
 
 function asRecord(value: unknown): UnknownRecord | undefined {
   return typeof value === 'object' && value !== null ? (value as UnknownRecord) : undefined;
-}
-
-function getNestedValue(source: UnknownRecord | undefined, path: string[]): unknown {
-  let current: unknown = source;
-  for (const segment of path) {
-    const currentRecord = asRecord(current);
-    if (!currentRecord) {
-      return undefined;
-    }
-    current = currentRecord[segment];
-  }
-  return current;
 }
 
 function toNumber(value: unknown): number | undefined {
@@ -53,6 +44,24 @@ function toNumber(value: unknown): number | undefined {
 
 function toStringValue(value: unknown): string | undefined {
   return typeof value === 'string' ? value : undefined;
+}
+
+function toNumberField(value: unknown): number | undefined {
+  const record = asRecord(value);
+  if (record && 'value' in record) {
+    return toNumber(record.value);
+  }
+
+  return toNumber(value);
+}
+
+function toStringField(value: unknown): string | undefined {
+  const record = asRecord(value);
+  if (record && 'value' in record) {
+    return toStringValue(record.value);
+  }
+
+  return toStringValue(value);
 }
 
 /**
@@ -228,43 +237,34 @@ export class DnD5eAdapter implements SystemAdapter {
     entity: FoundryCompendiumDocumentBase,
     mode: 'search' | 'criteria' | 'compact' | 'details'
   ): Record<string, unknown> {
-    const record = asRecord(entity);
-    const system = asRecord(record?.system);
+    const creature = entity as DnD5eCompendiumDocument;
+    const system = creature.system;
+    const attributes = system?.attributes;
+    const details = system?.details;
+    const resources = system?.resources;
+    const movement = asRecord(attributes?.movement);
 
-    const challengeRating =
-      toNumber(getNestedValue(system, ['details', 'cr'])) ??
-      toNumber(getNestedValue(system, ['cr']));
-    const creatureType =
-      toStringValue(getNestedValue(system, ['details', 'type', 'value'])) ??
-      toStringValue(getNestedValue(system, ['type', 'value']));
-    const size =
-      toStringValue(getNestedValue(system, ['traits', 'size'])) ??
-      toStringValue(getNestedValue(system, ['traits', 'size', 'value'])) ??
-      toStringValue(getNestedValue(system, ['size']));
-    const alignment =
-      toStringValue(getNestedValue(system, ['details', 'alignment'])) ??
-      toStringValue(getNestedValue(system, ['details', 'alignment', 'value'])) ??
-      toStringValue(getNestedValue(system, ['alignment']));
+    const challengeRating = toNumberField(details?.cr) ?? toNumberField(system?.cr);
+    const creatureType = toStringField(details?.type) ?? toStringField(system?.type);
+    const size = toStringField(system?.traits?.size) ?? toStringField(system?.size);
+    const alignment = toStringField(details?.alignment) ?? toStringField(system?.alignment);
 
-    const hpCurrent = toNumber(getNestedValue(system, ['attributes', 'hp', 'value']));
-    const hpMax = toNumber(getNestedValue(system, ['attributes', 'hp', 'max']));
-    const armorClass = toNumber(getNestedValue(system, ['attributes', 'ac', 'value']));
-    const movement = asRecord(getNestedValue(system, ['attributes', 'movement']));
+    const hpCurrent = toNumber(attributes?.hp?.value);
+    const hpMax = toNumber(attributes?.hp?.max);
+    const armorClass = toNumberField(attributes?.ac);
 
-    const hasSpellcasting = Boolean(
-      getNestedValue(system, ['spells']) ||
-        getNestedValue(system, ['attributes', 'spellcasting']) ||
-        (toNumber(getNestedValue(system, ['details', 'spellLevel'])) ?? 0) > 0
-    );
+    const hasSpellcasting =
+      system?.spells !== undefined ||
+      attributes?.spellcasting !== undefined ||
+      (toNumber(details?.spellLevel) ?? 0) > 0;
 
-    const hasLegendaryActions = Boolean(
-      getNestedValue(system, ['resources', 'legact']) ||
-        getNestedValue(system, ['legendary']) ||
-        (toNumber(getNestedValue(system, ['resources', 'legres', 'value'])) ?? 0) > 0
-    );
+    const hasLegendaryActions =
+      resources?.legact !== undefined ||
+      system?.legendary !== undefined ||
+      (toNumber(resources?.legres?.value) ?? 0) > 0;
 
     const significantAbilities: Record<string, unknown> = {};
-    const abilities = asRecord(getNestedValue(system, ['abilities']));
+    const abilities = system?.abilities;
     if (abilities) {
       for (const [key, abilityValue] of Object.entries(abilities)) {
         const ability = asRecord(abilityValue);
@@ -371,33 +371,27 @@ export class DnD5eAdapter implements SystemAdapter {
    * Extract character statistics from actor data
    */
   extractCharacterStats(actorData: FoundryActorDocumentBase): Record<string, unknown> {
-    const actor = asRecord(actorData);
-    const system = asRecord(actor?.system);
+    const actor = actorData as DnD5eActorDocument;
+    const system = actor.system;
     const stats: Record<string, unknown> = {};
 
     // Basic info
-    stats.name = toStringValue(actor?.name);
-    stats.type = toStringValue(actor?.type);
+    stats.name = actor.name;
+    stats.type = actor.type;
 
     // Challenge Rating or Level
-    const cr =
-      toNumber(getNestedValue(system, ['details', 'cr'])) ??
-      toNumber(getNestedValue(system, ['details', 'cr', 'value'])) ??
-      toNumber(getNestedValue(system, ['cr']));
+    const cr = toNumberField(system?.details?.cr) ?? toNumberField(system?.cr);
     if (cr !== undefined) {
       stats.challengeRating = cr;
     }
 
-    const level =
-      toNumber(getNestedValue(system, ['details', 'level', 'value'])) ??
-      toNumber(getNestedValue(system, ['details', 'level'])) ??
-      toNumber(getNestedValue(system, ['level']));
+    const level = toNumberField(system?.details?.level) ?? toNumber(system?.level);
     if (level !== undefined) {
       stats.level = level;
     }
 
     // Hit Points
-    const hp = asRecord(getNestedValue(system, ['attributes', 'hp']));
+    const hp = system?.attributes?.hp;
     if (hp) {
       stats.hitPoints = {
         current: toNumber(hp.value) ?? 0,
@@ -407,15 +401,13 @@ export class DnD5eAdapter implements SystemAdapter {
     }
 
     // Armor Class
-    const ac =
-      toNumber(getNestedValue(system, ['attributes', 'ac', 'value'])) ??
-      toNumber(getNestedValue(system, ['attributes', 'ac']));
+    const ac = toNumberField(system?.attributes?.ac);
     if (ac !== undefined) {
       stats.armorClass = ac;
     }
 
     // Abilities (STR, DEX, CON, INT, WIS, CHA)
-    const abilities = asRecord(getNestedValue(system, ['abilities']));
+    const abilities = system?.abilities;
     if (abilities) {
       const abilityStats: Record<string, UnknownRecord> = {};
       for (const [key, ability] of Object.entries(abilities)) {
@@ -429,7 +421,7 @@ export class DnD5eAdapter implements SystemAdapter {
     }
 
     // Skills
-    const skills = asRecord(getNestedValue(system, ['skills']));
+    const skills = system?.skills;
     if (skills) {
       const skillStats: Record<string, UnknownRecord> = {};
       for (const [key, skill] of Object.entries(skills)) {
@@ -444,31 +436,24 @@ export class DnD5eAdapter implements SystemAdapter {
     }
 
     // Creature-specific info
-    if (toStringValue(actor?.type) === 'npc') {
-      const creatureType =
-        toStringValue(getNestedValue(system, ['details', 'type', 'value'])) ??
-        toStringValue(getNestedValue(system, ['details', 'type']));
+    if (actor.type === 'npc') {
+      const creatureType = toStringField(system?.details?.type);
       if (creatureType) {
         stats.creatureType = creatureType;
       }
 
-      const size =
-        toStringValue(getNestedValue(system, ['traits', 'size', 'value'])) ??
-        toStringValue(getNestedValue(system, ['traits', 'size'])) ??
-        toStringValue(getNestedValue(system, ['size']));
+      const size = toStringField(system?.traits?.size) ?? toStringField(system?.size);
       if (size) {
         stats.size = size;
       }
 
-      const alignment =
-        toStringValue(getNestedValue(system, ['details', 'alignment', 'value'])) ??
-        toStringValue(getNestedValue(system, ['details', 'alignment']));
+      const alignment = toStringField(system?.details?.alignment);
       if (alignment) {
         stats.alignment = alignment;
       }
 
       // Legendary actions
-      const legact = asRecord(getNestedValue(system, ['resources', 'legact']));
+      const legact = system?.resources?.legact;
       if (legact) {
         stats.legendaryActions = {
           available: toNumber(legact.value) ?? 0,
@@ -478,10 +463,10 @@ export class DnD5eAdapter implements SystemAdapter {
     }
 
     // Spellcasting
-    const spellLevel = toNumber(getNestedValue(system, ['details', 'spellLevel'])) ?? 0;
+    const spellLevel = toNumber(system?.details?.spellLevel) ?? 0;
     const hasSpells =
-      getNestedValue(system, ['spells']) !== undefined ||
-      getNestedValue(system, ['attributes', 'spellcasting']) !== undefined ||
+      system?.spells !== undefined ||
+      system?.attributes?.spellcasting !== undefined ||
       spellLevel > 0;
     if (hasSpells) {
       stats.spellcasting = {
@@ -494,11 +479,11 @@ export class DnD5eAdapter implements SystemAdapter {
   }
 
   formatCharacterBasicInfo(actorData: FoundryActorDocumentBase): Record<string, unknown> {
-    const actor = asRecord(actorData);
-    const system = asRecord(actor?.system);
+    const actor = actorData as DnD5eActorDocument;
+    const system = actor.system;
     const basicInfo: Record<string, unknown> = {};
 
-    const hp = asRecord(getNestedValue(system, ['attributes', 'hp']));
+    const hp = system?.attributes?.hp;
     if (hp) {
       basicInfo.hitPoints = {
         current: toNumber(hp.value),
@@ -507,27 +492,22 @@ export class DnD5eAdapter implements SystemAdapter {
       };
     }
 
-    const ac =
-      toNumber(getNestedValue(system, ['attributes', 'ac', 'value'])) ??
-      toNumber(getNestedValue(system, ['attributes', 'ac']));
+    const ac = toNumberField(system?.attributes?.ac);
     if (ac !== undefined) {
       basicInfo.armorClass = ac;
     }
 
-    const level =
-      toNumber(getNestedValue(system, ['details', 'level', 'value'])) ??
-      toNumber(getNestedValue(system, ['details', 'level'])) ??
-      toNumber(getNestedValue(system, ['level']));
+    const level = toNumberField(system?.details?.level) ?? toNumber(system?.level);
     if (level !== undefined) {
       basicInfo.level = level;
     }
 
-    const className = toStringValue(getNestedValue(system, ['details', 'class']));
+    const className = toStringValue(system?.details?.class);
     if (className) {
       basicInfo.class = className;
     }
 
-    const race = toStringValue(getNestedValue(system, ['details', 'race']));
+    const race = toStringValue(system?.details?.race);
     if (race) {
       basicInfo.race = race;
     }
@@ -536,26 +516,26 @@ export class DnD5eAdapter implements SystemAdapter {
   }
 
   formatCharacterItemForList(itemData: FoundryItemDocumentBase): Record<string, unknown> {
-    const item = asRecord(itemData);
-    const system = asRecord(item?.system);
+    const item = itemData as DnD5eItemDocument;
+    const system = item.system;
 
     const formatted: Record<string, unknown> = {
-      id: toStringValue(item?.id) ?? '',
-      name: toStringValue(item?.name) ?? 'Unknown Item',
-      type: toStringValue(item?.type) ?? 'unknown',
+      id: item.id,
+      name: item.name,
+      type: item.type,
     };
 
-    const quantity = toNumber(getNestedValue(system, ['quantity']));
+    const quantity = toNumber(system?.quantity);
     if (quantity !== undefined && quantity !== 1) {
       formatted.quantity = quantity;
     }
 
-    const equipped = getNestedValue(system, ['equipped']);
+    const equipped = system?.equipped;
     if (typeof equipped === 'boolean') {
       formatted.equipped = equipped;
     }
 
-    const attunement = getNestedValue(system, ['attunement']);
+    const attunement = system?.attunement;
     if (typeof attunement === 'number' || typeof attunement === 'string') {
       formatted.attunement = attunement;
     }
@@ -564,31 +544,28 @@ export class DnD5eAdapter implements SystemAdapter {
   }
 
   formatCharacterItemForDetails(itemData: FoundryItemDocumentBase): Record<string, unknown> {
-    const item = asRecord(itemData);
-    const system = asRecord(item?.system);
+    const item = itemData as DnD5eItemDocument;
+    const system = item.system;
     const formatted = this.formatCharacterItemForList(itemData);
 
-    const description = getNestedValue(system, ['description']);
+    const description = system?.description;
     if (typeof description === 'string') {
       formatted.description = description;
     } else {
-      const descriptionRecord = asRecord(description);
-      formatted.description = toStringValue(descriptionRecord?.value) ?? '';
+      formatted.description = toStringField(description) ?? '';
     }
 
-    const actionType = toStringValue(getNestedValue(system, ['actionType', 'value']));
+    const actionType = toStringField(system?.actionType);
     if (actionType) {
       formatted.actionType = actionType;
     }
 
-    const actions =
-      toNumber(getNestedValue(system, ['actions', 'value'])) ??
-      toNumber(getNestedValue(system, ['actions']));
+    const actions = toNumberField(system?.actions);
     if (actions !== undefined) {
       formatted.actions = actions;
     }
 
-    formatted.hasImage = Boolean(item?.img);
+    formatted.hasImage = Boolean(item.img);
     formatted.system = system ?? {};
 
     return formatted;

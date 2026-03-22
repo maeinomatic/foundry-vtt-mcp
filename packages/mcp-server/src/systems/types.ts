@@ -7,10 +7,20 @@
 
 import { z } from 'zod';
 import type {
+  FoundryActorAttributesBase,
   FoundryActorDocumentBase,
+  FoundryActorSystemBase,
   FoundryCompendiumDocumentBase,
   FoundryCompendiumPackSummary,
+  FoundryDescriptionField,
   FoundryItemDocumentBase,
+  FoundryItemSystemBase,
+  FoundryResourceField,
+  FoundryTraitsData,
+  FoundryValueField,
+  FoundryCharacterAction,
+  FoundrySpellInfo,
+  FoundrySpellcastingEntry,
   UnknownRecord,
 } from '../foundry-types.js';
 
@@ -55,40 +65,178 @@ export interface SystemCreatureIndex {
   systemData: UnknownRecord; // System-specific fields (D&D 5e CR, PF2e level, etc.)
 }
 
-export interface SystemCharacterAction extends UnknownRecord {
-  name: string;
-  type?: string;
-  itemId?: string;
-  traits?: string[];
-  variants?: unknown[];
-  ready?: boolean;
-  description?: string;
-  actions?: number;
+export interface SystemCharacterAction extends FoundryCharacterAction {}
+
+export interface SystemSpellData extends FoundrySpellInfo {}
+
+export interface SystemSpellcastingEntry extends FoundrySpellcastingEntry {}
+
+export interface DnD5eAbilityData extends UnknownRecord {
+  value?: number;
+  mod?: number;
 }
 
-export interface SystemSpellData extends UnknownRecord {
-  id: string;
-  name: string;
-  level?: number;
-  prepared?: boolean;
-  expended?: boolean;
-  traits?: string[];
-  actionCost?: number | string;
-  range?: string;
-  target?: string;
-  area?: string;
+export interface DnD5eSkillData extends UnknownRecord {
+  value?: number;
+  total?: number;
+  mod?: number;
+  proficient?: number;
 }
 
-export interface SystemSpellcastingEntry extends UnknownRecord {
-  name: string;
-  type?: string;
-  tradition?: string;
-  ability?: string;
-  dc?: number;
-  attack?: number;
-  slots?: UnknownRecord;
-  spells?: SystemSpellData[];
+export interface DnD5eActorSystemData extends FoundryActorSystemBase {
+  attributes?: FoundryActorAttributesBase & {
+    hp?: FoundryResourceField<number>;
+    ac?: FoundryValueField<number> | number;
+    spellcasting?: UnknownRecord;
+  };
+  details?: FoundryActorSystemBase['details'] & {
+    cr?: number | string | FoundryValueField<number>;
+    type?: string | FoundryValueField<string> | { value?: string };
+    alignment?: string | FoundryValueField<string>;
+    level?: number | FoundryValueField<number>;
+    class?: string;
+    race?: string;
+  };
+  traits?: FoundryTraitsData;
+  abilities?: Record<string, DnD5eAbilityData>;
+  skills?: Record<string, DnD5eSkillData>;
+  resources?: UnknownRecord & {
+    legact?: FoundryResourceField<number>;
+    legres?: FoundryResourceField<number>;
+  };
+  spells?: UnknownRecord;
 }
+
+export interface DnD5eItemSystemData extends FoundryItemSystemBase {
+  description?: FoundryDescriptionField | string;
+  quantity?: number;
+  equipped?: boolean;
+  attunement?: number | string;
+  actionType?: string | FoundryValueField<string>;
+  actions?: number | FoundryValueField<number>;
+}
+
+export type DnD5eActorDocument = FoundryActorDocumentBase<
+  DnD5eActorSystemData,
+  DnD5eItemSystemData
+>;
+export type DnD5eItemDocument = FoundryItemDocumentBase<DnD5eItemSystemData>;
+export type DnD5eCompendiumDocument = FoundryCompendiumDocumentBase<
+  DnD5eActorSystemData,
+  DnD5eItemSystemData
+>;
+
+export interface PF2eAbilityData extends UnknownRecord {
+  value?: number;
+  mod?: number;
+}
+
+export interface PF2eSkillData extends UnknownRecord {
+  value?: number;
+  mod?: number;
+  rank?: number;
+}
+
+export interface PF2eActorSystemData extends FoundryActorSystemBase {
+  attributes?: FoundryActorAttributesBase & {
+    hp?: FoundryResourceField<number>;
+    ac?: FoundryValueField<number> | number;
+    spellcasting?: UnknownRecord;
+  };
+  details?: FoundryActorSystemBase['details'] & {
+    level?: number | FoundryValueField<number>;
+    alignment?: string | FoundryValueField<string>;
+    ancestry?: string;
+    class?: string;
+  };
+  traits?: FoundryTraitsData;
+  abilities?: Record<string, PF2eAbilityData>;
+  skills?: Record<string, PF2eSkillData>;
+  perception?: UnknownRecord & {
+    value?: number;
+    mod?: number;
+    rank?: number;
+  };
+  saves?: Record<
+    string,
+    UnknownRecord & {
+      value?: number;
+      mod?: number;
+      rank?: number;
+    }
+  >;
+  spellcasting?: UnknownRecord;
+}
+
+export interface PF2eItemSystemData extends FoundryItemSystemBase {
+  description?: FoundryDescriptionField | string;
+  quantity?: number;
+  equipped?: boolean;
+  traits?: FoundryTraitsData;
+  level?: number | FoundryValueField<number>;
+  actionType?: string | FoundryValueField<string>;
+  actions?: number | FoundryValueField<number>;
+}
+
+export type PF2eActorDocument = FoundryActorDocumentBase<PF2eActorSystemData, PF2eItemSystemData>;
+export type PF2eItemDocument = FoundryItemDocumentBase<PF2eItemSystemData>;
+export type PF2eCompendiumDocument = FoundryCompendiumDocumentBase<
+  PF2eActorSystemData,
+  PF2eItemSystemData
+>;
+
+export interface DSA5CharacteristicData extends UnknownRecord {
+  value?: number;
+  initial?: number;
+}
+
+export interface DSA5ActorSystemData extends FoundryActorSystemBase {
+  details?: FoundryActorSystemBase['details'] & {
+    species?: FoundryValueField<string>;
+    culture?: FoundryValueField<string>;
+    career?: FoundryValueField<string>;
+    experience?: {
+      total?: number;
+      spent?: number;
+    };
+  };
+  status?: UnknownRecord & {
+    wounds?: {
+      current?: number;
+      value?: number;
+      max?: number;
+    };
+    astralenergy?: FoundryResourceField<number>;
+    karmaenergy?: FoundryResourceField<number>;
+    speed?: number | FoundryValueField<number>;
+    initiative?: number | FoundryValueField<number>;
+    dodge?: number | FoundryValueField<number>;
+    armour?: number | FoundryValueField<number>;
+    armor?: number | FoundryValueField<number>;
+    size?: number | FoundryValueField<number>;
+  };
+  characteristics?: Record<string, DSA5CharacteristicData>;
+  tradition?: UnknownRecord & {
+    magical?: boolean | UnknownRecord;
+    clerical?: boolean | UnknownRecord;
+  };
+}
+
+export interface DSA5ItemSystemData extends FoundryItemSystemBase {
+  description?: FoundryDescriptionField | string;
+  quantity?: number;
+  equipped?: boolean;
+  level?: number | FoundryValueField<number>;
+  actionType?: string | FoundryValueField<string>;
+  actions?: number | FoundryValueField<number>;
+}
+
+export type DSA5ActorDocument = FoundryActorDocumentBase<DSA5ActorSystemData, DSA5ItemSystemData>;
+export type DSA5ItemDocument = FoundryItemDocumentBase<DSA5ItemSystemData>;
+export type DSA5CompendiumDocument = FoundryCompendiumDocumentBase<
+  DSA5ActorSystemData,
+  DSA5ItemSystemData
+>;
 
 /**
  * System Adapter Interface
