@@ -1,4 +1,6 @@
 import type {
+  FoundryGetCharacterAdvancementOptionsRequest,
+  FoundryGetCharacterAdvancementOptionsResponse,
   FoundryPreviewCharacterProgressionRequest,
   FoundryPreviewCharacterProgressionResponse,
 } from '@foundry-mcp/shared';
@@ -17,7 +19,7 @@ export interface ActorProgressionServiceContext {
 export class FoundryActorProgressionService {
   constructor(private readonly context: ActorProgressionServiceContext) {}
 
-  previewCharacterProgression(
+  async previewCharacterProgression(
     request: FoundryPreviewCharacterProgressionRequest
   ): Promise<FoundryPreviewCharacterProgressionResponse> {
     this.context.validateFoundryState();
@@ -36,12 +38,45 @@ export class FoundryActorProgressionService {
     }
 
     try {
-      const response = strategy.previewCharacterProgression({ actor, request });
+      const response = await strategy.previewCharacterProgression({ actor, request });
       this.context.auditLog('previewCharacterProgression', request, 'success');
-      return Promise.resolve(response);
+      return response;
     } catch (error) {
       this.context.auditLog(
         'previewCharacterProgression',
+        request,
+        'failure',
+        error instanceof Error ? error.message : 'Unknown error'
+      );
+      throw error;
+    }
+  }
+
+  async getCharacterAdvancementOptions(
+    request: FoundryGetCharacterAdvancementOptionsRequest
+  ): Promise<FoundryGetCharacterAdvancementOptionsResponse> {
+    this.context.validateFoundryState();
+
+    const actor = this.context.findActorByIdentifier(request.actorIdentifier);
+    if (!actor) {
+      throw new Error(`Actor not found: ${request.actorIdentifier}`);
+    }
+
+    const systemId = this.context.getSystemId();
+    const strategy = getActorProgressionStrategy(systemId);
+    if (!strategy) {
+      throw new Error(
+        `UNSUPPORTED_CAPABILITY: Character advancement options are not implemented for system "${systemId}".`
+      );
+    }
+
+    try {
+      const response = await strategy.getCharacterAdvancementOptions({ actor, request });
+      this.context.auditLog('getCharacterAdvancementOptions', request, 'success');
+      return response;
+    } catch (error) {
+      this.context.auditLog(
+        'getCharacterAdvancementOptions',
         request,
         'failure',
         error instanceof Error ? error.message : 'Unknown error'

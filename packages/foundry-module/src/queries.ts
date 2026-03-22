@@ -9,6 +9,8 @@ import type {
   FoundryCompendiumSearchRequest,
   FoundryCreatureSearchCriteria,
   FoundryCompendiumEntryFull,
+  FoundryGetCharacterAdvancementOptionsRequest,
+  FoundryGetCharacterAdvancementOptionsResponse,
   FoundryGetCharacterInfoRequest,
   FoundryJournalEntryResponse,
   FoundryJournalSummary,
@@ -171,6 +173,8 @@ export class QueryHandlers {
       this.handleCreateActorFromCompendium.bind(this);
     CONFIG.queries[`${modulePrefix}.previewCharacterProgression`] =
       this.handlePreviewCharacterProgression.bind(this);
+    CONFIG.queries[`${modulePrefix}.getCharacterAdvancementOptions`] =
+      this.handleGetCharacterAdvancementOptions.bind(this);
     CONFIG.queries[`${modulePrefix}.updateActor`] = this.handleUpdateActor.bind(this);
     CONFIG.queries[`${modulePrefix}.updateActorEmbeddedItem`] =
       this.handleUpdateActorEmbeddedItem.bind(this);
@@ -557,6 +561,40 @@ export class QueryHandlers {
     } catch (error) {
       throw new Error(
         `Failed to preview character progression: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+    }
+  }
+
+  /**
+   * Handle character advancement option lookup request
+   */
+  private async handleGetCharacterAdvancementOptions(
+    data: FoundryGetCharacterAdvancementOptionsRequest
+  ): Promise<FoundryGetCharacterAdvancementOptionsResponse | QueryErrorResult> {
+    try {
+      const gmCheck = this.validateGMAccess();
+      if (!gmCheck.allowed) {
+        return { error: 'Access denied', success: false };
+      }
+
+      this.dataAccess.validateFoundryState();
+
+      if (!data.actorIdentifier) {
+        throw new Error('actorIdentifier is required');
+      }
+
+      if (!Number.isInteger(data.targetLevel) || data.targetLevel <= 0) {
+        throw new Error('targetLevel must be a positive integer');
+      }
+
+      if (!data.stepId) {
+        throw new Error('stepId is required');
+      }
+
+      return await this.dataAccess.getCharacterAdvancementOptions(data);
+    } catch (error) {
+      throw new Error(
+        `Failed to get character advancement options: ${error instanceof Error ? error.message : 'Unknown error'}`
       );
     }
   }

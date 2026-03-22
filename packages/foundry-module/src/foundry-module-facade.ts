@@ -32,6 +32,8 @@ import type {
   FoundryCreatureSearchCriteria,
   FoundryCreatureSearchResponse,
   FoundryCompendiumEntryFull,
+  FoundryGetCharacterAdvancementOptionsRequest,
+  FoundryGetCharacterAdvancementOptionsResponse,
   FoundryJournalEntryResponse,
   FoundryJournalSummary,
   FoundryPreviewCharacterProgressionRequest,
@@ -516,6 +518,12 @@ export class FoundryModuleFacade {
     request: FoundryPreviewCharacterProgressionRequest
   ): Promise<FoundryPreviewCharacterProgressionResponse> {
     return this.actorProgressionService.previewCharacterProgression(request);
+  }
+
+  async getCharacterAdvancementOptions(
+    request: FoundryGetCharacterAdvancementOptionsRequest
+  ): Promise<FoundryGetCharacterAdvancementOptionsResponse> {
+    return this.actorProgressionService.getCharacterAdvancementOptions(request);
   }
 
   async updateActor(request: FoundryUpdateActorRequest): Promise<FoundryUpdateActorResponse> {

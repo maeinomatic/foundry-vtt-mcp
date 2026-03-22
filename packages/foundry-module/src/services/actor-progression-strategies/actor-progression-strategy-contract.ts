@@ -1,4 +1,6 @@
 import type {
+  FoundryGetCharacterAdvancementOptionsRequest,
+  FoundryGetCharacterAdvancementOptionsResponse,
   FoundryPreviewCharacterProgressionRequest,
   FoundryPreviewCharacterProgressionResponse,
 } from '@foundry-mcp/shared';
@@ -22,7 +24,11 @@ export interface ActorProgressionStrategy {
   previewCharacterProgression(params: {
     actor: ActorProgressionActorLike;
     request: FoundryPreviewCharacterProgressionRequest;
-  }): FoundryPreviewCharacterProgressionResponse;
+  }): Promise<FoundryPreviewCharacterProgressionResponse>;
+  getCharacterAdvancementOptions(params: {
+    actor: ActorProgressionActorLike;
+    request: FoundryGetCharacterAdvancementOptionsRequest;
+  }): Promise<FoundryGetCharacterAdvancementOptionsResponse>;
 }
 
 export function getActorItems(actor: ActorProgressionActorLike): ActorProgressionItemLike[] {

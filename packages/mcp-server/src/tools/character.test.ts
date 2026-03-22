@@ -219,6 +219,99 @@ describe('CharacterTools', () => {
     });
   });
 
+  it('returns DnD5e advancement options for an ASI step', async () => {
+    const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
+      if (method === 'foundry-mcp-bridge.getCharacterAdvancementOptions') {
+        expect(data).toEqual({
+          actorIdentifier: 'Laeral',
+          classIdentifier: 'Wizard',
+          targetLevel: 8,
+          stepId: 'asi-step',
+          query: 'war',
+          limit: 10,
+        });
+        return Promise.resolve({
+          system: 'dnd5e',
+          actorId: 'actor-3',
+          actorName: 'Laeral',
+          actorType: 'character',
+          targetLevel: 8,
+          stepId: 'asi-step',
+          stepType: 'AbilityScoreImprovement',
+          stepTitle: 'Ability Score Improvement',
+          classId: 'class-wizard',
+          className: 'Wizard',
+          choiceDetails: {
+            kind: 'ability-score-improvement',
+            optionQuerySupported: true,
+            featChoiceAvailable: true,
+            points: 2,
+          },
+          options: [
+            {
+              id: 'asi',
+              name: 'Ability Score Improvement',
+              type: 'ability-score-improvement',
+              source: 'synthetic',
+            },
+            {
+              id: 'feat-war-caster',
+              name: 'War Caster',
+              type: 'feat',
+              source: 'compendium',
+              uuid: 'Compendium.dnd5e.feats.Item.feat-war-caster',
+              packId: 'dnd5e.feats',
+            },
+          ],
+          totalOptions: 2,
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected query: ${method}`));
+    });
+
+    const tools = new CharacterTools({
+      foundryClient: { query } as unknown as FoundryClient,
+      logger: createLoggerStub(),
+    });
+
+    const result = (await tools.handleGetCharacterAdvancementOptions({
+      characterIdentifier: 'Laeral',
+      classIdentifier: 'Wizard',
+      targetLevel: 8,
+      stepId: 'asi-step',
+      query: 'war',
+      limit: 10,
+    })) as Record<string, unknown>;
+
+    expect(result).toMatchObject({
+      success: true,
+      character: {
+        id: 'actor-3',
+        name: 'Laeral',
+        type: 'character',
+      },
+      step: {
+        id: 'asi-step',
+        type: 'AbilityScoreImprovement',
+        title: 'Ability Score Improvement',
+      },
+      totalOptions: 2,
+      classId: 'class-wizard',
+      className: 'Wizard',
+      options: [
+        {
+          id: 'asi',
+          type: 'ability-score-improvement',
+        },
+        {
+          id: 'feat-war-caster',
+          type: 'feat',
+        },
+      ],
+    });
+  });
+
   it('uses the adapter-generated progression update and generic actor-update bridge request', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
       if (method === 'foundry-mcp-bridge.getCharacterInfo') {

@@ -5,6 +5,8 @@ import type {
   FoundryActorSystemBase,
   FoundryCharacterEffect,
   FoundryCharacterInfo,
+  FoundryGetCharacterAdvancementOptionsRequest,
+  FoundryGetCharacterAdvancementOptionsResponse,
   FoundryItemDocumentBase,
   FoundryItemSystemBase,
   FoundryPreviewCharacterProgressionRequest,
@@ -278,6 +280,42 @@ export class CharacterTools {
             },
           },
           required: ['characterIdentifier'],
+        },
+      },
+      {
+        name: 'get-character-advancement-options',
+        description:
+          'Get concrete options for a specific pending advancement step. For DnD5e this can return ASI/feat candidates, subclass options, item-choice pools, or hit point mode choices.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            characterIdentifier: {
+              type: 'string',
+              description: 'Character name or ID to inspect',
+            },
+            targetLevel: {
+              type: 'number',
+              description: 'The level-up target used for the preview context',
+            },
+            stepId: {
+              type: 'string',
+              description:
+                'The pending advancement step ID returned by preview-character-progression',
+            },
+            classIdentifier: {
+              type: 'string',
+              description: 'DnD5e only: class item name or ID for multiclass targeting',
+            },
+            query: {
+              type: 'string',
+              description: 'Optional text filter for large option sets such as feats or subclasses',
+            },
+            limit: {
+              type: 'number',
+              description: 'Optional maximum number of options to return',
+            },
+          },
+          required: ['characterIdentifier', 'targetLevel', 'stepId'],
         },
       },
       {
@@ -565,6 +603,55 @@ export class CharacterTools {
       proposedUpdates: previewResult.prepared.updates,
       pendingAdvancements: previewResult.preview?.pendingSteps ?? [],
       ...(previewResult.warnings.length > 0 ? { warnings: previewResult.warnings } : {}),
+    };
+  }
+
+  async handleGetCharacterAdvancementOptions(args: unknown): Promise<UnknownRecord> {
+    const schema = z.object({
+      characterIdentifier: z.string().min(1, 'Character identifier cannot be empty'),
+      targetLevel: z.number().int().positive(),
+      stepId: z.string().min(1, 'stepId cannot be empty'),
+      classIdentifier: z.string().min(1).optional(),
+      query: z.string().min(1).optional(),
+      limit: z.number().int().positive().optional(),
+    });
+
+    const parsed = schema.parse(args);
+
+    this.logger.info('Getting character advancement options', parsed);
+
+    const request: FoundryGetCharacterAdvancementOptionsRequest = {
+      actorIdentifier: parsed.characterIdentifier,
+      targetLevel: parsed.targetLevel,
+      stepId: parsed.stepId,
+      ...(parsed.classIdentifier !== undefined ? { classIdentifier: parsed.classIdentifier } : {}),
+      ...(parsed.query !== undefined ? { query: parsed.query } : {}),
+      ...(parsed.limit !== undefined ? { limit: parsed.limit } : {}),
+    };
+
+    const result = await this.foundryClient.query<FoundryGetCharacterAdvancementOptionsResponse>(
+      'foundry-mcp-bridge.getCharacterAdvancementOptions',
+      request
+    );
+
+    return {
+      success: true,
+      character: {
+        id: result.actorId,
+        name: result.actorName,
+        type: result.actorType,
+      },
+      step: {
+        id: result.stepId,
+        type: result.stepType,
+        title: result.stepTitle,
+        ...(result.choiceDetails ? { choiceDetails: result.choiceDetails } : {}),
+      },
+      options: result.options,
+      totalOptions: result.totalOptions,
+      ...(result.classId ? { classId: result.classId } : {}),
+      ...(result.className ? { className: result.className } : {}),
+      ...(result.warnings ? { warnings: result.warnings } : {}),
     };
   }
 

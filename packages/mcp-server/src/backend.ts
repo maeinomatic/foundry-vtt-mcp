@@ -1633,6 +1633,11 @@ async function startBackend(): Promise<void> {
 
                     break;
 
+                  case 'get-character-advancement-options':
+                    result = await characterTools.handleGetCharacterAdvancementOptions(args);
+
+                    break;
+
                   case 'update-character-progression':
                     result = await characterTools.handleUpdateCharacterProgression(args);
 

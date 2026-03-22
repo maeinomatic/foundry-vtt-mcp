@@ -254,12 +254,64 @@ export interface FoundryProgressionPreviewStep extends UnknownRecord {
   choicesRequired: boolean;
   autoApplySafe: boolean;
   hints?: string[];
+  choiceDetails?: FoundryAdvancementChoiceDetails;
+}
+
+export interface FoundryAdvancementOption extends UnknownRecord {
+  id: string;
+  name: string;
+  type: string;
+  source: 'compendium' | 'configured' | 'synthetic';
+  uuid?: string;
+  packId?: string;
+  hint?: string;
+}
+
+export interface FoundryAdvancementChoiceDetails extends UnknownRecord {
+  kind: string;
+  optionQuerySupported?: boolean;
+  chooseCount?: number;
+  replacementAllowed?: boolean;
+  featChoiceAvailable?: boolean;
+  points?: number;
+  pointCap?: number;
+  maxScore?: number;
+  fixed?: Record<string, number>;
+  locked?: string[];
+  recommendation?: FoundryAdvancementOption;
+  options?: FoundryAdvancementOption[];
 }
 
 export interface FoundryPreviewCharacterProgressionRequest {
   actorIdentifier: string;
   targetLevel: number;
   classIdentifier?: string;
+}
+
+export interface FoundryGetCharacterAdvancementOptionsRequest {
+  actorIdentifier: string;
+  targetLevel: number;
+  stepId: string;
+  classIdentifier?: string;
+  query?: string;
+  limit?: number;
+}
+
+export interface FoundryGetCharacterAdvancementOptionsResponse extends UnknownRecord {
+  system: string;
+  actorId: string;
+  actorName: string;
+  actorType: string;
+  targetLevel: number;
+  stepId: string;
+  stepType: string;
+  stepTitle: string;
+  choiceDetails?: FoundryAdvancementChoiceDetails;
+  options: FoundryAdvancementOption[];
+  totalOptions: number;
+  classId?: string;
+  className?: string;
+  warnings?: string[];
 }
 
 export interface FoundryPreviewCharacterProgressionResponse extends UnknownRecord {
