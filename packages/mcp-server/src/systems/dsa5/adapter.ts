@@ -17,6 +17,8 @@ import type {
   SystemCharacterInfo,
   SystemCompendiumCreatureEntity,
   SystemSpellcastingEntry,
+  CharacterProgressionUpdateRequest,
+  PreparedCharacterProgressionUpdate,
 } from '../types.js';
 import type {
   FoundryActorDocumentBase,
@@ -25,7 +27,12 @@ import type {
   UnknownRecord,
 } from '../../foundry-types.js';
 import { DSA5FiltersSchema, matchesDSA5Filters, describeDSA5Filters } from './filters.js';
-import { FIELD_PATHS, getExperienceLevel, EIGENSCHAFT_NAMES } from './constants.js';
+import {
+  FIELD_PATHS,
+  getExperienceLevel,
+  getExperienceLevelByNumber,
+  EIGENSCHAFT_NAMES,
+} from './constants.js';
 
 function asRecord(value: unknown): UnknownRecord | undefined {
   return typeof value === 'object' && value !== null ? (value as UnknownRecord) : undefined;
@@ -730,5 +737,51 @@ export class DSA5Adapter implements SystemAdapter {
     }
 
     return formatted;
+  }
+
+  prepareCharacterProgressionUpdate(
+    _actorData: SystemCharacterInfo,
+    request: CharacterProgressionUpdateRequest
+  ): PreparedCharacterProgressionUpdate {
+    const directExperience = request.experiencePoints;
+    const targetLevel = request.targetLevel;
+
+    if (directExperience === undefined && targetLevel === undefined) {
+      throw new Error(
+        'UNSUPPORTED_CAPABILITY: DSA5 progression updates require either experiencePoints or targetLevel.'
+      );
+    }
+
+    const appliedExperience = directExperience ?? getExperienceLevelByNumber(targetLevel ?? 1).min;
+
+    const updates: UnknownRecord = {
+      'system.details.experience.total': appliedExperience,
+    };
+
+    if (request.experienceSpent !== undefined) {
+      updates['system.details.experience.spent'] = request.experienceSpent;
+    }
+
+    const summary: Record<string, unknown> = {
+      experiencePoints: appliedExperience,
+      mode: directExperience !== undefined ? 'set-experience' : 'set-level-floor',
+    };
+
+    if (targetLevel !== undefined) {
+      summary.targetLevel = targetLevel;
+    }
+
+    const warnings =
+      directExperience === undefined && targetLevel !== undefined
+        ? [
+            `DSA5 level ${targetLevel} was mapped to the minimum AP threshold for that Erfahrungsgrad.`,
+          ]
+        : undefined;
+
+    return {
+      updates,
+      summary,
+      ...(warnings ? { warnings } : {}),
+    };
   }
 }

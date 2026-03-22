@@ -1,7 +1,10 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { FoundryClient } from '../foundry-client.js';
 import type { Logger } from '../logger.js';
+import { PF2eAdapter } from '../systems/pf2e/adapter.js';
+import { SystemRegistry } from '../systems/system-registry.js';
+import { clearSystemCache } from '../utils/system-detection.js';
 import { CharacterTools } from './character.js';
 
 function createLoggerStub(): Logger {
@@ -17,6 +20,10 @@ function createLoggerStub(): Logger {
 }
 
 describe('CharacterTools', () => {
+  beforeEach(() => {
+    clearSystemCache();
+  });
+
   it('uses the shared character-info bridge request shape', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
       if (method === 'foundry-mcp-bridge.getCharacterInfo') {
@@ -104,6 +111,86 @@ describe('CharacterTools', () => {
       characterId: 'actor-1',
       characterName: 'Aldric',
       totalMatches: 1,
+    });
+  });
+
+  it('uses the adapter-generated progression update and generic actor-update bridge request', async () => {
+    const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
+      if (method === 'foundry-mcp-bridge.getCharacterInfo') {
+        expect(data).toEqual({ identifier: 'Merisiel' });
+        return Promise.resolve({
+          id: 'actor-2',
+          name: 'Merisiel',
+          type: 'character',
+          system: {
+            details: {
+              level: { value: 3 },
+            },
+          },
+          items: [],
+          effects: [],
+        });
+      }
+
+      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+        return Promise.resolve({ system: 'pf2e' });
+      }
+
+      if (method === 'foundry-mcp-bridge.updateActor') {
+        expect(data).toEqual({
+          identifier: 'Merisiel',
+          updates: {
+            'system.details.level.value': 4,
+          },
+          reason: 'character progression update',
+        });
+        return Promise.resolve({
+          success: true,
+          actorId: 'actor-2',
+          actorName: 'Merisiel',
+          actorType: 'character',
+          appliedUpdates: {
+            'system.details.level.value': 4,
+          },
+          updatedFields: ['system.details.level.value'],
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected query: ${method}`));
+    });
+
+    const registry = new SystemRegistry();
+    registry.register(new PF2eAdapter());
+
+    const tools = new CharacterTools({
+      foundryClient: { query } as unknown as FoundryClient,
+      logger: createLoggerStub(),
+      systemRegistry: registry,
+    });
+
+    const result = (await tools.handleUpdateCharacterProgression({
+      characterIdentifier: 'Merisiel',
+      targetLevel: 4,
+    })) as Record<string, unknown>;
+
+    expect(query).toHaveBeenCalledWith('foundry-mcp-bridge.updateActor', {
+      identifier: 'Merisiel',
+      updates: {
+        'system.details.level.value': 4,
+      },
+      reason: 'character progression update',
+    });
+    expect(result).toMatchObject({
+      success: true,
+      character: {
+        id: 'actor-2',
+        name: 'Merisiel',
+      },
+      progression: {
+        targetLevel: 4,
+        mode: 'set-level',
+      },
+      updatedFields: ['system.details.level.value'],
     });
   });
 });

@@ -13,6 +13,8 @@ import type {
   FoundryJournalEntryResponse,
   FoundryJournalSummary,
   FoundrySearchCharacterItemsRequest,
+  FoundryUpdateActorRequest,
+  FoundryUpdateActorResponse,
   FoundryWorldDetails,
 } from '@foundry-mcp/shared';
 
@@ -163,6 +165,7 @@ export class QueryHandlers {
     // Phase 2 & 3: Write operation queries
     CONFIG.queries[`${modulePrefix}.createActorFromCompendium`] =
       this.handleCreateActorFromCompendium.bind(this);
+    CONFIG.queries[`${modulePrefix}.updateActor`] = this.handleUpdateActor.bind(this);
     CONFIG.queries[`${modulePrefix}.getCompendiumDocumentFull`] =
       this.handleGetCompendiumDocumentFull.bind(this);
     CONFIG.queries[`${modulePrefix}.addActorsToScene`] = this.handleAddActorsToScene.bind(this);
@@ -516,6 +519,44 @@ export class QueryHandlers {
     } catch (error) {
       throw new Error(
         `Failed to create actor from compendium: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+    }
+  }
+
+  /**
+   * Handle actor update request
+   */
+  private async handleUpdateActor(
+    data: FoundryUpdateActorRequest
+  ): Promise<FoundryUpdateActorResponse | QueryErrorResult> {
+    try {
+      const gmCheck = this.validateGMAccess();
+      if (!gmCheck.allowed) {
+        return { error: 'Access denied', success: false };
+      }
+
+      this.dataAccess.validateFoundryState();
+
+      const permissionCheck = await this.dataAccess.validateWritePermissions('updateActor');
+      if (!permissionCheck.allowed) {
+        return {
+          error: permissionCheck.reason ?? 'Actor update not allowed',
+          success: false,
+        };
+      }
+
+      if (!data.identifier) {
+        throw new Error('identifier is required');
+      }
+
+      if (!data.updates || typeof data.updates !== 'object' || Array.isArray(data.updates)) {
+        throw new Error('updates must be an object');
+      }
+
+      return await this.dataAccess.updateActor(data);
+    } catch (error) {
+      throw new Error(
+        `Failed to update actor: ${error instanceof Error ? error.message : 'Unknown error'}`
       );
     }
   }

@@ -17,6 +17,8 @@ import type {
   SystemCharacterInfo,
   SystemCompendiumCreatureEntity,
   SystemSpellcastingEntry,
+  CharacterProgressionUpdateRequest,
+  PreparedCharacterProgressionUpdate,
 } from '../types.js';
 import type {
   FoundryCompendiumPackSummary,
@@ -685,5 +687,38 @@ export class DnD5eAdapter implements SystemAdapter {
     }
 
     return formatted;
+  }
+
+  prepareCharacterProgressionUpdate(
+    actorData: SystemCharacterInfo,
+    request: CharacterProgressionUpdateRequest
+  ): PreparedCharacterProgressionUpdate {
+    const actor = actorData as DnD5eActorDocument;
+    const targetLevel = request.targetLevel;
+
+    if (targetLevel === undefined) {
+      throw new Error(
+        'UNSUPPORTED_CAPABILITY: DnD5e progression updates require a targetLevel, and full DnD5e character advancement is not implemented yet.'
+      );
+    }
+
+    if (actor.type === 'character') {
+      throw new Error(
+        'UNSUPPORTED_CAPABILITY: DnD5e character leveling is class-item advancement based and is not safe to apply through a raw actor level update.'
+      );
+    }
+
+    return {
+      updates: {
+        'system.details.level': { value: targetLevel },
+      },
+      summary: {
+        targetLevel,
+        mode: 'set-level',
+      },
+      warnings: [
+        'DnD5e support is currently limited to non-character actors. Full class advancement is not implemented in this tool yet.',
+      ],
+    };
   }
 }

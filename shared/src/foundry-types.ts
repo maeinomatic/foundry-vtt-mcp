@@ -245,6 +245,21 @@ export interface FoundrySearchCharacterItemsResponse extends UnknownRecord {
   totalMatches: number;
 }
 
+export interface FoundryUpdateActorRequest {
+  identifier: string;
+  updates: UnknownRecord;
+  reason?: string;
+}
+
+export interface FoundryUpdateActorResponse extends UnknownRecord {
+  success: boolean;
+  actorId: string;
+  actorName: string;
+  actorType: string;
+  appliedUpdates: UnknownRecord;
+  updatedFields: string[];
+}
+
 export interface FoundryCompendiumSearchFilters {
   challengeRating?: number | { min?: number; max?: number };
   creatureType?: string;

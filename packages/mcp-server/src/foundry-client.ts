@@ -21,6 +21,8 @@ import type {
   FoundryListActorsRequest,
   FoundrySearchCharacterItemsRequest,
   FoundrySearchCharacterItemsResponse,
+  FoundryUpdateActorRequest,
+  FoundryUpdateActorResponse,
   UnknownRecord,
 } from './foundry-types.js';
 
@@ -87,6 +89,10 @@ export class FoundryClient {
     method: 'foundry-mcp-bridge.searchCharacterItems',
     data: FoundrySearchCharacterItemsRequest
   ): Promise<FoundrySearchCharacterItemsResponse>;
+  async query(
+    method: 'foundry-mcp-bridge.updateActor',
+    data: FoundryUpdateActorRequest
+  ): Promise<FoundryUpdateActorResponse>;
   async query(
     method: 'foundry-mcp-bridge.searchCompendium',
     data: FoundryCompendiumSearchRequest

@@ -9,6 +9,7 @@ import {
   type SceneTokenPlacement,
   type TokenPlacementResult,
 } from './services/actor-creation-service.js';
+import { FoundryActorUpdateService } from './services/actor-update-service.js';
 import { FoundryCharacterService } from './services/character-service.js';
 import { FoundryCompendiumService } from './services/compendium-service.js';
 import { FoundryJournalService } from './services/journal-service.js';
@@ -34,6 +35,8 @@ import type {
   FoundryJournalSummary,
   FoundrySearchCharacterItemsRequest,
   FoundrySearchCharacterItemsResponse,
+  FoundryUpdateActorRequest,
+  FoundryUpdateActorResponse,
   UnknownRecord,
 } from '@foundry-mcp/shared';
 
@@ -68,6 +71,7 @@ export class FoundryModuleFacade {
   private moduleId: string = MODULE_ID;
   private actorDirectoryService: FoundryActorDirectoryService;
   private actorCreationService: FoundryActorCreationService;
+  private actorUpdateService: FoundryActorUpdateService;
   private characterService: FoundryCharacterService;
   private compendiumService: FoundryCompendiumService;
   private journalService: FoundryJournalService;
@@ -95,6 +99,17 @@ export class FoundryModuleFacade {
         this.compendiumService.getCompendiumDocumentFull(packId, documentId),
       searchCompendium: (query: string, packType?: string): Promise<CompendiumSearchResult[]> =>
         this.compendiumService.searchCompendium(query, packType),
+    });
+    this.actorUpdateService = new FoundryActorUpdateService({
+      auditLog: (
+        action: string,
+        data: unknown,
+        status: 'success' | 'failure',
+        errorMessage?: string
+      ): void => this.auditLog(action, data, status, errorMessage),
+      findActorByIdentifier: (identifier: string): ActorLookupLike | null =>
+        this.findActorByIdentifier(identifier),
+      validateFoundryState: (): void => this.validateFoundryState(),
     });
     this.characterService = new FoundryCharacterService({
       auditLog: (
@@ -479,6 +494,10 @@ export class FoundryModuleFacade {
     return this.actorCreationService.createActorFromCompendiumEntry(request);
   }
 
+  async updateActor(request: FoundryUpdateActorRequest): Promise<FoundryUpdateActorResponse> {
+    return this.actorUpdateService.updateActor(request);
+  }
+
   /**
    * Get full compendium document with all embedded data
    */
@@ -502,7 +521,7 @@ export class FoundryModuleFacade {
   /**
    * Validate write operation permissions
    */
-  validateWritePermissions(operation: 'createActor' | 'modifyScene'): Promise<{
+  validateWritePermissions(operation: 'createActor' | 'modifyScene' | 'updateActor'): Promise<{
     allowed: boolean;
     reason?: string;
     requiresConfirmation?: boolean;

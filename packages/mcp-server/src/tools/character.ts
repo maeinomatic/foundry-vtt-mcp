@@ -8,11 +8,15 @@ import type {
   FoundryItemDocumentBase,
   FoundryItemSystemBase,
   FoundrySearchCharacterItemsResponse,
+  FoundryUpdateActorRequest,
+  FoundryUpdateActorResponse,
   UnknownRecord,
 } from '../foundry-types.js';
 import { Logger } from '../logger.js';
 import { SystemRegistry } from '../systems/system-registry.js';
 import type {
+  CharacterProgressionUpdateRequest,
+  PreparedCharacterProgressionUpdate,
   SystemAdapter,
   SystemCharacterAction,
   SystemSpellcastingEntry,
@@ -235,6 +239,33 @@ export class CharacterTools {
             limit: {
               type: 'number',
               description: 'Maximum number of results to return (default: 20)',
+            },
+          },
+          required: ['characterIdentifier'],
+        },
+      },
+      {
+        name: 'update-character-progression',
+        description:
+          'Update character progression using system-aware adapter logic. Supports PF2e level updates and DSA5 AP/Erfahrungsgrad updates. DnD5e character class advancement is not yet supported by this tool.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            characterIdentifier: {
+              type: 'string',
+              description: 'Character name or ID to update',
+            },
+            targetLevel: {
+              type: 'number',
+              description: 'Target level when the active system supports direct level updates',
+            },
+            experiencePoints: {
+              type: 'number',
+              description: 'Direct experience/AP total for systems that use it',
+            },
+            experienceSpent: {
+              type: 'number',
+              description: 'Optional spent experience/AP value for systems that track it',
             },
           },
           required: ['characterIdentifier'],
@@ -475,6 +506,80 @@ export class CharacterTools {
         `Failed to search items for "${characterIdentifier}": ${error instanceof Error ? error.message : 'Unknown error'}`
       );
     }
+  }
+
+  async handleUpdateCharacterProgression(args: unknown): Promise<UnknownRecord> {
+    const schema = z
+      .object({
+        characterIdentifier: z.string().min(1, 'Character identifier cannot be empty'),
+        targetLevel: z.number().int().positive().optional(),
+        experiencePoints: z.number().int().nonnegative().optional(),
+        experienceSpent: z.number().int().nonnegative().optional(),
+      })
+      .refine(
+        value => value.targetLevel !== undefined || value.experiencePoints !== undefined,
+        'Provide targetLevel or experiencePoints'
+      );
+
+    const parsed = schema.parse(args);
+
+    this.logger.info('Updating character progression', parsed);
+
+    const characterData = await this.foundryClient.query<CharacterInfoResponse>(
+      'foundry-mcp-bridge.getCharacterInfo',
+      {
+        identifier: parsed.characterIdentifier,
+      }
+    );
+
+    const progressionRequest: CharacterProgressionUpdateRequest = {
+      ...(parsed.targetLevel !== undefined ? { targetLevel: parsed.targetLevel } : {}),
+      ...(parsed.experiencePoints !== undefined
+        ? { experiencePoints: parsed.experiencePoints }
+        : {}),
+      ...(parsed.experienceSpent !== undefined ? { experienceSpent: parsed.experienceSpent } : {}),
+    };
+
+    const prepared = await this.prepareProgressionUpdate(characterData, progressionRequest);
+    const request: FoundryUpdateActorRequest = {
+      identifier: parsed.characterIdentifier,
+      updates: prepared.updates,
+      reason: 'character progression update',
+    };
+
+    const result = await this.foundryClient.query<FoundryUpdateActorResponse>(
+      'foundry-mcp-bridge.updateActor',
+      request
+    );
+
+    return {
+      success: result.success,
+      character: {
+        id: result.actorId,
+        name: result.actorName,
+        type: result.actorType,
+      },
+      progression: prepared.summary,
+      appliedUpdates: result.appliedUpdates,
+      updatedFields: result.updatedFields,
+      ...(prepared.warnings ? { warnings: prepared.warnings } : {}),
+    };
+  }
+
+  private async prepareProgressionUpdate(
+    characterData: CharacterInfoResponse,
+    request: CharacterProgressionUpdateRequest
+  ): Promise<PreparedCharacterProgressionUpdate> {
+    return this.withSystemAdapter<PreparedCharacterProgressionUpdate>(
+      'character progression update preparation',
+      (adapter: SystemAdapter): PreparedCharacterProgressionUpdate =>
+        adapter.prepareCharacterProgressionUpdate(characterData, request),
+      () => {
+        throw new Error(
+          'UNSUPPORTED_CAPABILITY: No system adapter is available for progression updates in this world.'
+        );
+      }
+    );
   }
 
   private async formatCharacterResponse(

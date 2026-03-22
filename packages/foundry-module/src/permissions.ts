@@ -45,6 +45,13 @@ export class PermissionManager {
       settingKey: 'allowWriteOperations',
       requiresGM: false,
     },
+    updateActor: {
+      name: 'Update Actor',
+      level: PERMISSION_LEVELS.MEDIUM_RISK,
+      description: 'Modify actor data such as level or progression fields',
+      settingKey: 'allowWriteOperations',
+      requiresGM: false,
+    },
     modifyScene: {
       name: 'Modify Scene',
       level: PERMISSION_LEVELS.MEDIUM_RISK,

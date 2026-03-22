@@ -73,6 +73,18 @@ export interface SystemSpellData extends FoundrySpellInfo {}
 
 export interface SystemSpellcastingEntry extends FoundrySpellcastingEntry {}
 
+export interface CharacterProgressionUpdateRequest {
+  targetLevel?: number;
+  experiencePoints?: number;
+  experienceSpent?: number;
+}
+
+export interface PreparedCharacterProgressionUpdate {
+  updates: UnknownRecord;
+  summary: Record<string, unknown>;
+  warnings?: string[];
+}
+
 export type SystemCharacterInfo = FoundryCharacterInfo<
   FoundryActorSystemBase,
   FoundryItemSystemBase,
@@ -372,6 +384,15 @@ export interface SystemAdapter {
    * Format a spellcasting entry for compact list responses.
    */
   formatSpellcastingEntryForList(entry: SystemSpellcastingEntry): Record<string, unknown>;
+
+  /**
+   * Prepare a system-safe actor update payload for character progression changes.
+   * This should only use public Document.update-compatible differential data.
+   */
+  prepareCharacterProgressionUpdate(
+    actorData: SystemCharacterInfo,
+    request: CharacterProgressionUpdateRequest
+  ): PreparedCharacterProgressionUpdate;
 }
 
 /**

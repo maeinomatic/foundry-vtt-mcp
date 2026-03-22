@@ -17,6 +17,8 @@ import type {
   SystemCharacterInfo,
   SystemCompendiumCreatureEntity,
   SystemSpellcastingEntry,
+  CharacterProgressionUpdateRequest,
+  PreparedCharacterProgressionUpdate,
 } from '../types.js';
 import type {
   FoundryActorDocumentBase,
@@ -732,5 +734,27 @@ export class PF2eAdapter implements SystemAdapter {
     }
 
     return formatted;
+  }
+
+  prepareCharacterProgressionUpdate(
+    _actorData: SystemCharacterInfo,
+    request: CharacterProgressionUpdateRequest
+  ): PreparedCharacterProgressionUpdate {
+    const targetLevel = request.targetLevel;
+    if (targetLevel === undefined) {
+      throw new Error(
+        'UNSUPPORTED_CAPABILITY: PF2e progression updates currently require targetLevel.'
+      );
+    }
+
+    return {
+      updates: {
+        'system.details.level.value': targetLevel,
+      },
+      summary: {
+        targetLevel,
+        mode: 'set-level',
+      },
+    };
   }
 }
