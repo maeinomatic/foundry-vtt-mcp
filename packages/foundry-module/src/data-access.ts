@@ -3,6 +3,10 @@ import { permissionManager } from './permissions.js';
 import { transactionManager } from './transaction-manager.js';
 import { FoundryActorDirectoryAccess } from './data-access/actor-directory-access.js';
 import { FoundryCharacterAccess } from './data-access/character-access.js';
+import {
+  buildDnD5eCreatureIndex,
+  buildPF2eCreatureIndex,
+} from './data-access/creature-index-builders.js';
 import { getOrCreateFolder } from './data-access/folder-access.js';
 import { FoundryJournalAccess } from './data-access/journal-access.js';
 import { FoundrySceneInteractionAccess } from './data-access/scene-interaction-access.js';
@@ -451,18 +455,6 @@ function isCompendiumPackLike(pack: unknown): pack is CompendiumPackLike {
   );
 }
 
-interface CompendiumActorDocumentLike {
-  _id: string;
-  name: string;
-  type: string;
-  img?: string;
-  system?: unknown;
-}
-
-interface NotificationLike {
-  remove: () => void;
-}
-
 interface UserLookupLike {
   id?: string;
   name?: string;
@@ -571,77 +563,6 @@ class PersistentCreatureIndex {
       (pack): pack is CompendiumPackLike =>
         this.isCompendiumPackLike(pack) && pack.metadata.type === 'Actor'
     );
-  }
-
-  private asNotification(value: unknown): NotificationLike | null {
-    if (!value || typeof value !== 'object') {
-      return null;
-    }
-
-    const candidate = value as Partial<NotificationLike>;
-    return typeof candidate.remove === 'function' ? (candidate as NotificationLike) : null;
-  }
-
-  private isCompendiumActorDocumentLike(doc: unknown): doc is CompendiumActorDocumentLike {
-    if (!doc || typeof doc !== 'object') {
-      return false;
-    }
-
-    const typedDoc = doc as Partial<CompendiumActorDocumentLike>;
-    return (
-      typeof typedDoc._id === 'string' &&
-      typeof typedDoc.name === 'string' &&
-      typeof typedDoc.type === 'string'
-    );
-  }
-
-  private getPathValue(source: unknown, path: string[]): unknown {
-    let current: unknown = source;
-
-    for (const key of path) {
-      if (!current || typeof current !== 'object') {
-        return undefined;
-      }
-      current = (current as Record<string, unknown>)[key];
-    }
-
-    return current;
-  }
-
-  private firstDefined(values: unknown[], fallback: unknown): unknown {
-    for (const value of values) {
-      if (value !== undefined && value !== null && value !== '') {
-        return value;
-      }
-    }
-    return fallback;
-  }
-
-  private toNumber(value: unknown, fallback: number): number {
-    if (typeof value === 'number' && Number.isFinite(value)) {
-      return value;
-    }
-
-    if (typeof value === 'string') {
-      if (value === '1/8') return 0.125;
-      if (value === '1/4') return 0.25;
-      if (value === '1/2') return 0.5;
-
-      const parsed = Number(value);
-      return Number.isFinite(parsed) ? parsed : fallback;
-    }
-
-    return fallback;
-  }
-
-  private toStringValue(value: unknown, fallback: string): string {
-    if (typeof value === 'string' && value.length > 0) {
-      return value;
-    }
-    if (value === undefined || value === null) {
-      return fallback;
-    }
-    return String(value);
   }
 
   /**
@@ -1018,124 +939,39 @@ class PersistentCreatureIndex {
   private async buildDnD5eIndex(_force = false): Promise<DnD5eCreatureIndex[]> {
     this.buildInProgress = true;
 
-    const startTime = Date.now();
-    let progressNotification: NotificationLike | null = null;
-    let totalErrors = 0; // Track extraction errors
-
     try {
       const actorPacks = this.getActorPacks();
-      const enhancedCreatures: DnD5eCreatureIndex[] = [];
-      const packFingerprints = new Map<string, PackFingerprint>();
-
-      // Show initial progress notification
-      progressNotification = this.asNotification(
-        ui.notifications?.info(
-          `Starting enhanced creature index build from ${actorPacks.length} packs...`
-        )
+      const startTime = Date.now();
+      const buildResult = await buildDnD5eCreatureIndex(this.moduleId, actorPacks, pack =>
+        this.generatePackFingerprint(pack as unknown as CompendiumPackLike)
       );
 
-      for (let i = 0; i < actorPacks.length; i++) {
-        const pack = actorPacks[i];
-        const progressPercent = Math.round((i / actorPacks.length) * 100);
-
-        // Update progress notification every few packs or for important packs
-        if (i % 3 === 0 || pack.metadata.label.toLowerCase().includes('monster')) {
-          if (progressNotification) {
-            progressNotification.remove();
-          }
-          progressNotification = this.asNotification(
-            ui.notifications?.info(
-              `Building creature index... ${progressPercent}% (${i + 1}/${actorPacks.length}) Processing: ${pack.metadata.label}`
-            )
-          );
-        }
-
-        try {
-          // Ensure pack index is loaded
-          if (!pack.indexed) {
-            await pack.getIndex({});
-          }
-
-          // Generate pack fingerprint for change detection
-          packFingerprints.set(pack.metadata.id, this.generatePackFingerprint(pack));
-
-          // Show pack processing details for large packs
-          const packSize = pack.index?.size ?? 0;
-          if (packSize > 50) {
-            if (progressNotification) {
-              progressNotification.remove();
-            }
-            progressNotification = this.asNotification(
-              ui.notifications?.info(
-                `Processing large pack: ${pack.metadata.label} (${packSize} documents)...`
-              )
-            );
-          }
-
-          // Process creatures in this pack
-          const packResult = await this.extractDnD5eDataFromPack(pack);
-          enhancedCreatures.push(...packResult.creatures);
-          totalErrors += packResult.errors;
-
-          // Pack processing completed: ${pack.metadata.label} - ${packResult.creatures.length} creatures extracted
-
-          // Show milestone notifications for significant progress
-          if (i === 0 || (i + 1) % 5 === 0 || i === actorPacks.length - 1) {
-            const totalCreaturesSoFar = enhancedCreatures.length;
-            if (progressNotification) {
-              progressNotification.remove();
-            }
-            progressNotification = this.asNotification(
-              ui.notifications?.info(
-                `Index Progress: ${i + 1}/${actorPacks.length} packs complete, ${totalCreaturesSoFar} creatures indexed`
-              )
-            );
-          }
-        } catch (error) {
-          console.warn(`[${this.moduleId}] Failed to process pack ${pack.metadata.label}:`, error);
-          // Show error notification for pack failures
-          ui.notifications?.warn(
-            `Warning: Failed to index pack "${pack.metadata.label}" - continuing with other packs`
-          );
-        }
-      }
-
-      // Clear progress notification and show final processing step
-      if (progressNotification) {
-        progressNotification.remove();
-      }
       ui.notifications?.info(
-        `Saving enhanced index to world database... (${enhancedCreatures.length} creatures)`
+        `Saving enhanced index to world database... (${buildResult.creatures.length} creatures)`
       );
 
-      // Create persistent index structure
       const persistentIndex: PersistentEnhancedIndex = {
         metadata: {
           version: this.INDEX_VERSION,
           timestamp: Date.now(),
-          packFingerprints,
-          totalCreatures: enhancedCreatures.length,
-          gameSystem: 'dnd5e', // Mark as D&D 5e index
+          packFingerprints: buildResult.packFingerprints,
+          totalCreatures: buildResult.creatures.length,
+          gameSystem: 'dnd5e',
         },
-        creatures: enhancedCreatures,
+        creatures: buildResult.creatures,
       };
 
-      // Save to world flags
       await this.savePersistedIndex(persistentIndex);
 
       const buildTimeSeconds = Math.round((Date.now() - startTime) / 1000);
-      const errorText = totalErrors > 0 ? ` (${totalErrors} extraction errors)` : '';
-      const successMessage = `Enhanced creature index complete! ${enhancedCreatures.length} creatures indexed from ${actorPacks.length} packs in ${buildTimeSeconds}s${errorText}`;
+      const errorText =
+        buildResult.totalErrors > 0 ? ` (${buildResult.totalErrors} extraction errors)` : '';
+      const successMessage = `Enhanced creature index complete! ${buildResult.creatures.length} creatures indexed from ${actorPacks.length} packs in ${buildTimeSeconds}s${errorText}`;
 
       ui.notifications?.info(successMessage);
 
-      return enhancedCreatures;
+      return buildResult.creatures as DnD5eCreatureIndex[];
     } catch (error) {
-      // Clear any progress notifications on error
-      if (progressNotification) {
-        progressNotification.remove();
-      }
-
       const errorMessage = `Failed to build enhanced creature index: ${error instanceof Error ? error.message : 'Unknown error'}`;
       console.error(`[${this.moduleId}] ${errorMessage}`);
       ui.notifications?.error(errorMessage);
@@ -1143,229 +979,6 @@ class PersistentCreatureIndex {
       throw error;
     } finally {
       this.buildInProgress = false;
-
-      // Ensure progress notification is cleared
-      if (progressNotification) {
-        progressNotification.remove();
-      }
-    }
-  }
-
-  /**
-   * Extract D&D 5e data from all documents in a pack
-   */
-  private async extractDnD5eDataFromPack(
-    pack: CompendiumPackLike
-  ): Promise<{ creatures: DnD5eCreatureIndex[]; errors: number }> {
-    const creatures: DnD5eCreatureIndex[] = [];
-    let errors = 0;
-
-    try {
-      // Load all documents from pack
-      const documents = await pack.getDocuments();
-
-      for (const doc of documents) {
-        try {
-          if (!this.isCompendiumActorDocumentLike(doc)) {
-            continue;
-          }
-
-          // Only process NPCs, characters, and creatures
-          if (doc.type !== 'npc' && doc.type !== 'character' && doc.type !== 'creature') {
-            continue;
-          }
-
-          const result = this.extractDnD5eCreatureData(doc, pack);
-          if (result) {
-            creatures.push(result.creature);
-            errors += result.errors;
-          }
-        } catch (error) {
-          const docName =
-            doc && typeof doc === 'object' && 'name' in doc && typeof doc.name === 'string'
-              ? doc.name
-              : 'Unknown document';
-          console.warn(
-            `[${this.moduleId}] Failed to extract data from ${docName} in ${pack.metadata.label}:`,
-            error
-          );
-          errors++;
-        }
-      }
-    } catch (error) {
-      console.warn(
-        `[${this.moduleId}] Failed to load documents from ${pack.metadata.label}:`,
-        error
-      );
-      errors++;
-    }
-
-    return { creatures, errors };
-  }
-
-  /**
-   * Extract D&D 5e creature data from a single document
-   */
-  private extractDnD5eCreatureData(
-    doc: CompendiumActorDocumentLike,
-    pack: CompendiumPackLike
-  ): { creature: DnD5eCreatureIndex; errors: number } | null {
-    try {
-      const system = doc.system ?? {};
-
-      const challengeRatingRaw = this.firstDefined(
-        [
-          this.getPathValue(system, ['details', 'cr']),
-          this.getPathValue(system, ['details', 'cr', 'value']),
-          this.getPathValue(system, ['cr', 'value']),
-          this.getPathValue(system, ['cr']),
-          this.getPathValue(system, ['attributes', 'cr', 'value']),
-          this.getPathValue(system, ['attributes', 'cr']),
-          this.getPathValue(system, ['challenge', 'rating']),
-          this.getPathValue(system, ['challenge', 'cr']),
-        ],
-        0
-      );
-      const challengeRating = this.toNumber(challengeRatingRaw, 0);
-
-      const creatureType = this.toStringValue(
-        this.firstDefined(
-          [
-            this.getPathValue(system, ['details', 'type', 'value']),
-            this.getPathValue(system, ['details', 'type']),
-            this.getPathValue(system, ['type', 'value']),
-            this.getPathValue(system, ['type']),
-            this.getPathValue(system, ['race', 'value']),
-            this.getPathValue(system, ['race']),
-            this.getPathValue(system, ['details', 'race']),
-          ],
-          'unknown'
-        ),
-        'unknown'
-      ).toLowerCase();
-
-      const size = this.toStringValue(
-        this.firstDefined(
-          [
-            this.getPathValue(system, ['traits', 'size', 'value']),
-            this.getPathValue(system, ['traits', 'size']),
-            this.getPathValue(system, ['size', 'value']),
-            this.getPathValue(system, ['size']),
-            this.getPathValue(system, ['details', 'size']),
-          ],
-          'medium'
-        ),
-        'medium'
-      ).toLowerCase();
-
-      const hitPoints = this.toNumber(
-        this.firstDefined(
-          [
-            this.getPathValue(system, ['attributes', 'hp', 'max']),
-            this.getPathValue(system, ['hp', 'max']),
-            this.getPathValue(system, ['attributes', 'hp', 'value']),
-            this.getPathValue(system, ['hp', 'value']),
-            this.getPathValue(system, ['health', 'max']),
-            this.getPathValue(system, ['health', 'value']),
-          ],
-          0
-        ),
-        0
-      );
-
-      const armorClass = this.toNumber(
-        this.firstDefined(
-          [
-            this.getPathValue(system, ['attributes', 'ac', 'value']),
-            this.getPathValue(system, ['ac', 'value']),
-            this.getPathValue(system, ['attributes', 'ac']),
-            this.getPathValue(system, ['ac']),
-            this.getPathValue(system, ['armor', 'value']),
-            this.getPathValue(system, ['armor']),
-          ],
-          10
-        ),
-        10
-      );
-
-      const alignment = this.toStringValue(
-        this.firstDefined(
-          [
-            this.getPathValue(system, ['details', 'alignment', 'value']),
-            this.getPathValue(system, ['details', 'alignment']),
-            this.getPathValue(system, ['alignment', 'value']),
-            this.getPathValue(system, ['alignment']),
-          ],
-          'unaligned'
-        ),
-        'unaligned'
-      ).toLowerCase();
-
-      const hasSpells =
-        Boolean(this.getPathValue(system, ['spells'])) ||
-        Boolean(this.getPathValue(system, ['attributes', 'spellcasting'])) ||
-        this.toNumber(this.getPathValue(system, ['details', 'spellLevel']), 0) > 0 ||
-        this.toNumber(this.getPathValue(system, ['resources', 'spell', 'max']), 0) > 0 ||
-        Boolean(this.getPathValue(system, ['spellcasting'])) ||
-        Boolean(this.getPathValue(system, ['traits', 'spellcasting'])) ||
-        Boolean(this.getPathValue(system, ['details', 'spellcaster']));
-
-      const hasLegendaryActions =
-        Boolean(this.getPathValue(system, ['resources', 'legact'])) ||
-        Boolean(this.getPathValue(system, ['legendary'])) ||
-        this.toNumber(this.getPathValue(system, ['resources', 'legres', 'value']), 0) > 0 ||
-        Boolean(this.getPathValue(system, ['details', 'legendary'])) ||
-        Boolean(this.getPathValue(system, ['traits', 'legendary'])) ||
-        this.toNumber(this.getPathValue(system, ['resources', 'legendary', 'max']), 0) > 0;
-
-      const biography = this.getPathValue(system, ['details', 'biography']);
-      const description = this.getPathValue(system, ['description']);
-
-      // Successful extraction
-      return {
-        creature: {
-          id: doc._id,
-          name: doc.name,
-          type: doc.type,
-          pack: pack.metadata.id,
-          packLabel: pack.metadata.label,
-          challengeRating,
-          creatureType: creatureType.toLowerCase(),
-          size: size.toLowerCase(),
-          hitPoints,
-          armorClass,
-          hasSpells,
-          hasLegendaryActions,
-          alignment,
-          description: this.toStringValue(this.firstDefined([biography, description], ''), ''),
-          ...(typeof doc.img === 'string' ? { img: doc.img } : {}),
-        },
-        errors: 0,
-      };
-    } catch (error) {
-      console.warn(`[${this.moduleId}] Failed to extract enhanced data from ${doc.name}:`, error);
-
-      // Return a basic fallback record with error count instead of null to avoid losing creatures
-      return {
-        creature: {
-          id: doc._id,
-          name: doc.name,
-          type: doc.type,
-          pack: pack.metadata.id,
-          packLabel: pack.metadata.label,
-          challengeRating: 0,
-          creatureType: 'unknown',
-          size: 'medium',
-          hitPoints: 1,
-          armorClass: 10,
-          hasSpells: false,
-          hasLegendaryActions: false,
-          alignment: 'unaligned',
-          description: 'Data extraction failed',
-          img: doc.img ?? '',
-        },
-        errors: 1,
-      };
     }
   }
 
@@ -1375,74 +988,39 @@ class PersistentCreatureIndex {
   private async buildPF2eIndex(_force = false): Promise<PF2eCreatureIndex[]> {
     this.buildInProgress = true;
 
-    const startTime = Date.now();
-    let progressNotification: NotificationLike | null = null;
-    let totalErrors = 0;
-
     try {
       const actorPacks = this.getActorPacks();
-      const enhancedCreatures: PF2eCreatureIndex[] = [];
-      const packFingerprints = new Map<string, PackFingerprint>();
-
-      progressNotification = this.asNotification(
-        ui.notifications?.info(
-          `Starting PF2e creature index build from ${actorPacks.length} packs...`
-        )
+      const startTime = Date.now();
+      const buildResult = await buildPF2eCreatureIndex(this.moduleId, actorPacks, pack =>
+        this.generatePackFingerprint(pack as unknown as CompendiumPackLike)
       );
 
-      let currentPack = 0;
-      for (const pack of actorPacks) {
-        currentPack++;
-
-        if (progressNotification) {
-          progressNotification.remove();
-        }
-        progressNotification = this.asNotification(
-          ui.notifications?.info(
-            `Building PF2e index: Pack ${currentPack}/${actorPacks.length} (${pack.metadata.label})...`
-          )
-        );
-
-        const fingerprint = this.generatePackFingerprint(pack);
-        packFingerprints.set(pack.metadata.id, fingerprint);
-
-        const result = await this.extractPF2eDataFromPack(pack);
-        enhancedCreatures.push(...result.creatures);
-        totalErrors += result.errors;
-      }
-
-      if (progressNotification) {
-        progressNotification.remove();
-      }
       ui.notifications?.info(
-        `Saving PF2e index to world database... (${enhancedCreatures.length} creatures)`
+        `Saving PF2e index to world database... (${buildResult.creatures.length} creatures)`
       );
 
       const persistentIndex: PersistentEnhancedIndex = {
         metadata: {
           version: this.INDEX_VERSION,
           timestamp: Date.now(),
-          packFingerprints,
-          totalCreatures: enhancedCreatures.length,
-          gameSystem: 'pf2e', // Mark as PF2e index
+          packFingerprints: buildResult.packFingerprints,
+          totalCreatures: buildResult.creatures.length,
+          gameSystem: 'pf2e',
         },
-        creatures: enhancedCreatures,
+        creatures: buildResult.creatures,
       };
 
       await this.savePersistedIndex(persistentIndex);
 
       const buildTimeSeconds = Math.round((Date.now() - startTime) / 1000);
-      const errorText = totalErrors > 0 ? ` (${totalErrors} extraction errors)` : '';
-      const successMessage = `PF2e creature index complete! ${enhancedCreatures.length} creatures indexed from ${actorPacks.length} packs in ${buildTimeSeconds}s${errorText}`;
+      const errorText =
+        buildResult.totalErrors > 0 ? ` (${buildResult.totalErrors} extraction errors)` : '';
+      const successMessage = `PF2e creature index complete! ${buildResult.creatures.length} creatures indexed from ${actorPacks.length} packs in ${buildTimeSeconds}s${errorText}`;
 
       ui.notifications?.info(successMessage);
 
-      return enhancedCreatures;
+      return buildResult.creatures as PF2eCreatureIndex[];
     } catch (error) {
-      if (progressNotification) {
-        progressNotification.remove();
-      }
-
       const errorMessage = `Failed to build PF2e creature index: ${error instanceof Error ? error.message : 'Unknown error'}`;
       console.error(`[${this.moduleId}] ${errorMessage}`);
       ui.notifications?.error(errorMessage);
@@ -1450,194 +1028,6 @@ class PersistentCreatureIndex {
       throw error;
     } finally {
       this.buildInProgress = false;
-
-      if (progressNotification) {
-        progressNotification.remove();
-      }
-    }
-  }
-
-  /**
-   * Extract PF2e creature data from all documents in a pack
-   */
-  private async extractPF2eDataFromPack(
-    pack: CompendiumPackLike
-  ): Promise<{ creatures: PF2eCreatureIndex[]; errors: number }> {
-    const creatures: PF2eCreatureIndex[] = [];
-    let errors = 0;
-
-    try {
-      const documents = await pack.getDocuments();
-
-      for (const doc of documents) {
-        try {
-          if (!this.isCompendiumActorDocumentLike(doc)) {
-            continue;
-          }
-
-          // Support NPCs, characters, and creatures
-          if (doc.type !== 'npc' && doc.type !== 'character' && doc.type !== 'creature') {
-            continue;
-          }
-
-          const result = this.extractPF2eCreatureData(doc, pack);
-          if (result) {
-            creatures.push(result.creature);
-            errors += result.errors;
-          }
-        } catch (error) {
-          const docName =
-            doc && typeof doc === 'object' && 'name' in doc && typeof doc.name === 'string'
-              ? doc.name
-              : 'Unknown document';
-          console.warn(
-            `[${this.moduleId}] Failed to extract PF2e data from ${docName} in ${pack.metadata.label}:`,
-            error
-          );
-          errors++;
-        }
-      }
-    } catch (error) {
-      console.warn(
-        `[${this.moduleId}] Failed to load documents from ${pack.metadata.label}:`,
-        error
-      );
-      errors++;
-    }
-
-    return { creatures, errors };
-  }
-
-  /**
-   * Extract Pathfinder 2e creature data from a single document
-   */
-  private extractPF2eCreatureData(
-    doc: CompendiumActorDocumentLike,
-    pack: CompendiumPackLike
-  ): { creature: PF2eCreatureIndex; errors: number } | null {
-    try {
-      const system = doc.system ?? {};
-
-      const level = this.toNumber(this.getPathValue(system, ['details', 'level', 'value']), 0);
-
-      const traitsValue = this.getPathValue(system, ['traits', 'value']);
-      const traits = Array.isArray(traitsValue)
-        ? traitsValue.filter((trait): trait is string => typeof trait === 'string')
-        : [];
-
-      // Extract primary creature type from traits
-      const creatureTraits = [
-        'aberration',
-        'animal',
-        'beast',
-        'celestial',
-        'construct',
-        'dragon',
-        'elemental',
-        'fey',
-        'fiend',
-        'fungus',
-        'humanoid',
-        'monitor',
-        'ooze',
-        'plant',
-        'undead',
-      ];
-      const creatureType =
-        traits
-          .find((trait: string) => creatureTraits.includes(trait.toLowerCase()))
-          ?.toLowerCase() ?? 'unknown';
-
-      // Rarity extraction (PF2e specific)
-      const rarity = this.toStringValue(this.getPathValue(system, ['traits', 'rarity']), 'common');
-
-      // Size extraction
-      const sizeCode = this.toStringValue(
-        this.getPathValue(system, ['traits', 'size', 'value']),
-        'med'
-      );
-      // Normalize PF2e size values (tiny, sm, med, lg, huge, grg)
-      const sizeMap: Record<string, string> = {
-        tiny: 'tiny',
-        sm: 'small',
-        med: 'medium',
-        lg: 'large',
-        huge: 'huge',
-        grg: 'gargantuan',
-      };
-      const size = sizeMap[sizeCode.toLowerCase()] ?? 'medium';
-
-      // Hit Points
-      const hitPoints = this.toNumber(this.getPathValue(system, ['attributes', 'hp', 'max']), 0);
-
-      // Armor Class
-      const armorClass = this.toNumber(
-        this.getPathValue(system, ['attributes', 'ac', 'value']),
-        10
-      );
-
-      // Spellcasting detection (PF2e uses spellcasting entries)
-      const spellcasting = this.getPathValue(system, ['spellcasting']);
-      const hasSpells =
-        spellcasting && typeof spellcasting === 'object'
-          ? Object.keys(spellcasting).length > 0
-          : false;
-
-      // Alignment
-      const alignment = this.toStringValue(
-        this.getPathValue(system, ['details', 'alignment', 'value']),
-        'N'
-      );
-
-      const publicNotes = this.getPathValue(system, ['details', 'publicNotes']);
-      const biography = this.getPathValue(system, ['details', 'biography']);
-
-      return {
-        creature: {
-          id: doc._id,
-          name: doc.name,
-          type: doc.type,
-          pack: pack.metadata.id,
-          packLabel: pack.metadata.label,
-          level,
-          traits,
-          creatureType,
-          rarity,
-          size,
-          hitPoints,
-          armorClass,
-          hasSpells,
-          alignment: alignment.toUpperCase(),
-          description: this.toStringValue(this.firstDefined([publicNotes, biography], ''), ''),
-          ...(typeof doc.img === 'string' ? { img: doc.img } : {}),
-        },
-        errors: 0,
-      };
-    } catch (error) {
-      console.warn(`[${this.moduleId}] Failed to extract PF2e data from ${doc.name}:`, error);
-
-      // Fallback with error count
-      return {
-        creature: {
-          id: doc._id,
-          name: doc.name,
-          type: doc.type,
-          pack: pack.metadata.id,
-          packLabel: pack.metadata.label,
-          level: 0,
-          traits: [],
-          creatureType: 'unknown',
-          rarity: 'common',
-          size: 'medium',
-          hitPoints: 1,
-          armorClass: 10,
-          hasSpells: false,
-          alignment: 'N',
-          description: 'Data extraction failed',
-          img: doc.img ?? '',
-        },
-        errors: 1,
-      };
     }
   }
 }
