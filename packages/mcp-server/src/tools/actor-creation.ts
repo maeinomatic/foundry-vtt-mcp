@@ -2,8 +2,10 @@ import { z } from 'zod';
 import { FoundryClient } from '../foundry-client.js';
 import type {
   FoundryActorCreationResult,
+  FoundryCreateActorFromCompendiumRequest,
   FoundryCompendiumEntryFull,
   FoundryDocumentBase,
+  FoundryGetCompendiumDocumentRequest,
   UnknownRecord,
 } from '../foundry-types.js';
 import { Logger } from '../logger.js';
@@ -163,22 +165,26 @@ export class ActorCreationTools {
         customNames.push(`${baseName} ${customNames.length + 1}`);
       }
 
-      // Create the actors via Foundry module using exact pack/item IDs
-      const result = await this.foundryClient.query<FoundryActorCreationResult>(
-        'foundry-mcp-bridge.createActorFromCompendium',
-        {
-          packId,
-          itemId,
-          customNames: customNames.slice(0, finalQuantity),
-          quantity: finalQuantity,
-          addToScene,
-          placement: placement
-            ? {
+      const request: FoundryCreateActorFromCompendiumRequest = {
+        packId,
+        itemId,
+        customNames: customNames.slice(0, finalQuantity),
+        quantity: finalQuantity,
+        addToScene,
+        ...(placement
+          ? {
+              placement: {
                 type: placement.type,
-                coordinates: placement.coordinates,
-              }
-            : undefined,
-        }
+                ...(placement.coordinates ? { coordinates: placement.coordinates } : {}),
+              },
+            }
+          : {}),
+      };
+
+      // Create the actors via Foundry module using exact pack/item IDs
+      const result = await this.foundryClient.query(
+        'foundry-mcp-bridge.createActorFromCompendium',
+        request
       );
 
       this.logger.info('Actor creation completed', {
@@ -218,13 +224,18 @@ export class ActorCreationTools {
     this.logger.info('Getting full compendium entry', { packId, entryId });
 
     try {
-      const fullEntry = await this.foundryClient.query<FoundryCompendiumEntryFull>(
+      const request: FoundryGetCompendiumDocumentRequest = {
+        packId,
+        documentId: entryId,
+      };
+      const fullEntry = await this.foundryClient.query(
         'foundry-mcp-bridge.getCompendiumDocumentFull',
-        {
-          packId,
-          documentId: entryId,
-        }
+        request
       );
+
+      if (!fullEntry) {
+        throw new Error(`Compendium entry ${entryId} not found in pack ${packId}`);
+      }
 
       this.logger.debug('Successfully retrieved full compendium entry', {
         packId,

@@ -5,6 +5,7 @@ import { notifyGM } from './gm-notifications.js';
 import type {
   FoundryActorCreationResult,
   FoundryCharacterInfo,
+  FoundryCreateActorFromCompendiumRequest,
   FoundryCompendiumSearchRequest,
   FoundryCreatureSearchCriteria,
   FoundryCompendiumEntryFull,
@@ -484,19 +485,9 @@ export class QueryHandlers {
   /**
    * Handle actor creation from specific compendium entry
    */
-  private async handleCreateActorFromCompendium(data: {
-    packId: string;
-    itemId: string;
-    customNames?: string[] | undefined;
-    quantity?: number | undefined;
-    addToScene?: boolean | undefined;
-    placement?:
-      | {
-          type: 'random' | 'grid' | 'center' | 'coordinates';
-          coordinates?: { x: number; y: number }[];
-        }
-      | undefined;
-  }): Promise<FoundryActorCreationResult | QueryErrorResult> {
+  private async handleCreateActorFromCompendium(
+    data: FoundryCreateActorFromCompendiumRequest
+  ): Promise<FoundryActorCreationResult | QueryErrorResult> {
     try {
       // SECURITY: Silent GM validation
       const gmCheck = this.validateGMAccess();
@@ -507,29 +498,21 @@ export class QueryHandlers {
       this.dataAccess.validateFoundryState();
 
       // Clean interface - direct pack/item reference only
-      const requestData: {
-        packId: string;
-        itemId: string;
-        customNames: string[];
-        quantity: number;
-        addToScene: boolean;
-        placement?: {
-          type: 'random' | 'grid' | 'center' | 'coordinates';
-          coordinates?: { x: number; y: number }[];
-        };
-      } = {
+      return await this.dataAccess.createActorFromCompendiumEntry({
         packId: data.packId,
         itemId: data.itemId,
         customNames: data.customNames ?? [],
         quantity: data.quantity ?? 1,
         addToScene: data.addToScene ?? false,
-      };
-
-      if (data.placement) {
-        requestData.placement = data.placement;
-      }
-
-      return await this.dataAccess.createActorFromCompendiumEntry(requestData);
+        ...(data.placement
+          ? {
+              placement: {
+                type: data.placement.type,
+                ...(data.placement.coordinates ? { coordinates: data.placement.coordinates } : {}),
+              },
+            }
+          : {}),
+      });
     } catch (error) {
       throw new Error(
         `Failed to create actor from compendium: ${error instanceof Error ? error.message : 'Unknown error'}`

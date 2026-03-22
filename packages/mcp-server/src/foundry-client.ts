@@ -3,6 +3,7 @@ import { Config } from './config.js';
 import { FoundryConnector } from './foundry-connector.js';
 import type {
   FoundryActorSummary,
+  FoundryActorCreationResult,
   FoundryBridgeMessage,
   FoundryBridgeQueryRequest,
   FoundryBridgeResponseEnvelope,
@@ -12,6 +13,7 @@ import type {
   FoundryCompendiumSearchRequest,
   FoundryCompendiumSearchResult,
   FoundryConnectionInfo,
+  FoundryCreateActorFromCompendiumRequest,
   FoundryCreatureSearchCriteria,
   FoundryCreatureSearchEnvelope,
   FoundryGetCharacterInfoRequest,
@@ -97,6 +99,10 @@ export class FoundryClient {
     method: 'foundry-mcp-bridge.getCompendiumDocumentFull',
     data: FoundryGetCompendiumDocumentRequest
   ): Promise<FoundryCompendiumEntryFull<UnknownRecord, UnknownRecord, UnknownRecord> | null>;
+  async query(
+    method: 'foundry-mcp-bridge.createActorFromCompendium',
+    data: FoundryCreateActorFromCompendiumRequest
+  ): Promise<FoundryActorCreationResult>;
   async query(
     method: 'foundry-mcp-bridge.listActors',
     data?: FoundryListActorsRequest

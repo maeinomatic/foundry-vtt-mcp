@@ -273,6 +273,25 @@ export interface FoundryGetCompendiumDocumentRequest {
   documentId: string;
 }
 
+export interface FoundryTokenPlacementCoordinate {
+  x: number;
+  y: number;
+}
+
+export interface FoundryTokenPlacementOptions {
+  type: 'random' | 'grid' | 'center' | 'coordinates';
+  coordinates?: FoundryTokenPlacementCoordinate[];
+}
+
+export interface FoundryCreateActorFromCompendiumRequest {
+  packId: string;
+  itemId: string;
+  customNames?: string[];
+  quantity?: number;
+  addToScene?: boolean;
+  placement?: FoundryTokenPlacementOptions;
+}
+
 export interface FoundryCompendiumSearchResult<SystemData extends UnknownRecord = UnknownRecord>
   extends UnknownRecord {
   id: string;

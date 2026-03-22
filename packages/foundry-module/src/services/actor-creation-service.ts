@@ -4,9 +4,11 @@ import { transactionManager } from '../transaction-manager.js';
 import { getOrCreateFolder } from './folder-service.js';
 import type {
   FoundryActorCreationResult,
+  FoundryCreateActorFromCompendiumRequest,
   FoundryCompendiumSearchResult,
   FoundryCompendiumEntryFull,
   FoundryCreatedActorInfo,
+  FoundryTokenPlacementOptions,
 } from '@foundry-mcp/shared';
 
 type AuditStatus = 'success' | 'failure';
@@ -19,16 +21,9 @@ export interface ActorCreationRequest {
   addToScene?: boolean | undefined;
 }
 
-export interface CompendiumEntryActorCreationRequest {
-  packId: string;
-  itemId: string;
+export interface CompendiumEntryActorCreationRequest
+  extends FoundryCreateActorFromCompendiumRequest {
   customNames: string[];
-  quantity?: number;
-  addToScene?: boolean;
-  placement?: {
-    type: 'random' | 'grid' | 'center' | 'coordinates';
-    coordinates?: { x: number; y: number }[];
-  };
 }
 
 export type ActorCreationResult = FoundryActorCreationResult;
@@ -47,7 +42,7 @@ export interface SceneTokenPlacement {
   actorIds: string[];
   placement: 'random' | 'grid' | 'center' | 'coordinates';
   hidden: boolean;
-  coordinates?: { x: number; y: number }[];
+  coordinates?: FoundryTokenPlacementOptions['coordinates'];
 }
 
 export interface TokenPlacementResult {
