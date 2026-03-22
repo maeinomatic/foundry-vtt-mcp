@@ -226,6 +226,203 @@ interface CompendiumSearchResult {
   description?: string;
 }
 
+interface CompendiumIndexEntry {
+  _id?: string;
+  name?: string;
+  type?: string;
+  img?: string;
+  description?: string;
+  system?: UnknownRecord;
+}
+
+type CompendiumSearchFilters = {
+  challengeRating?: number | { min?: number; max?: number };
+  creatureType?: string;
+  size?: string;
+  alignment?: string;
+  hasLegendaryActions?: boolean;
+  spellcaster?: boolean;
+};
+
+type IndexTextSearchCriteria = {
+  searchTerms?: string[];
+  excludeTerms?: string[];
+  size?: string;
+  hasSpells?: boolean;
+  hasLegendaryActions?: boolean;
+};
+
+type CreatureSearchCriteria = CompendiumSearchFilters & {
+  level?: number | { min?: number; max?: number };
+  traits?: string[];
+  rarity?: string;
+  hasSpells?: boolean;
+  limit?: number;
+};
+
+type CreatureSearchResult = CompendiumSearchResult &
+  Partial<{
+    level: number;
+    traits: string[];
+    rarity: string;
+    challengeRating: number;
+    hasLegendaryActions: boolean;
+    creatureType: string;
+    size: string;
+    hitPoints: number;
+    armorClass: number;
+    hasSpells: boolean;
+    alignment: string;
+  }>;
+
+type CreatureSearchSummary = {
+  packsSearched: number;
+  topPacks: Array<{ id: string; label: string; priority: number }>;
+  totalCreaturesFound: number;
+  resultsByPack: Record<string, number>;
+  criteria: CreatureSearchCriteria;
+  searchMethod: 'enhanced_persistent_index' | 'basic_fallback';
+  fallback?: boolean;
+  indexMetadata?: {
+    totalIndexedCreatures: number;
+    searchMethod: 'enhanced_persistent_index';
+  };
+};
+
+type CreatureSearchResponse = {
+  creatures: CreatureSearchResult[];
+  searchSummary: CreatureSearchSummary;
+};
+
+type CreatureSystemLike = {
+  details?: {
+    cr?: { value?: number | string } | number | string;
+    type?: { value?: string } | string;
+    alignment?: string;
+    spellLevel?: number;
+  };
+  cr?: { value?: number | string } | number | string;
+  type?: { value?: string } | string;
+  traits?: { size?: string };
+  size?: string;
+  spells?: unknown;
+  attributes?: { spellcasting?: unknown };
+  resources?: { legact?: unknown; legres?: { value?: number } };
+  legendary?: unknown;
+  alignment?: string;
+};
+
+function toCompendiumIndexEntry(entry: unknown): CompendiumIndexEntry | null {
+  if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+    return null;
+  }
+
+  const record = entry as UnknownRecord;
+  const system = record.system;
+
+  return {
+    ...(typeof record._id === 'string' ? { _id: record._id } : {}),
+    ...(typeof record.name === 'string' ? { name: record.name } : {}),
+    ...(typeof record.type === 'string' ? { type: record.type } : {}),
+    ...(typeof record.img === 'string' ? { img: record.img } : {}),
+    ...(typeof record.description === 'string' ? { description: record.description } : {}),
+    ...(system && typeof system === 'object' && !Array.isArray(system)
+      ? { system: system as UnknownRecord }
+      : {}),
+  };
+}
+
+function toCreatureSystemLike(system: UnknownRecord | undefined): CreatureSystemLike {
+  return (system ?? {}) as CreatureSystemLike;
+}
+
+function getCreatureChallengeRating(system: CreatureSystemLike): number {
+  const detailsCrRaw = system.details?.cr;
+  const detailsCr =
+    detailsCrRaw && typeof detailsCrRaw === 'object' && 'value' in detailsCrRaw
+      ? (detailsCrRaw as { value?: number | string }).value
+      : detailsCrRaw;
+  const systemCrRaw = system.cr;
+  const systemCr =
+    systemCrRaw && typeof systemCrRaw === 'object' && 'value' in systemCrRaw
+      ? (systemCrRaw as { value?: number | string }).value
+      : systemCrRaw;
+  const challengeRating = detailsCr ?? systemCr ?? 0;
+
+  if (typeof challengeRating === 'number') {
+    return challengeRating;
+  }
+
+  if (typeof challengeRating === 'string') {
+    if (challengeRating === '1/8') return 0.125;
+    if (challengeRating === '1/4') return 0.25;
+    if (challengeRating === '1/2') return 0.5;
+
+    const parsed = parseFloat(challengeRating);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  return 0;
+}
+
+function getCreatureType(system: CreatureSystemLike): string {
+  const detailsTypeRaw = system.details?.type;
+  const detailsType =
+    detailsTypeRaw && typeof detailsTypeRaw === 'object' && 'value' in detailsTypeRaw
+      ? (detailsTypeRaw as { value?: string }).value
+      : detailsTypeRaw;
+  const systemTypeRaw = system.type;
+  const systemType =
+    systemTypeRaw && typeof systemTypeRaw === 'object' && 'value' in systemTypeRaw
+      ? (systemTypeRaw as { value?: string }).value
+      : systemTypeRaw;
+
+  const creatureType = detailsType ?? systemType;
+  return typeof creatureType === 'string' ? creatureType : '';
+}
+
+function hasCompendiumFilters(
+  filters: CompendiumSearchFilters | undefined
+): filters is CompendiumSearchFilters {
+  return (
+    filters !== undefined &&
+    [
+      filters.challengeRating,
+      filters.creatureType,
+      filters.size,
+      filters.alignment,
+      filters.hasLegendaryActions,
+      filters.spellcaster,
+    ].some(value => value !== undefined)
+  );
+}
+
+function buildIndexTextSearchCriteria(filters: CompendiumSearchFilters): IndexTextSearchCriteria {
+  const searchTerms: string[] = [];
+
+  if (typeof filters.challengeRating === 'number') {
+    if (filters.challengeRating >= 15) {
+      searchTerms.push('ancient', 'legendary', 'elder', 'greater');
+    } else if (filters.challengeRating >= 10) {
+      searchTerms.push('adult', 'warlord', 'champion', 'master');
+    } else if (filters.challengeRating >= 5) {
+      searchTerms.push('captain', 'knight', 'priest', 'mage');
+    } else {
+      searchTerms.push('guard', 'soldier', 'warrior', 'scout');
+    }
+  }
+
+  if (filters.creatureType) {
+    searchTerms.push(filters.creatureType);
+
+    if (filters.creatureType.toLowerCase() === 'humanoid') {
+      searchTerms.push('human', 'elf', 'dwarf', 'orc', 'goblin');
+    }
+  }
+
+  return searchTerms.length > 0 ? { searchTerms } : {};
+}
+
 // D&D 5e Enhanced Creature Index
 interface DnD5eCreatureIndex {
   id: string;
@@ -267,6 +464,53 @@ interface PF2eCreatureIndex {
 
 // Union type for both systems
 type EnhancedCreatureIndex = DnD5eCreatureIndex | PF2eCreatureIndex;
+
+function isPF2eCreatureIndex(creature: EnhancedCreatureIndex): creature is PF2eCreatureIndex {
+  return 'level' in creature;
+}
+
+function toCreatureSearchResult(creature: EnhancedCreatureIndex): CreatureSearchResult {
+  if (isPF2eCreatureIndex(creature)) {
+    return {
+      id: creature.id,
+      name: creature.name,
+      type: creature.type,
+      pack: creature.pack,
+      packLabel: creature.packLabel,
+      description: creature.description ?? '',
+      hasImage: Boolean(creature.img),
+      summary: `Level ${creature.level} ${creature.creatureType} (${creature.rarity}) from ${creature.packLabel}`,
+      level: creature.level,
+      traits: creature.traits,
+      rarity: creature.rarity,
+      creatureType: creature.creatureType,
+      size: creature.size,
+      hitPoints: creature.hitPoints,
+      armorClass: creature.armorClass,
+      hasSpells: creature.hasSpells,
+      alignment: creature.alignment,
+    };
+  }
+
+  return {
+    id: creature.id,
+    name: creature.name,
+    type: creature.type,
+    pack: creature.pack,
+    packLabel: creature.packLabel,
+    description: creature.description ?? '',
+    hasImage: Boolean(creature.img),
+    summary: `CR ${creature.challengeRating} ${creature.creatureType} from ${creature.packLabel}`,
+    challengeRating: creature.challengeRating,
+    creatureType: creature.creatureType,
+    size: creature.size,
+    hitPoints: creature.hitPoints,
+    armorClass: creature.armorClass,
+    hasSpells: creature.hasSpells,
+    alignment: creature.alignment,
+    hasLegendaryActions: creature.hasLegendaryActions,
+  };
+}
 
 interface PersistentIndexMetadata {
   version: string;
@@ -371,9 +615,14 @@ interface CompendiumPackMetadataLike {
   lastModified?: string | number | Date;
 }
 
+interface CompendiumPackIndexLike {
+  size?: number;
+  values: () => Iterable<unknown>;
+}
+
 interface CompendiumPackLike {
   metadata: CompendiumPackMetadataLike;
-  index?: { size?: number };
+  index?: CompendiumPackIndexLike;
   indexed?: boolean;
   getIndex: (options: Record<string, unknown>) => Promise<unknown>;
   getDocuments: () => Promise<unknown[]>;
@@ -382,6 +631,22 @@ interface CompendiumPackLike {
 interface PackCollectionLike {
   values: () => Iterable<unknown>;
   get: (id: string) => unknown;
+}
+
+function isCompendiumPackLike(pack: unknown): pack is CompendiumPackLike {
+  if (!pack || typeof pack !== 'object') {
+    return false;
+  }
+
+  const typedPack = pack as Partial<CompendiumPackLike>;
+  const metadata = typedPack.metadata;
+  return Boolean(
+    metadata &&
+      typeof metadata.id === 'string' &&
+      typeof metadata.label === 'string' &&
+      typeof typedPack.getDocuments === 'function' &&
+      typeof typedPack.getIndex === 'function'
+  );
 }
 
 interface CompendiumActorDocumentLike {
@@ -462,12 +727,6 @@ interface TokenLike {
   actor?: ActorLike;
 }
 
-interface SceneWithTokensLike {
-  tokens: {
-    get: (tokenId: string) => TokenLike | undefined;
-  };
-}
-
 interface ConditionLike {
   id?: string;
   name?: string;
@@ -479,6 +738,240 @@ interface ConditionLike {
   changes?: unknown[];
   duration?: Record<string, unknown>;
   origin?: string;
+}
+
+interface SceneCollectionManagerLike {
+  contents?: unknown[];
+  current?: unknown;
+  active?: unknown;
+}
+
+interface SceneActivatableLike extends SceneListItem {
+  activate: () => Promise<unknown>;
+}
+
+interface SceneCanvasLike {
+  scene?: unknown;
+  screenDimensions?: [number, number];
+  pan: (options: { x: number; y: number; scale: number }) => unknown;
+}
+
+interface SceneTokenTargetLike {
+  id?: string;
+  name?: string;
+  actorId?: string;
+  actor?: ActorLookupLike;
+}
+
+interface MutableTokenLike extends TokenLike {
+  actorId?: string;
+  update: (data: Record<string, unknown>, options?: Record<string, unknown>) => Promise<unknown>;
+  delete: () => Promise<unknown>;
+}
+
+interface SceneTokenCollectionSearchLike {
+  get?: (tokenId: string) => unknown;
+  find?: (predicate: (token: SceneTokenTargetLike) => boolean) => SceneTokenTargetLike | undefined;
+  contents?: unknown[];
+}
+
+interface SceneDocumentWithTokensLike {
+  tokens?: unknown;
+}
+
+interface UserTargetingLike {
+  updateTokenTargets: (tokenIds: string[]) => Promise<unknown>;
+}
+
+interface ChatMessageApiLike {
+  getSpeaker: (data: { actor?: unknown }) => unknown;
+  create: (data: Record<string, unknown>) => unknown;
+}
+
+interface UsableItemLike {
+  id?: string;
+  name?: string;
+  type?: string;
+  use?: (options: Record<string, unknown>) => Promise<unknown>;
+  toChat?: () => Promise<unknown>;
+  toMessage?: (messageData?: unknown, options?: Record<string, unknown>) => Promise<unknown>;
+  roll?: () => Promise<unknown>;
+  postItem?: () => Promise<unknown>;
+  setupEffect?: () => Promise<unknown>;
+}
+
+function isActorLookupLike(actor: unknown): actor is ActorLookupLike {
+  return Boolean(actor && typeof actor === 'object');
+}
+
+function getActorContents(): ActorLookupLike[] {
+  const actorsRaw = (game as { actors?: { contents?: unknown } }).actors?.contents;
+  return Array.isArray(actorsRaw) ? actorsRaw.filter(isActorLookupLike) : [];
+}
+
+function getSceneCollectionManager(): SceneCollectionManagerLike | null {
+  const scenes = (game as { scenes?: unknown }).scenes;
+  if (!scenes || typeof scenes !== 'object') {
+    return null;
+  }
+
+  return scenes as SceneCollectionManagerLike;
+}
+
+function getSceneContents(): SceneListItem[] {
+  const sceneCollection = getSceneCollectionManager();
+  return Array.isArray(sceneCollection?.contents)
+    ? sceneCollection.contents.filter((scene): scene is SceneListItem =>
+        Boolean(scene && typeof scene === 'object')
+      )
+    : [];
+}
+
+function isSceneActivatableLike(scene: unknown): scene is SceneActivatableLike {
+  return Boolean(
+    scene &&
+      typeof scene === 'object' &&
+      typeof (scene as Partial<SceneActivatableLike>).activate === 'function'
+  );
+}
+
+function getSceneCanvas(): SceneCanvasLike | null {
+  if (typeof canvas === 'undefined' || !canvas || typeof canvas !== 'object') {
+    return null;
+  }
+
+  const sceneCanvas = canvas as unknown as Partial<SceneCanvasLike>;
+  return typeof sceneCanvas.pan === 'function' ? (canvas as unknown as SceneCanvasLike) : null;
+}
+
+function getCurrentSceneDocument(): SceneDocumentWithTokensLike | null {
+  const sceneCollection = getSceneCollectionManager();
+  const scene = sceneCollection?.current;
+  return scene && typeof scene === 'object' ? (scene as SceneDocumentWithTokensLike) : null;
+}
+
+function getActiveSceneDocument(): SceneDocumentWithTokensLike | null {
+  const sceneCollection = getSceneCollectionManager();
+  const scene = sceneCollection?.active;
+  return scene && typeof scene === 'object' ? (scene as SceneDocumentWithTokensLike) : null;
+}
+
+function getSceneTokenArray(tokensSource: unknown): SceneTokenTargetLike[] {
+  if (Array.isArray(tokensSource)) {
+    return tokensSource.filter((token): token is SceneTokenTargetLike =>
+      Boolean(token && typeof token === 'object')
+    );
+  }
+
+  if (!tokensSource || typeof tokensSource !== 'object') {
+    return [];
+  }
+
+  const collection = tokensSource as SceneTokenCollectionSearchLike & {
+    [Symbol.iterator]?: () => Iterator<unknown>;
+  };
+  if (Array.isArray(collection.contents)) {
+    return collection.contents.filter((token): token is SceneTokenTargetLike =>
+      Boolean(token && typeof token === 'object')
+    );
+  }
+
+  if (typeof collection[Symbol.iterator] === 'function') {
+    return Array.from(tokensSource as Iterable<unknown>).filter(
+      (token): token is SceneTokenTargetLike => Boolean(token && typeof token === 'object')
+    );
+  }
+
+  return [];
+}
+
+function getSceneTokenCollection(tokensSource: unknown): SceneTokenCollectionSearchLike | null {
+  return tokensSource && typeof tokensSource === 'object'
+    ? (tokensSource as SceneTokenCollectionSearchLike)
+    : null;
+}
+
+function isMutableTokenLike(token: unknown): token is MutableTokenLike {
+  return Boolean(
+    token &&
+      typeof token === 'object' &&
+      typeof (token as Partial<MutableTokenLike>).update === 'function' &&
+      typeof (token as Partial<MutableTokenLike>).delete === 'function'
+  );
+}
+
+function getMutableTokenById(
+  scene: SceneDocumentWithTokensLike,
+  tokenId: string
+): MutableTokenLike | null {
+  const tokenCollection = getSceneTokenCollection(scene.tokens);
+  if (!tokenCollection || typeof tokenCollection.get !== 'function') {
+    return null;
+  }
+
+  const token = tokenCollection.get(tokenId);
+  return isMutableTokenLike(token) ? token : null;
+}
+
+function getTargetingUser(): UserTargetingLike | null {
+  const user = (game as { user?: unknown }).user;
+  return user &&
+    typeof user === 'object' &&
+    typeof (user as Partial<UserTargetingLike>).updateTokenTargets === 'function'
+    ? (user as UserTargetingLike)
+    : null;
+}
+
+function getChatMessageApi(): ChatMessageApiLike | null {
+  const chatMessageApi = ChatMessage as unknown;
+  return chatMessageApi &&
+    typeof chatMessageApi === 'object' &&
+    typeof (chatMessageApi as Partial<ChatMessageApiLike>).getSpeaker === 'function' &&
+    typeof (chatMessageApi as Partial<ChatMessageApiLike>).create === 'function'
+    ? (chatMessageApi as ChatMessageApiLike)
+    : null;
+}
+
+function isUsableItemLike(item: unknown): item is UsableItemLike {
+  return Boolean(item && typeof item === 'object');
+}
+
+function getActorItems(actor: ActorLookupLike): UsableItemLike[] {
+  const itemsSource = actor.items;
+  if (Array.isArray(itemsSource)) {
+    return itemsSource.filter(isUsableItemLike);
+  }
+
+  if (
+    itemsSource &&
+    typeof itemsSource === 'object' &&
+    Array.isArray((itemsSource as { contents?: unknown[] }).contents)
+  ) {
+    return ((itemsSource as { contents?: unknown[] }).contents ?? []).filter(isUsableItemLike);
+  }
+
+  return [];
+}
+
+function runItemAction(promise: Promise<unknown>, itemName: string): void {
+  void promise.catch((error: Error) => {
+    console.error(`[foundry-mcp-bridge] Error using item ${itemName}:`, error);
+  });
+}
+
+function createItemChatMessage(actor: ActorLookupLike, item: UsableItemLike): void {
+  const chatMessageApi = getChatMessageApi();
+  if (!chatMessageApi) {
+    return;
+  }
+
+  const chatData: Record<string, unknown> = {
+    user: (game as { user?: { id?: string } }).user?.id,
+    speaker: chatMessageApi.getSpeaker({ actor }),
+    content: `<h3>${item.name ?? 'Unknown Item'}</h3><p>${actor.name ?? 'Unknown'} uses ${item.name ?? 'Unknown Item'}.</p>`,
+  };
+
+  chatMessageApi.create(chatData);
 }
 
 type WorldInfo = FoundryWorldDetails;
@@ -537,19 +1030,7 @@ class PersistentCreatureIndex {
   }
 
   private isCompendiumPackLike(pack: unknown): pack is CompendiumPackLike {
-    if (!pack || typeof pack !== 'object') {
-      return false;
-    }
-
-    const typedPack = pack as Partial<CompendiumPackLike>;
-    const metadata = typedPack.metadata;
-    return Boolean(
-      metadata &&
-        typeof metadata.id === 'string' &&
-        typeof metadata.label === 'string' &&
-        typeof typedPack.getDocuments === 'function' &&
-        typeof typedPack.getIndex === 'function'
-    );
+    return isCompendiumPackLike(pack);
   }
 
   private getPackCollection(): PackCollectionLike | null {
@@ -3010,195 +3491,139 @@ export class FoundryDataAccess {
   /**
    * Search compendium packs for items matching query with optional filters
    */
-  /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-return, @typescript-eslint/prefer-nullish-coalescing */
   async searchCompendium(
     query: string,
     packType?: string,
-    filters?: {
-      challengeRating?: number | { min?: number; max?: number };
-      creatureType?: string;
-      size?: string;
-      alignment?: string;
-      hasLegendaryActions?: boolean;
-      spellcaster?: boolean;
-    }
+    filters?: CompendiumSearchFilters
   ): Promise<CompendiumSearchResult[]> {
-    // Add defensive checks for query parameter
     if (!query || typeof query !== 'string' || query.trim().length < 2) {
       throw new Error('Search query must be a string with at least 2 characters');
     }
 
-    // ENHANCED SEARCH: If we have creature-specific filters and Actor packType, use enhanced index
-    if (
-      filters &&
-      packType === 'Actor' &&
-      (filters.challengeRating || filters.creatureType || filters.hasLegendaryActions)
-    ) {
-      // Check if enhanced creature index is enabled
-      const enhancedIndexEnabled = game.settings.get(this.moduleId, 'enableEnhancedCreatureIndex');
-
-      if (enhancedIndexEnabled) {
-        try {
-          // Convert search criteria and use enhanced search
-          const criteria: any = { limit: 100 }; // Default limit for search
-
-          if (filters.challengeRating) criteria.challengeRating = filters.challengeRating;
-          if (filters.creatureType) criteria.creatureType = filters.creatureType;
-          if (filters.size) criteria.size = filters.size;
-          if (filters.hasLegendaryActions)
-            criteria.hasLegendaryActions = filters.hasLegendaryActions;
-
-          const enhancedResult = await this.listCreaturesByCriteria(criteria);
-
-          // No name filtering needed - trust the enhanced creature index!
-          const filteredResults = enhancedResult.creatures;
-
-          // Convert to CompendiumSearchResult format
-          return filteredResults.map(
-            creature =>
-              ({
-                id: creature.id || creature.name,
-                name: creature.name,
-                type: creature.type || 'npc',
-                pack: creature.pack,
-                packLabel: creature.packLabel || creature.pack,
-                description: creature.description || '',
-                hasImage: creature.hasImage || !!creature.img,
-                summary: `CR ${creature.challengeRating} ${creature.creatureType} from ${creature.packLabel}`,
-                // Enhanced data (not part of interface but will be included)
-                challengeRating: creature.challengeRating,
-                creatureType: creature.creatureType,
-                size: creature.size,
-                hasLegendaryActions: creature.hasLegendaryActions,
-              }) as CompendiumSearchResult & {
-                challengeRating: number;
-                creatureType: string;
-                size: string;
-                hasLegendaryActions: boolean;
-              }
-          );
-        } catch (error) {
-          console.warn(
-            `[${this.moduleId}] Enhanced search failed, falling back to basic search:`,
-            error
-          );
-          // Continue to basic search below
-        }
-      }
-    }
-
-    const results: CompendiumSearchResult[] = [];
     const cleanQuery = query.toLowerCase().trim();
-    const searchTerms = cleanQuery
-      .split(' ')
-      .filter(term => term && typeof term === 'string' && term.length > 0);
+    const searchTerms = cleanQuery.split(' ').filter(term => term.length > 0);
 
     if (searchTerms.length === 0) {
       throw new Error('Search query must contain valid search terms');
     }
 
-    // Filter packs by type if specified
-    const packs = Array.from(game.packs.values()).filter(pack => {
+    if (
+      hasCompendiumFilters(filters) &&
+      packType === 'Actor' &&
+      [
+        filters.challengeRating,
+        filters.creatureType,
+        filters.size,
+        filters.hasLegendaryActions,
+        filters.spellcaster,
+      ].some(value => value !== undefined)
+    ) {
+      const enhancedIndexEnabled =
+        game.settings.get(this.moduleId, 'enableEnhancedCreatureIndex') === true;
+
+      if (enhancedIndexEnabled) {
+        try {
+          const criteria: CreatureSearchCriteria = {
+            limit: 100,
+            ...(filters.challengeRating !== undefined
+              ? { challengeRating: filters.challengeRating }
+              : {}),
+            ...(filters.creatureType ? { creatureType: filters.creatureType } : {}),
+            ...(filters.size ? { size: filters.size } : {}),
+            ...(filters.hasLegendaryActions !== undefined
+              ? { hasLegendaryActions: filters.hasLegendaryActions }
+              : {}),
+            ...(filters.spellcaster !== undefined ? { hasSpells: filters.spellcaster } : {}),
+          };
+
+          const enhancedResult = await this.listCreaturesByCriteria(criteria);
+
+          return enhancedResult.creatures
+            .filter(creature => this.matchesSearchCriteria(creature, { searchTerms }))
+            .slice(0, 50);
+        } catch (error) {
+          console.warn(
+            `[${this.moduleId}] Enhanced search failed, falling back to basic search:`,
+            error
+          );
+        }
+      }
+    }
+
+    const results: CompendiumSearchResult[] = [];
+    const packsSource = (game as { packs?: unknown }).packs;
+    const packCollection =
+      packsSource &&
+      typeof packsSource === 'object' &&
+      typeof (packsSource as Partial<PackCollectionLike>).values === 'function' &&
+      typeof (packsSource as Partial<PackCollectionLike>).get === 'function'
+        ? (packsSource as PackCollectionLike)
+        : null;
+
+    if (!packCollection) {
+      return results;
+    }
+
+    const packEntries = Array.from(packCollection.values());
+    const packs = packEntries.filter((pack): pack is CompendiumPackLike => {
+      if (!isCompendiumPackLike(pack)) {
+        return false;
+      }
       if (packType && pack.metadata.type !== packType) {
         return false;
       }
-      return pack.metadata.type !== 'Scene'; // Exclude scene packs for safety
+      return pack.metadata.type !== 'Scene';
     });
 
     for (const pack of packs) {
       try {
-        // Ensure pack index is loaded
         if (!pack.indexed) {
           await pack.getIndex({});
         }
 
-        // Use basic compendium index for all searches
-        const entriesToSearch = Array.from(pack.index.values());
+        const packIndex = pack.index;
+        if (!packIndex || typeof packIndex.values !== 'function') {
+          continue;
+        }
+
+        const entriesToSearch = Array.from(packIndex.values());
 
         for (const entry of entriesToSearch) {
           try {
-            // Type assertion and comprehensive safety checks for entry properties
-            const typedEntry = entry as any;
-            if (
-              !typedEntry?.name ||
-              typeof typedEntry.name !== 'string' ||
-              typedEntry.name.trim().length === 0
-            ) {
+            const typedEntry = toCompendiumIndexEntry(entry);
+            if (!typedEntry?.name?.trim()) {
               continue;
             }
-
-            // Ensure searchTerms are valid before using them
-            if (!searchTerms || !Array.isArray(searchTerms) || searchTerms.length === 0) {
-              continue;
-            }
-
-            // Use already created typedEntry
 
             const entryNameLower = typedEntry.name.toLowerCase();
-            const nameMatch = searchTerms.every(term => {
-              if (!term || typeof term !== 'string') {
-                return false;
-              }
-              return entryNameLower.includes(term);
-            });
+            const nameMatch = searchTerms.every(term => entryNameLower.includes(term));
 
             if (nameMatch) {
-              // For Actor packs with filters, use simple name/description matching
               if (
-                filters &&
-                this.shouldApplyFilters(entry, filters) &&
+                hasCompendiumFilters(filters) &&
+                this.shouldApplyFilters(typedEntry, filters) &&
                 pack.metadata.type === 'Actor'
               ) {
-                // Convert filters to search criteria for compatibility
-                const searchCriteria: any = {};
-
-                if (filters.challengeRating) {
-                  const searchTerms = [];
-                  if (typeof filters.challengeRating === 'number') {
-                    if (filters.challengeRating >= 15) {
-                      searchTerms.push('ancient', 'legendary', 'elder', 'greater');
-                    } else if (filters.challengeRating >= 10) {
-                      searchTerms.push('adult', 'warlord', 'champion', 'master');
-                    } else if (filters.challengeRating >= 5) {
-                      searchTerms.push('captain', 'knight', 'priest', 'mage');
-                    } else {
-                      searchTerms.push('guard', 'soldier', 'warrior', 'scout');
-                    }
-                  }
-                  searchCriteria.searchTerms = searchTerms;
-                }
-
-                if (filters.creatureType) {
-                  const typeTerms = [filters.creatureType];
-                  if (filters.creatureType.toLowerCase() === 'humanoid') {
-                    typeTerms.push('human', 'elf', 'dwarf', 'orc', 'goblin');
-                  }
-                  searchCriteria.searchTerms = [
-                    ...(searchCriteria.searchTerms || []),
-                    ...typeTerms,
-                  ];
-                }
-
+                const searchCriteria = buildIndexTextSearchCriteria(filters);
                 if (!this.matchesSearchCriteria(typedEntry, searchCriteria)) {
                   continue;
                 }
               }
 
-              // Standard index entry result
               results.push({
-                id: typedEntry._id || '',
+                id: typedEntry._id ?? '',
                 name: typedEntry.name,
-                type: typedEntry.type || 'unknown',
-                img: typedEntry.img || undefined,
+                type: typedEntry.type ?? 'unknown',
+                ...(typedEntry.img ? { img: typedEntry.img } : {}),
                 pack: pack.metadata.id,
                 packLabel: pack.metadata.label,
-                description: typedEntry.description || '',
-                hasImage: !!typedEntry.img,
-                summary: `${typedEntry.type} from ${pack.metadata.label}`,
+                ...(typedEntry.system ? { system: typedEntry.system } : {}),
+                description: typedEntry.description ?? '',
+                hasImage: Boolean(typedEntry.img),
+                summary: `${typedEntry.type ?? 'unknown'} from ${pack.metadata.label}`,
               });
             }
           } catch (entryError) {
-            // Log individual entry errors but continue processing
             console.warn(
               `[${this.moduleId}] Error processing entry in pack ${pack.metadata.id}:`,
               entryError
@@ -3206,187 +3631,94 @@ export class FoundryDataAccess {
             continue;
           }
 
-          // Limit results per pack to prevent overwhelming responses
-          if (results.length >= 100) break;
+          if (results.length >= 100) {
+            break;
+          }
         }
       } catch (error) {
         console.warn(`[${this.moduleId}] Failed to search pack ${pack.metadata.id}:`, error);
       }
 
-      // Global limit to prevent memory issues
-      if (results.length >= 100) break;
+      if (results.length >= 100) {
+        break;
+      }
     }
 
-    // Sort results by relevance with enhanced ranking for filtered searches
     results.sort((a, b) => {
-      // Exact name matches first
-      const aExact = a.name.toLowerCase() === query.toLowerCase();
-      const bExact = b.name.toLowerCase() === query.toLowerCase();
-      if (aExact && !bExact) return -1;
-      if (!aExact && bExact) return 1;
-
-      // If filters are used, prioritize by filter match quality
-      if (filters) {
-        const aScore = this.calculateRelevanceScore(a, filters, query);
-        const bScore = this.calculateRelevanceScore(b, filters, query);
-        if (aScore !== bScore) return bScore - aScore; // Higher score first
+      const aExact = a.name.toLowerCase() === cleanQuery;
+      const bExact = b.name.toLowerCase() === cleanQuery;
+      if (aExact && !bExact) {
+        return -1;
+      }
+      if (!aExact && bExact) {
+        return 1;
       }
 
-      // Fallback to alphabetical
+      if (hasCompendiumFilters(filters)) {
+        const aScore = this.calculateRelevanceScore(a, filters, query);
+        const bScore = this.calculateRelevanceScore(b, filters, query);
+        if (aScore !== bScore) {
+          return bScore - aScore;
+        }
+      }
+
       return a.name.localeCompare(b.name);
     });
 
-    return results.slice(0, 50); // Final limit
+    return results.slice(0, 50);
   }
 
   /**
    * Check if filters should be applied to this entry
    */
-  private shouldApplyFilters(entry: any, filters: any): boolean {
-    // Only apply filters to Actor entries (which includes NPCs/monsters/creatures)
-    if (entry.type !== 'npc' && entry.type !== 'character' && entry.type !== 'creature') {
+  private shouldApplyFilters(
+    entry: CompendiumIndexEntry,
+    filters: CompendiumSearchFilters
+  ): boolean {
+    if (!['npc', 'character', 'creature'].includes(entry.type ?? '')) {
       return false;
     }
 
-    // Check if any filters are actually specified
-    return Object.keys(filters).some(key => filters[key] !== undefined);
-  }
-
-  /**
-   * Check if entry passes all specified filters
-   * @unused - Replaced with simple index-only approach
-   */
-  // @ts-expect-error - Unused method kept for compatibility
-  private passesFilters(
-    entry: any,
-    filters: {
-      challengeRating?: number | { min?: number; max?: number };
-      creatureType?: string;
-      size?: string;
-      alignment?: string;
-      hasLegendaryActions?: boolean;
-      spellcaster?: boolean;
-    }
-  ): boolean {
-    const system = entry.system || {};
-
-    // Challenge Rating filter
-    if (filters.challengeRating !== undefined) {
-      // Try multiple possible CR locations in D&D 5e data structure
-      let entryCR =
-        system.details?.cr?.value || system.details?.cr || system.cr?.value || system.cr || 0;
-
-      // Handle fractional CRs (common in D&D 5e)
-      if (typeof entryCR === 'string') {
-        if (entryCR === '1/8') entryCR = 0.125;
-        else if (entryCR === '1/4') entryCR = 0.25;
-        else if (entryCR === '1/2') entryCR = 0.5;
-        else entryCR = parseFloat(entryCR) || 0;
-      }
-
-      if (typeof filters.challengeRating === 'number') {
-        // Exact CR match
-        if (entryCR !== filters.challengeRating) {
-          return false;
-        }
-      } else if (typeof filters.challengeRating === 'object') {
-        // CR range
-        const { min, max } = filters.challengeRating;
-        if (min !== undefined && entryCR < min) {
-          return false;
-        }
-        if (max !== undefined && entryCR > max) {
-          return false;
-        }
-      }
-    }
-
-    // Creature Type filter
-    if (filters.creatureType) {
-      const entryType = system.details?.type?.value || system.type?.value || '';
-      if (entryType.toLowerCase() !== filters.creatureType.toLowerCase()) {
-        return false;
-      }
-    }
-
-    // Size filter
-    if (filters.size) {
-      const entrySize = system.traits?.size || system.size || '';
-      if (entrySize.toLowerCase() !== filters.size.toLowerCase()) {
-        return false;
-      }
-    }
-
-    // Alignment filter
-    if (filters.alignment) {
-      const entryAlignment = system.details?.alignment || system.alignment || '';
-      if (!entryAlignment.toLowerCase().includes(filters.alignment.toLowerCase())) {
-        return false;
-      }
-    }
-
-    // Legendary Actions filter
-    if (filters.hasLegendaryActions !== undefined) {
-      const hasLegendary = !!(
-        system.resources?.legact ||
-        system.legendary ||
-        (system.resources?.legres && system.resources.legres.value > 0)
-      );
-      if (hasLegendary !== filters.hasLegendaryActions) {
-        return false;
-      }
-    }
-
-    // Spellcaster filter
-    if (filters.spellcaster !== undefined) {
-      const isSpellcaster = !!(
-        system.spells ||
-        system.attributes?.spellcasting ||
-        (system.details?.spellLevel && system.details.spellLevel > 0)
-      );
-      if (isSpellcaster !== filters.spellcaster) {
-        return false;
-      }
-    }
-
-    return true;
+    return hasCompendiumFilters(filters);
   }
 
   /**
    * Calculate relevance score for search result ranking
    */
-  private calculateRelevanceScore(entry: any, filters: any, query: string): number {
+  private calculateRelevanceScore(
+    entry: CompendiumSearchResult,
+    filters: CompendiumSearchFilters,
+    query: string
+  ): number {
     let score = 0;
-    const system = entry.system || {};
+    const system = toCreatureSystemLike(entry.system);
 
-    // Bonus for creature type match (high importance for encounter building)
     if (filters.creatureType) {
-      const entryType = system.details?.type?.value || system.type?.value || '';
+      const entryType = getCreatureType(system);
       if (entryType.toLowerCase() === filters.creatureType.toLowerCase()) {
         score += 20;
       }
     }
 
-    // Bonus for CR match (exact match gets higher score than range)
     if (filters.challengeRating !== undefined) {
-      const entryCR = system.details?.cr || system.cr || 0;
+      const entryCR = getCreatureChallengeRating(system);
       if (typeof filters.challengeRating === 'number') {
-        if (entryCR === filters.challengeRating) score += 15;
+        if (entryCR === filters.challengeRating) {
+          score += 15;
+        }
       } else if (typeof filters.challengeRating === 'object') {
         const { min, max } = filters.challengeRating;
         if (min !== undefined && max !== undefined) {
-          // Bonus for being in range, extra for being in middle of range
           if (entryCR >= min && entryCR <= max) {
             score += 10;
             const rangeMid = (min + max) / 2;
             const distFromMid = Math.abs(entryCR - rangeMid);
-            score += Math.max(0, 5 - distFromMid); // Up to 5 bonus for being near middle
+            score += Math.max(0, 5 - distFromMid);
           }
         }
       }
     }
 
-    // Bonus for common creature names (better for encounters)
     const commonNames = [
       'knight',
       'warrior',
@@ -3404,7 +3736,6 @@ export class FoundryDataAccess {
       score += 5;
     }
 
-    // Bonus for query term matches in name
     const queryTerms = query.toLowerCase().split(' ');
     for (const term of queryTerms) {
       if (term.length > 2 && lowerName.includes(term)) {
@@ -3418,104 +3749,50 @@ export class FoundryDataAccess {
   /**
    * List creatures by criteria using enhanced persistent index - optimized for instant filtering
    */
-  async listCreaturesByCriteria(criteria: {
-    challengeRating?: number | { min?: number; max?: number };
-    creatureType?: string;
-    size?: string;
-    hasSpells?: boolean;
-    hasLegendaryActions?: boolean;
-    limit?: number;
-  }): Promise<{ creatures: any[]; searchSummary: any }> {
-    const limit = criteria.limit || 500;
+  async listCreaturesByCriteria(criteria: CreatureSearchCriteria): Promise<CreatureSearchResponse> {
+    const limit = criteria.limit ?? 500;
 
-    // Check if enhanced creature index is enabled
-    const enhancedIndexEnabled = game.settings.get(this.moduleId, 'enableEnhancedCreatureIndex');
+    const enhancedIndexEnabled =
+      game.settings.get(this.moduleId, 'enableEnhancedCreatureIndex') === true;
 
     if (!enhancedIndexEnabled) {
       return this.fallbackBasicCreatureSearch(criteria, limit);
     }
 
     try {
-      // Get enhanced creature index (builds if needed)
       const enhancedCreatures = await this.persistentIndex.getEnhancedIndex();
-
-      // Apply filters to enhanced data
       let filteredCreatures = enhancedCreatures.filter(creature =>
         this.passesEnhancedCriteria(creature, criteria)
       );
 
-      // Sort by Level/CR then name for consistent ordering (system-aware)
       filteredCreatures.sort((a, b) => {
-        // Get power level (CR for D&D 5e, Level for PF2e)
-        const powerA = 'level' in a ? a.level : a.challengeRating;
-        const powerB = 'level' in b ? b.level : b.challengeRating;
+        const powerA = isPF2eCreatureIndex(a) ? a.level : a.challengeRating;
+        const powerB = isPF2eCreatureIndex(b) ? b.level : b.challengeRating;
 
         if (powerA !== powerB) {
-          return powerA - powerB; // Lower power first
+          return powerA - powerB;
         }
         return a.name.localeCompare(b.name);
       });
 
-      // Apply limit
       if (filteredCreatures.length > limit) {
         filteredCreatures = filteredCreatures.slice(0, limit);
       }
 
-      // Convert enhanced creatures to result format (system-aware)
-      const results = filteredCreatures.map(creature => {
-        // Type guard for result formatting
-        const isPF2e = 'level' in creature;
-
-        return {
-          id: creature.id,
-          name: creature.name,
-          type: creature.type,
-          pack: creature.pack,
-          packLabel: creature.packLabel,
-          description: creature.description || '',
-          hasImage: !!creature.img,
-
-          // System-aware summary
-          summary: isPF2e
-            ? `Level ${creature.level} ${creature.creatureType} (${creature.rarity}) from ${creature.packLabel}`
-            : `CR ${creature.challengeRating} ${creature.creatureType} from ${creature.packLabel}`,
-
-          // Include all creature data (conditional based on system)
-          ...(isPF2e
-            ? {
-                level: creature.level,
-                traits: creature.traits,
-                rarity: creature.rarity,
-              }
-            : {
-                challengeRating: creature.challengeRating,
-                hasLegendaryActions: creature.hasLegendaryActions,
-              }),
-
-          creatureType: creature.creatureType,
-          size: creature.size,
-          hitPoints: creature.hitPoints,
-          armorClass: creature.armorClass,
-          hasSpells: creature.hasSpells,
-          alignment: creature.alignment,
-        };
-      });
-
-      // Calculate pack distribution for summary
-      const packResults = new Map();
+      const results = filteredCreatures.map(toCreatureSearchResult);
+      const packResults = new Map<string, number>();
       results.forEach(creature => {
-        const count = packResults.get(creature.packLabel) || 0;
+        const count = packResults.get(creature.packLabel) ?? 0;
         packResults.set(creature.packLabel, count + 1);
       });
 
-      // Get unique pack information
-      const uniquePacks = Array.from(new Set(enhancedCreatures.map(c => c.pack)));
+      const uniquePacks = Array.from(new Set(enhancedCreatures.map(creature => creature.pack)));
       const topPacks = uniquePacks.slice(0, 5).map(packId => {
         const sampleCreature = enhancedCreatures.find(c => c.pack === packId);
         return {
           id: packId,
-          label: sampleCreature?.packLabel || 'Unknown Pack',
-          priority: 100, // All packs are prioritized equally in enhanced index
+          label: sampleCreature?.packLabel ?? 'Unknown Pack',
+          priority: 100,
         };
       });
 
@@ -3527,6 +3804,7 @@ export class FoundryDataAccess {
           totalCreaturesFound: results.length,
           resultsByPack: Object.fromEntries(packResults),
           criteria,
+          searchMethod: 'enhanced_persistent_index',
           indexMetadata: {
             totalIndexedCreatures: enhancedCreatures.length,
             searchMethod: 'enhanced_persistent_index',
@@ -3535,7 +3813,6 @@ export class FoundryDataAccess {
       };
     } catch (error) {
       console.error(`[${this.moduleId}] Enhanced creature search failed:`, error);
-      // Fallback to basic search if enhanced index fails
       return this.fallbackBasicCreatureSearch(criteria, limit);
     }
   }
@@ -3543,13 +3820,15 @@ export class FoundryDataAccess {
   /**
    * Check if enhanced creature passes all specified criteria (system-aware routing)
    */
-  private passesEnhancedCriteria(creature: EnhancedCreatureIndex, criteria: any): boolean {
-    // Type guard for PF2e creatures - check for level property
-    if ('level' in creature) {
+  private passesEnhancedCriteria(
+    creature: EnhancedCreatureIndex,
+    criteria: CreatureSearchCriteria
+  ): boolean {
+    if (isPF2eCreatureIndex(creature)) {
       return this.passesPF2eCriteria(creature, criteria);
-    } else {
-      return this.passesDnD5eCriteria(creature, criteria);
     }
+
+    return this.passesDnD5eCriteria(creature, criteria);
   }
 
   /**
@@ -3557,15 +3836,8 @@ export class FoundryDataAccess {
    */
   private passesDnD5eCriteria(
     creature: DnD5eCreatureIndex,
-    criteria: {
-      challengeRating?: number | { min?: number; max?: number };
-      creatureType?: string;
-      size?: string;
-      hasSpells?: boolean;
-      hasLegendaryActions?: boolean;
-    }
+    criteria: CreatureSearchCriteria
   ): boolean {
-    // Challenge Rating filter
     if (criteria.challengeRating !== undefined) {
       if (typeof criteria.challengeRating === 'number') {
         if (creature.challengeRating !== criteria.challengeRating) {
@@ -3582,28 +3854,24 @@ export class FoundryDataAccess {
       }
     }
 
-    // Creature Type filter
     if (criteria.creatureType) {
       if (creature.creatureType.toLowerCase() !== criteria.creatureType.toLowerCase()) {
         return false;
       }
     }
 
-    // Size filter
     if (criteria.size) {
       if (creature.size.toLowerCase() !== criteria.size.toLowerCase()) {
         return false;
       }
     }
 
-    // Spellcaster filter
     if (criteria.hasSpells !== undefined) {
       if (creature.hasSpells !== criteria.hasSpells) {
         return false;
       }
     }
 
-    // Legendary Actions filter
     if (criteria.hasLegendaryActions !== undefined) {
       if (creature.hasLegendaryActions !== criteria.hasLegendaryActions) {
         return false;
@@ -3618,16 +3886,8 @@ export class FoundryDataAccess {
    */
   private passesPF2eCriteria(
     creature: PF2eCreatureIndex,
-    criteria: {
-      level?: number | { min?: number; max?: number };
-      traits?: string[];
-      rarity?: string;
-      creatureType?: string;
-      size?: string;
-      hasSpells?: boolean;
-    }
+    criteria: CreatureSearchCriteria
   ): boolean {
-    // Level filter
     if (criteria.level !== undefined) {
       if (typeof criteria.level === 'number') {
         if (creature.level !== criteria.level) {
@@ -3641,7 +3901,6 @@ export class FoundryDataAccess {
       }
     }
 
-    // Traits filter (creature must have ALL specified traits)
     if (criteria.traits && criteria.traits.length > 0) {
       const hasAllTraits = criteria.traits.every(requiredTrait =>
         creature.traits.some(t => t.toLowerCase() === requiredTrait.toLowerCase())
@@ -3651,12 +3910,10 @@ export class FoundryDataAccess {
       }
     }
 
-    // Rarity filter
     if (criteria.rarity && creature.rarity !== criteria.rarity) {
       return false;
     }
 
-    // Creature type filter
     if (
       criteria.creatureType &&
       creature.creatureType.toLowerCase() !== criteria.creatureType.toLowerCase()
@@ -3664,12 +3921,10 @@ export class FoundryDataAccess {
       return false;
     }
 
-    // Size filter
     if (criteria.size && creature.size.toLowerCase() !== criteria.size.toLowerCase()) {
       return false;
     }
 
-    // Spellcasting filter
     if (criteria.hasSpells !== undefined && creature.hasSpells !== criteria.hasSpells) {
       return false;
     }
@@ -3681,12 +3936,11 @@ export class FoundryDataAccess {
    * Fallback to basic creature search if enhanced index fails
    */
   private async fallbackBasicCreatureSearch(
-    criteria: any,
+    criteria: CreatureSearchCriteria,
     limit: number
-  ): Promise<{ creatures: any[]; searchSummary: any }> {
+  ): Promise<CreatureSearchResponse> {
     console.warn(`[${this.moduleId}] Falling back to basic search due to enhanced index failure`);
 
-    // Use a simple text-based search as fallback
     const searchTerms: string[] = [];
 
     if (criteria.creatureType) {
@@ -3695,10 +3949,13 @@ export class FoundryDataAccess {
 
     if (criteria.challengeRating) {
       if (typeof criteria.challengeRating === 'number') {
-        // Add CR-based name patterns as fallback
-        if (criteria.challengeRating >= 15) searchTerms.push('ancient', 'legendary');
-        else if (criteria.challengeRating >= 10) searchTerms.push('adult', 'champion');
-        else if (criteria.challengeRating >= 5) searchTerms.push('captain', 'knight');
+        if (criteria.challengeRating >= 15) {
+          searchTerms.push('ancient', 'legendary');
+        } else if (criteria.challengeRating >= 10) {
+          searchTerms.push('adult', 'champion');
+        } else if (criteria.challengeRating >= 5) {
+          searchTerms.push('captain', 'knight');
+        }
       }
     }
 
@@ -3720,197 +3977,9 @@ export class FoundryDataAccess {
   }
 
   /**
-   * Prioritize compendium packs by likelihood of containing relevant creatures
-   * @unused - Replaced by enhanced persistent index system
-   */
-  // @ts-expect-error - Unused method kept for compatibility
-  private prioritizePacksForCreatures(packs: any[]): any[] {
-    const priorityOrder = [
-      // Tier 1: Core D&D 5e content (highest priority)
-      { pattern: /^dnd5e\.monsters/, priority: 100 }, // Core D&D 5e monsters
-      { pattern: /^dnd5e\.actors/, priority: 95 }, // Core D&D 5e actors
-      { pattern: /ddb.*monsters/i, priority: 90 }, // D&D Beyond monsters
-
-      // Tier 2: Official modules and supplements
-      { pattern: /^world\..*ddb.*monsters/i, priority: 85 }, // World-specific DDB monsters
-      { pattern: /monsters/i, priority: 80 }, // Any pack with "monsters"
-
-      // Tier 3: Campaign and adventure content
-      { pattern: /^world\.(?!.*summon|.*hero)/i, priority: 70 }, // World packs (not summons/heroes)
-
-      // Tier 4: Specialized content
-      { pattern: /summon|familiar/i, priority: 40 }, // Summons and familiars
-
-      // Tier 5: Unlikely to contain monsters (lowest priority)
-      { pattern: /hero|player|pc/i, priority: 10 }, // Player characters
-    ];
-
-    return packs.sort((a, b) => {
-      const aScore = this.getPackPriority(a.metadata.id, a.metadata.label, priorityOrder);
-      const bScore = this.getPackPriority(b.metadata.id, b.metadata.label, priorityOrder);
-
-      if (aScore !== bScore) {
-        return bScore - aScore; // Higher score first
-      }
-
-      // Secondary sort by pack label alphabetically
-      return a.metadata.label.localeCompare(b.metadata.label);
-    });
-  }
-
-  /**
-   * Get priority score for a pack based on ID and label
-   */
-  private getPackPriority(
-    packId: string,
-    packLabel: string,
-    priorityOrder: { pattern: RegExp; priority: number }[]
-  ): number {
-    for (const rule of priorityOrder) {
-      if (rule.pattern.test(packId) || rule.pattern.test(packLabel)) {
-        return rule.priority;
-      }
-    }
-    // Default priority for unmatched packs
-    return 50;
-  }
-
-  /**
-   * Check if creature entry passes the given criteria
-   * @unused - Legacy method replaced by passesEnhancedCriteria
-   */
-  // @ts-expect-error - Legacy method kept for compatibility
-  private passesCriteria(
-    entry: unknown,
-    criteria: {
-      challengeRating?: number | { min?: number; max?: number };
-      creatureType?: string;
-      size?: string;
-      hasSpells?: boolean;
-      hasLegendaryActions?: boolean;
-    }
-  ): boolean {
-    type CreatureSystemLike = {
-      details?: {
-        cr?: { value?: number | string } | number | string;
-        type?: { value?: string } | string;
-        spellLevel?: number;
-      };
-      cr?: { value?: number | string } | number | string;
-      type?: { value?: string } | string;
-      traits?: { size?: string };
-      size?: string;
-      spells?: unknown;
-      attributes?: { spellcasting?: unknown };
-      resources?: { legact?: unknown; legres?: { value?: number } };
-      legendary?: unknown;
-    };
-
-    const entryRecord =
-      entry && typeof entry === 'object' ? (entry as Record<string, unknown>) : {};
-    const systemRaw = entryRecord.system;
-    const system: CreatureSystemLike =
-      systemRaw && typeof systemRaw === 'object' ? (systemRaw as CreatureSystemLike) : {};
-
-    // Challenge Rating filter - enhanced extraction
-    if (criteria.challengeRating !== undefined) {
-      // Try multiple possible CR locations in D&D 5e data structure
-      const detailsCrRaw = system.details?.cr;
-      const detailsCr =
-        detailsCrRaw && typeof detailsCrRaw === 'object' && 'value' in detailsCrRaw
-          ? (detailsCrRaw as { value?: number | string }).value
-          : detailsCrRaw;
-      const systemCrRaw = system.cr;
-      const systemCr =
-        systemCrRaw && typeof systemCrRaw === 'object' && 'value' in systemCrRaw
-          ? (systemCrRaw as { value?: number | string }).value
-          : systemCrRaw;
-      const entryCRRaw = detailsCr ?? systemCr ?? 0;
-      let entryCR = typeof entryCRRaw === 'number' ? entryCRRaw : 0;
-
-      // Handle fractional CRs (common in D&D 5e)
-      if (typeof entryCRRaw === 'string') {
-        if (entryCRRaw === '1/8') entryCR = 0.125;
-        else if (entryCRRaw === '1/4') entryCR = 0.25;
-        else if (entryCRRaw === '1/2') entryCR = 0.5;
-        else entryCR = parseFloat(entryCRRaw) || 0;
-      } else if (typeof entryCRRaw === 'number') {
-        entryCR = entryCRRaw;
-      }
-
-      if (typeof criteria.challengeRating === 'number') {
-        if (entryCR !== criteria.challengeRating) {
-          return false;
-        }
-      } else if (typeof criteria.challengeRating === 'object') {
-        const { min = 0, max = 30 } = criteria.challengeRating;
-        if (entryCR < min || entryCR > max) {
-          return false;
-        }
-      }
-    }
-
-    // Creature Type filter - enhanced extraction
-    if (criteria.creatureType) {
-      // Try multiple possible type locations in D&D 5e data structure
-      const detailsTypeRaw = system.details?.type;
-      const detailsType =
-        detailsTypeRaw && typeof detailsTypeRaw === 'object' && 'value' in detailsTypeRaw
-          ? (detailsTypeRaw as { value?: string }).value
-          : detailsTypeRaw;
-      const systemTypeRaw = system.type;
-      const systemType =
-        systemTypeRaw && typeof systemTypeRaw === 'object' && 'value' in systemTypeRaw
-          ? (systemTypeRaw as { value?: string }).value
-          : systemTypeRaw;
-      const entryType = (detailsType ?? systemType ?? '') as string;
-      if (entryType.toLowerCase() !== criteria.creatureType.toLowerCase()) {
-        return false;
-      }
-    }
-
-    // Size filter
-    if (criteria.size) {
-      const entrySize = system.traits?.size ?? system.size ?? '';
-      if (entrySize.toLowerCase() !== criteria.size.toLowerCase()) return false;
-    }
-
-    // Spellcaster filter
-    if (criteria.hasSpells !== undefined) {
-      const isSpellcaster = !!(
-        system.spells ||
-        system.attributes?.spellcasting ||
-        (system.details?.spellLevel && system.details.spellLevel > 0)
-      );
-      if (isSpellcaster !== criteria.hasSpells) return false;
-    }
-
-    // Legendary Actions filter
-    if (criteria.hasLegendaryActions !== undefined) {
-      const hasLegendary = !!(
-        system.resources?.legact ||
-        system.legendary ||
-        (system.resources?.legres && (system.resources.legres.value ?? 0) > 0)
-      );
-      if (hasLegendary !== criteria.hasLegendaryActions) return false;
-    }
-
-    return true;
-  }
-
-  /**
    * Simple name/description-based matching for creatures using index data only
    */
-  private matchesSearchCriteria(
-    entry: unknown,
-    criteria: {
-      searchTerms?: string[];
-      excludeTerms?: string[];
-      size?: string;
-      hasSpells?: boolean;
-      hasLegendaryActions?: boolean;
-    }
-  ): boolean {
+  private matchesSearchCriteria(entry: unknown, criteria: IndexTextSearchCriteria): boolean {
     const entryRecord =
       entry && typeof entry === 'object' ? (entry as Record<string, unknown>) : {};
     const name = typeof entryRecord.name === 'string' ? entryRecord.name.toLowerCase() : '';
@@ -3938,7 +4007,6 @@ export class FoundryDataAccess {
 
     return true;
   }
-  /* eslint-enable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-return, @typescript-eslint/prefer-nullish-coalescing */
 
   /**
    * List all actors with basic information
@@ -6956,7 +7024,6 @@ export class FoundryDataAccess {
   /**
    * List all scenes with filtering options
    */
-  /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-return, @typescript-eslint/require-await, @typescript-eslint/prefer-nullish-coalescing */
   listScenes(options: { filter?: string; include_active_only?: boolean } = {}): Promise<
     Array<{
       id: string;
@@ -6975,21 +7042,17 @@ export class FoundryDataAccess {
     this.validateFoundryState();
 
     try {
-      const scenesRaw = game.scenes?.contents;
-      let scenes = (Array.isArray(scenesRaw) ? scenesRaw : []) as SceneListItem[];
+      let scenes = getSceneContents();
 
-      // Filter by active only if requested
       if (options.include_active_only) {
         scenes = scenes.filter(scene => scene.active === true);
       }
 
-      // Filter by name if provided
       if (options.filter) {
         const filterLower = options.filter.toLowerCase();
         scenes = scenes.filter(scene => scene.name?.toLowerCase().includes(filterLower) === true);
       }
 
-      // Map to consistent format
       return Promise.resolve(
         scenes.map(scene => {
           const background =
@@ -7025,66 +7088,38 @@ export class FoundryDataAccess {
   /**
    * Switch to a different scene
    */
-  async switchScene(options: { scene_identifier: string; optimize_view?: boolean }): Promise<any> {
+  async switchScene(options: { scene_identifier: string; optimize_view?: boolean }): Promise<{
+    success: boolean;
+    sceneId?: string;
+    sceneName?: string;
+    dimensions: { width: number; height: number };
+  }> {
     this.validateFoundryState();
 
     try {
-      // Find the target scene by ID or name
-      const scenesRaw = game.scenes?.contents;
-      const scenes = Array.isArray(scenesRaw) ? scenesRaw : [];
-      const targetScene = scenes.find(scene => {
-        if (!scene || typeof scene !== 'object') {
-          return false;
-        }
-
-        const candidate = scene as {
-          id?: string;
-          name?: string;
-        };
-
-        return (
-          candidate.id === options.scene_identifier ||
-          candidate.name?.toLowerCase() === options.scene_identifier.toLowerCase()
-        );
-      });
+      const targetScene = getSceneContents().find(
+        (scene): scene is SceneActivatableLike =>
+          isSceneActivatableLike(scene) &&
+          (scene.id === options.scene_identifier ||
+            scene.name?.toLowerCase() === options.scene_identifier.toLowerCase())
+      );
 
       if (!targetScene) {
         throw new Error(`Scene not found: "${options.scene_identifier}"`);
       }
 
-      const sceneDoc = targetScene as {
-        id?: string;
-        name?: string;
-        activate: () => Promise<unknown>;
-        dimensions?: { width?: number; height?: number };
-        width?: number;
-        height?: number;
-      };
+      await targetScene.activate();
 
-      // Activate the scene
-      await sceneDoc.activate();
-
-      // Optimize view if requested (default true)
-      if (options.optimize_view !== false && typeof canvas !== 'undefined' && canvas?.scene) {
-        const sceneWithDimensions = sceneDoc as {
-          dimensions?: { width?: number; height?: number };
-          width?: number;
-          height?: number;
-        };
-        const dimensions = sceneWithDimensions.dimensions ?? {
-          width: sceneWithDimensions.width ?? 0,
-          height: sceneWithDimensions.height ?? 0,
+      const sceneCanvas = getSceneCanvas();
+      if (options.optimize_view !== false && sceneCanvas?.scene) {
+        const dimensions = targetScene.dimensions ?? {
+          width: targetScene.width ?? 0,
+          height: targetScene.height ?? 0,
         };
         const width = dimensions.width ?? 0;
         const height = dimensions.height ?? 0;
 
-        const sceneCanvas = canvas as unknown as {
-          screenDimensions?: [number, number];
-          pan: (options: { x: number; y: number; scale: number }) => Promise<unknown>;
-        };
-
         if (width && height) {
-          // Center the view on the scene
           await sceneCanvas.pan({
             x: width / 2,
             y: height / 2,
@@ -7099,11 +7134,11 @@ export class FoundryDataAccess {
 
       return {
         success: true,
-        sceneId: sceneDoc.id,
-        sceneName: sceneDoc.name,
+        ...(targetScene.id ? { sceneId: targetScene.id } : {}),
+        ...(targetScene.name ? { sceneName: targetScene.name } : {}),
         dimensions: {
-          width: sceneDoc.dimensions?.width ?? sceneDoc.width ?? 0,
-          height: sceneDoc.dimensions?.height ?? sceneDoc.height ?? 0,
+          width: targetScene.dimensions?.width ?? targetScene.width ?? 0,
+          height: targetScene.dimensions?.height ?? targetScene.height ?? 0,
         },
       };
     } catch (error) {
@@ -7125,18 +7160,11 @@ export class FoundryDataAccess {
     this.validateFoundryState();
 
     try {
-      // Find the character first
-      const actorsRaw = game.actors?.contents;
-      const actors = Array.isArray(actorsRaw) ? actorsRaw : [];
+      const actors = getActorContents();
       const character = actors.find(actor => {
-        if (!actor || typeof actor !== 'object') {
-          return false;
-        }
-
-        const candidate = actor as { id?: string; name?: string };
         return (
-          candidate.id === data.characterIdentifier ||
-          candidate.name?.toLowerCase() === data.characterIdentifier.toLowerCase()
+          actor.id === data.characterIdentifier ||
+          actor.name?.toLowerCase() === data.characterIdentifier.toLowerCase()
         );
       });
 
@@ -7144,23 +7172,16 @@ export class FoundryDataAccess {
         throw new Error(`Character not found: "${data.characterIdentifier}"`);
       }
 
-      // Search in items first (by ID or name)
-      const itemsRaw = (character as { items?: { contents?: unknown[] } }).items?.contents;
-      const items = Array.isArray(itemsRaw) ? itemsRaw : [];
-      let entity = items.find(item => {
-        if (!item || typeof item !== 'object') {
-          return false;
-        }
-
-        const candidate = item as { id?: string; name?: string };
+      const items = getActorItems(character);
+      const itemEntity = items.find(item => {
         return (
-          candidate.id === data.entityIdentifier ||
-          candidate.name?.toLowerCase() === data.entityIdentifier.toLowerCase()
+          item.id === data.entityIdentifier ||
+          item.name?.toLowerCase() === data.entityIdentifier.toLowerCase()
         );
       });
 
-      if (entity) {
-        const itemEntity = entity as {
+      if (itemEntity) {
+        const typedItemEntity = itemEntity as {
           id?: string;
           name?: string;
           type?: string;
@@ -7168,7 +7189,7 @@ export class FoundryDataAccess {
           system?: unknown;
         };
 
-        const itemSystem = itemEntity.system as
+        const itemSystem = typedItemEntity.system as
           | { description?: { value?: string } | string }
           | undefined;
 
@@ -7176,15 +7197,15 @@ export class FoundryDataAccess {
           success: true,
           entityType: 'item',
           entity: {
-            id: itemEntity.id,
-            name: itemEntity.name,
-            type: itemEntity.type,
-            img: itemEntity.img,
+            id: typedItemEntity.id,
+            name: typedItemEntity.name,
+            type: typedItemEntity.type,
+            img: typedItemEntity.img,
             description:
               itemSystem?.description && typeof itemSystem.description === 'object'
                 ? (itemSystem.description.value ?? '')
                 : (itemSystem?.description ?? ''),
-            system: itemEntity.system,
+            system: typedItemEntity.system,
           },
         };
       }
@@ -7192,13 +7213,15 @@ export class FoundryDataAccess {
       // Search in actions (for systems that have actions as separate entities)
       const characterSystem = (character as { system?: { actions?: unknown } }).system;
       if (characterSystem?.actions) {
-        const actions = Array.isArray(characterSystem.actions)
+        const actions: unknown[] = Array.isArray(characterSystem.actions)
           ? characterSystem.actions
           : Object.values(
-              typeof characterSystem.actions === 'object' ? characterSystem.actions : {}
+              typeof characterSystem.actions === 'object'
+                ? (characterSystem.actions as Record<string, unknown>)
+                : {}
             );
 
-        entity = actions.find(action => {
+        const actionEntity = actions.find(action => {
           if (!action || typeof action !== 'object') {
             return false;
           }
@@ -7210,11 +7233,11 @@ export class FoundryDataAccess {
           );
         });
 
-        if (entity) {
+        if (actionEntity) {
           return {
             success: true,
             entityType: 'action',
-            entity: entity as Record<string, unknown>,
+            entity: actionEntity as Record<string, unknown>,
           };
         }
       }
@@ -7222,7 +7245,7 @@ export class FoundryDataAccess {
       // Search in effects
       const effectsRaw = (character as { effects?: { contents?: unknown[] } }).effects?.contents;
       const effects = Array.isArray(effectsRaw) ? effectsRaw : [];
-      entity = effects.find(effect => {
+      const effectEntity = effects.find(effect => {
         if (!effect || typeof effect !== 'object') {
           return false;
         }
@@ -7234,8 +7257,8 @@ export class FoundryDataAccess {
         );
       });
 
-      if (entity) {
-        const effectEntity = entity as {
+      if (effectEntity) {
+        const typedEffectEntity = effectEntity as {
           id?: string;
           name?: string;
           label?: string;
@@ -7249,18 +7272,18 @@ export class FoundryDataAccess {
           success: true,
           entityType: 'effect',
           entity: {
-            id: effectEntity.id,
-            name: effectEntity.name || effectEntity.label,
-            icon: effectEntity.icon,
-            disabled: effectEntity.disabled,
-            duration: effectEntity.duration,
-            changes: effectEntity.changes,
+            id: typedEffectEntity.id,
+            name: typedEffectEntity.name ?? typedEffectEntity.label,
+            icon: typedEffectEntity.icon,
+            disabled: typedEffectEntity.disabled,
+            duration: typedEffectEntity.duration,
+            changes: typedEffectEntity.changes,
           },
         };
       }
 
       throw new Error(
-        `Entity not found: "${data.entityIdentifier}" in character "${character.name}"`
+        `Entity not found: "${data.entityIdentifier}" in character "${character.name ?? 'Unknown'}"`
       );
     } catch (error) {
       throw new Error(
@@ -7272,12 +7295,13 @@ export class FoundryDataAccess {
   /**
    * Move a token to a new position on the scene
    */
-  async moveToken(data: {
-    tokenId: string;
-    x: number;
-    y: number;
-    animate?: boolean;
-  }): Promise<any> {
+  async moveToken(data: { tokenId: string; x: number; y: number; animate?: boolean }): Promise<{
+    success: boolean;
+    tokenId?: string;
+    tokenName?: string;
+    newPosition: { x: number; y: number };
+    animated: boolean;
+  }> {
     this.validateFoundryState();
 
     // Use permission system
@@ -7290,17 +7314,16 @@ export class FoundryDataAccess {
     }
 
     try {
-      const scene = (game.scenes as any).current;
+      const scene = getCurrentSceneDocument();
       if (!scene) {
         throw new Error('No active scene found');
       }
 
-      const token = scene.tokens.get(data.tokenId);
+      const token = getMutableTokenById(scene, data.tokenId);
       if (!token) {
         throw new Error(`Token ${data.tokenId} not found in current scene`);
       }
 
-      // Update token position
       await token.update(
         {
           x: data.x,
@@ -7313,8 +7336,8 @@ export class FoundryDataAccess {
 
       return {
         success: true,
-        tokenId: token.id,
-        tokenName: token.name,
+        ...(token.id ? { tokenId: token.id } : {}),
+        ...(token.name ? { tokenName: token.name } : {}),
         newPosition: { x: data.x, y: data.y },
         animated: data.animate !== false,
       };
@@ -7334,7 +7357,12 @@ export class FoundryDataAccess {
   /**
    * Update token properties
    */
-  async updateToken(data: { tokenId: string; updates: Record<string, any> }): Promise<any> {
+  async updateToken(data: { tokenId: string; updates: Record<string, unknown> }): Promise<{
+    success: boolean;
+    tokenId?: string;
+    tokenName?: string;
+    updatedProperties: string[];
+  }> {
     this.validateFoundryState();
 
     // Use permission system
@@ -7347,30 +7375,28 @@ export class FoundryDataAccess {
     }
 
     try {
-      const scene = (game.scenes as any).current;
+      const scene = getCurrentSceneDocument();
       if (!scene) {
         throw new Error('No active scene found');
       }
 
-      const token = scene.tokens.get(data.tokenId);
+      const token = getMutableTokenById(scene, data.tokenId);
       if (!token) {
         throw new Error(`Token ${data.tokenId} not found in current scene`);
       }
 
-      // Filter out undefined values
       const cleanUpdates = Object.fromEntries(
         Object.entries(data.updates).filter(([_, v]) => v !== undefined)
       );
 
-      // Apply updates
       await token.update(cleanUpdates);
 
       this.auditLog('updateToken', { tokenId: data.tokenId, updates: cleanUpdates }, 'success');
 
       return {
         success: true,
-        tokenId: token.id,
-        tokenName: token.name,
+        ...(token.id ? { tokenId: token.id } : {}),
+        ...(token.name ? { tokenName: token.name } : {}),
         updatedProperties: Object.keys(cleanUpdates),
       };
     } catch (error) {
@@ -7389,7 +7415,12 @@ export class FoundryDataAccess {
   /**
    * Delete one or more tokens from the scene
    */
-  async deleteTokens(data: { tokenIds: string[] }): Promise<any> {
+  async deleteTokens(data: { tokenIds: string[] }): Promise<{
+    success: boolean;
+    deletedCount: number;
+    deletedTokens: string[];
+    failedTokens?: string[];
+  }> {
     this.validateFoundryState();
 
     // Use permission system
@@ -7402,7 +7433,7 @@ export class FoundryDataAccess {
     }
 
     try {
-      const scene = (game.scenes as any).current;
+      const scene = getCurrentSceneDocument();
       if (!scene) {
         throw new Error('No active scene found');
       }
@@ -7412,7 +7443,7 @@ export class FoundryDataAccess {
 
       for (const tokenId of data.tokenIds) {
         try {
-          const token = scene.tokens.get(tokenId);
+          const token = getMutableTokenById(scene, tokenId);
           if (token) {
             await token.delete();
             deletedTokens.push(tokenId);
@@ -7434,7 +7465,7 @@ export class FoundryDataAccess {
         success: true,
         deletedCount: deletedTokens.length,
         deletedTokens,
-        failedTokens: failedTokens.length > 0 ? failedTokens : undefined,
+        ...(failedTokens.length > 0 ? { failedTokens } : {}),
       };
     } catch (error) {
       this.auditLog(
@@ -7452,22 +7483,20 @@ export class FoundryDataAccess {
   /**
    * Get detailed information about a token
    */
-  async getTokenDetails(data: { tokenId: string }): Promise<Record<string, unknown>> {
+  getTokenDetails(data: { tokenId: string }): Record<string, unknown> {
     this.validateFoundryState();
 
     try {
-      const scenes = game.scenes as unknown as { current?: SceneWithTokensLike };
-      const scene = scenes.current;
+      const scene = getCurrentSceneDocument();
       if (!scene) {
         throw new Error('No active scene found');
       }
 
-      const token = scene.tokens.get(data.tokenId);
+      const token = getMutableTokenById(scene, data.tokenId);
       if (!token) {
         throw new Error(`Token ${data.tokenId} not found in current scene`);
       }
 
-      // Return flat structure that matches MCP server expectations
       return {
         success: true,
         id: token.id,
@@ -7521,13 +7550,12 @@ export class FoundryDataAccess {
     }
 
     try {
-      const scenes = game.scenes as unknown as { current?: SceneWithTokensLike };
-      const scene = scenes.current;
+      const scene = getCurrentSceneDocument();
       if (!scene) {
         throw new Error('No active scene found');
       }
 
-      const token = scene.tokens.get(data.tokenId);
+      const token = getMutableTokenById(scene, data.tokenId);
       if (!token) {
         throw new Error(`Token ${data.tokenId} not found in current scene`);
       }
@@ -7561,26 +7589,21 @@ export class FoundryDataAccess {
       }
 
       if (data.active) {
-        // Add the condition - handle DSA5 and other systems
         const effectData: Record<string, unknown> = {
-          name: condition.name || condition.label || condition.id,
-          icon: condition.icon || condition.img,
+          name: condition.name ?? condition.label ?? condition.id,
+          icon: condition.icon ?? condition.img,
         };
 
-        // Add statuses for systems that support it (D&D5e, PF2e)
         if (condition.id) {
           effectData.statuses = [condition.id];
         }
 
-        // DSA5-specific: Copy all properties from the condition
-        // DSA5 conditions have different structure than D&D5e/PF2e
         const gameSystem = game.system as unknown as { id?: string };
         if (gameSystem.id === 'dsa5') {
-          // For DSA5, use the condition's full data structure
           Object.assign(effectData, {
-            flags: condition.flags || {},
-            changes: condition.changes || [],
-            duration: condition.duration || {},
+            flags: condition.flags ?? {},
+            changes: condition.changes ?? [],
+            duration: condition.duration ?? {},
             origin: condition.origin,
           });
         }
@@ -7629,7 +7652,7 @@ export class FoundryDataAccess {
         tokenId: token.id,
         tokenName: token.name,
         conditionId: data.conditionId,
-        conditionName: condition.name || condition.label || condition.id,
+        conditionName: condition.name ?? condition.label ?? condition.id,
         isActive: data.active,
         active: data.active,
         message: data.active
@@ -7652,7 +7675,7 @@ export class FoundryDataAccess {
   /**
    * Get all available conditions for the current game system
    */
-  async getAvailableConditions(): Promise<Record<string, unknown>> {
+  getAvailableConditions(): Record<string, unknown> {
     this.validateFoundryState();
 
     try {
@@ -7670,9 +7693,9 @@ export class FoundryDataAccess {
           )
           .map(condition => ({
             id: condition.id,
-            name: condition.name || condition.label || condition.id,
-            icon: condition.icon || condition.img,
-            description: condition.description || '',
+            name: condition.name ?? condition.label ?? condition.id,
+            icon: condition.icon ?? condition.img,
+            description: condition.description ?? '',
           })),
       };
     } catch (error) {
@@ -7715,60 +7738,44 @@ export class FoundryDataAccess {
     this.validateFoundryState();
 
     const { actorIdentifier, itemIdentifier, targets, options = {} } = params;
-
-    // Find the actor
     const actor = this.findActorByIdentifier(actorIdentifier);
     if (!actor) {
       throw new Error(`Actor not found: ${actorIdentifier}`);
     }
 
-    // Find the item on the actor
-    const actorItems = Array.isArray(actor.items)
-      ? actor.items
-      : actor.items &&
-          typeof actor.items === 'object' &&
-          Array.isArray((actor.items as { contents?: unknown[] }).contents)
-        ? ((actor.items as { contents?: unknown[] }).contents ?? [])
-        : [];
-
-    const item = actorItems.find(i => {
-      if (!i || typeof i !== 'object') return false;
-      const candidate = i as { id?: string; name?: string };
+    const actorItems = getActorItems(actor);
+    const item = actorItems.find(candidate => {
       return (
         candidate.id === itemIdentifier ||
-        (typeof candidate.name === 'string' &&
-          candidate.name.toLowerCase() === itemIdentifier.toLowerCase())
+        candidate.name?.toLowerCase() === itemIdentifier.toLowerCase()
       );
     });
 
     if (!item) {
-      throw new Error(`Item "${itemIdentifier}" not found on actor "${actor.name}"`);
+      throw new Error(`Item "${itemIdentifier}" not found on actor "${actor.name ?? 'Unknown'}"`);
     }
 
-    const itemAny = item;
-    const systemId = (game.system as any).id;
+    const systemId = (game.system as unknown as { id?: string }).id ?? '';
 
-    // Handle targeting if targets are specified
     const resolvedTargetNames: string[] = [];
     if (targets && targets.length > 0) {
-      // Get all tokens on the current scene
-      const scene = (game.scenes as any)?.active;
+      const scene = getActiveSceneDocument();
       if (!scene) {
         throw new Error('No active scene to find targets on');
       }
 
-      const sceneTokens = scene.tokens;
+      const sceneTokens = getSceneTokenArray(scene.tokens);
       const tokenIds: string[] = [];
 
       for (const targetIdentifier of targets) {
-        // Handle "self" - target the caster's token
         if (targetIdentifier.toLowerCase() === 'self') {
-          // Find token for the caster actor
           const selfToken = sceneTokens.find(
-            (t: any) => t.actor?.id === actor.id || t.actorId === actor.id
+            token => token.actor?.id === actor.id || token.actorId === actor.id
           );
           if (selfToken) {
-            tokenIds.push(selfToken.id);
+            if (selfToken.id) {
+              tokenIds.push(selfToken.id);
+            }
             resolvedTargetNames.push(actor.name ?? 'Unknown');
           } else {
             console.warn(
@@ -7778,116 +7785,75 @@ export class FoundryDataAccess {
           continue;
         }
 
-        // Find token by name or ID
         const targetToken = sceneTokens.find(
-          (t: any) =>
-            t.id === targetIdentifier ||
-            t.name?.toLowerCase() === targetIdentifier.toLowerCase() ||
-            t.actor?.name?.toLowerCase() === targetIdentifier.toLowerCase()
+          token =>
+            token.id === targetIdentifier ||
+            token.name?.toLowerCase() === targetIdentifier.toLowerCase() ||
+            token.actor?.name?.toLowerCase() === targetIdentifier.toLowerCase()
         );
 
         if (targetToken) {
-          tokenIds.push(targetToken.id);
-          resolvedTargetNames.push(targetToken.name || targetToken.actor?.name || targetIdentifier);
+          if (targetToken.id) {
+            tokenIds.push(targetToken.id);
+          }
+          resolvedTargetNames.push(targetToken.name ?? targetToken.actor?.name ?? targetIdentifier);
         } else {
           console.warn(`[foundry-mcp-bridge] Target not found: "${targetIdentifier}"`);
         }
       }
 
-      // Set targets using Foundry's targeting system
-      if (tokenIds.length > 0 && game.user) {
-        await (game.user as any).updateTokenTargets(tokenIds);
+      const targetingUser = getTargetingUser();
+      if (tokenIds.length > 0 && targetingUser) {
+        await targetingUser.updateTokenTargets(tokenIds);
       }
     }
 
     try {
-      // For items that may show dialogs (spells with choices, etc.),
-      // we fire-and-forget to avoid timeout issues. The GM will interact
-      // with the dialog in Foundry, and the result appears in chat.
-
-      // Check if item has a use() method (common in D&D 5e, PF2e)
-      if (typeof itemAny.use === 'function') {
-        // D&D 5e and similar systems
-        // Only pass options that D&D 5e's item.use() expects
-        const useOptions: Record<string, any> = {
+      if (typeof item.use === 'function') {
+        const useOptions: Record<string, unknown> = {
           createMessage: true,
         };
 
-        // D&D 5e specific options
         if (systemId === 'dnd5e') {
           useOptions.consumeResource = options.consume ?? true;
           useOptions.consumeSpellSlot = options.consume ?? true;
           useOptions.consumeUsage = options.consume ?? true;
-          // Always show dialog so GM can make choices
           useOptions.configureDialog = true;
         }
 
-        // Spell level for upcasting
         if (options.spellLevel !== undefined) {
-          useOptions.slotLevel = options.spellLevel; // D&D 5e
-          useOptions.level = options.spellLevel; // generic
+          useOptions.slotLevel = options.spellLevel;
+          useOptions.level = options.spellLevel;
         }
 
-        // Fire and forget - don't await, as dialogs block the promise
-        itemAny.use(useOptions).catch((err: Error) => {
-          console.error(`[foundry-mcp-bridge] Error using item ${item.name}:`, err);
-        });
-      } else if (typeof itemAny.toChat === 'function') {
-        // PF2e and some other systems use toChat
-        if (typeof itemAny.toMessage === 'function') {
-          itemAny.toMessage(undefined, { create: true }).catch((err: Error) => {
-            console.error(`[foundry-mcp-bridge] Error using item ${item.name}:`, err);
-          });
+        runItemAction(item.use(useOptions), item.name ?? 'Unknown Item');
+      } else if (typeof item.toChat === 'function') {
+        if (typeof item.toMessage === 'function') {
+          runItemAction(item.toMessage(undefined, { create: true }), item.name ?? 'Unknown Item');
         } else {
-          itemAny.toChat().catch((err: Error) => {
-            console.error(`[foundry-mcp-bridge] Error using item ${item.name}:`, err);
-          });
+          runItemAction(item.toChat(), item.name ?? 'Unknown Item');
         }
-      } else if (typeof itemAny.roll === 'function') {
-        // Some items have a roll method
-        itemAny.roll().catch((err: Error) => {
-          console.error(`[foundry-mcp-bridge] Error using item ${item.name}:`, err);
-        });
+      } else if (typeof item.roll === 'function') {
+        runItemAction(item.roll(), item.name ?? 'Unknown Item');
       } else if (systemId === 'dsa5') {
-        // DSA5 specific handling
         if (
           item.type === 'spell' ||
           item.type === 'liturgy' ||
           item.type === 'ceremony' ||
           item.type === 'ritual'
         ) {
-          if (typeof itemAny.postItem === 'function') {
-            itemAny.postItem().catch((err: Error) => {
-              console.error(`[foundry-mcp-bridge] Error using item ${item.name}:`, err);
-            });
-          } else if (typeof itemAny.setupEffect === 'function') {
-            itemAny.setupEffect().catch((err: Error) => {
-              console.error(`[foundry-mcp-bridge] Error using item ${item.name}:`, err);
-            });
+          if (typeof item.postItem === 'function') {
+            runItemAction(item.postItem(), item.name ?? 'Unknown Item');
+          } else if (typeof item.setupEffect === 'function') {
+            runItemAction(item.setupEffect(), item.name ?? 'Unknown Item');
           } else {
-            // Fallback: create a chat message describing the item
-            const chatData = {
-              user: game.user?.id,
-              speaker: ChatMessage.getSpeaker({ actor }),
-              content: `<h3>${item.name}</h3><p>${actor.name} uses ${item.name}.</p>`,
-            };
-            ChatMessage.create(chatData);
+            createItemChatMessage(actor, item);
           }
-        } else {
-          if (typeof itemAny.postItem === 'function') {
-            itemAny.postItem().catch((err: Error) => {
-              console.error(`[foundry-mcp-bridge] Error using item ${item.name}:`, err);
-            });
-          }
+        } else if (typeof item.postItem === 'function') {
+          runItemAction(item.postItem(), item.name ?? 'Unknown Item');
         }
       } else {
-        // Generic fallback: create a chat message
-        const chatData = {
-          user: game.user?.id,
-          speaker: ChatMessage.getSpeaker({ actor }),
-          content: `<h3>${item.name}</h3><p>${actor.name} uses ${item.name}.</p>`,
-        };
-        ChatMessage.create(chatData);
+        createItemChatMessage(actor, item);
       }
 
       this.auditLog(
@@ -7944,5 +7910,4 @@ export class FoundryDataAccess {
       );
     }
   }
-  /* eslint-enable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-return, @typescript-eslint/require-await, @typescript-eslint/prefer-nullish-coalescing */
 }
