@@ -54,7 +54,7 @@ type OwnershipRecord = {
   }>;
 };
 
-export interface ActorDirectoryAccessContext {
+export interface ActorDirectoryServiceContext {
   validateFoundryState(): void;
 }
 
@@ -123,8 +123,8 @@ function getActiveSceneTokens(): ActorDirectoryTokenLike[] {
   );
 }
 
-export class FoundryActorDirectoryAccess {
-  constructor(private readonly context: ActorDirectoryAccessContext) {}
+export class FoundryActorDirectoryService {
+  constructor(private readonly context: ActorDirectoryServiceContext) {}
 
   async setActorOwnership(data: {
     actorId: string;

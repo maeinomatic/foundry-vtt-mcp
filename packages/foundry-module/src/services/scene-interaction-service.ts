@@ -5,11 +5,11 @@ import {
   type ItemUseActorLike,
   type ItemUseOptions,
   type UsableItemLike,
-} from './item-use-handlers.js';
+} from './item-use-service.js';
 import {
   buildConditionEffectData,
   type SceneConditionLike as ConditionLike,
-} from './scene-system-helpers/condition-effects.js';
+} from './scene-condition-effect-factory.js';
 
 interface SceneListItem {
   id?: string;
@@ -107,7 +107,7 @@ interface UserTargetingLike {
 
 type AuditStatus = 'success' | 'failure';
 
-export interface SceneInteractionContext {
+export interface SceneInteractionServiceContext {
   moduleId: string;
   validateFoundryState(): void;
   auditLog(action: string, data: unknown, status: AuditStatus, errorMessage?: string): void;
@@ -267,8 +267,8 @@ function getActorItems(actor: ActorLookupLike): UsableItemLike[] {
   return [];
 }
 
-export class FoundrySceneInteractionAccess {
-  constructor(private readonly context: SceneInteractionContext) {}
+export class FoundrySceneInteractionService {
+  constructor(private readonly context: SceneInteractionServiceContext) {}
 
   listScenes(options: { filter?: string; include_active_only?: boolean } = {}): Promise<
     Array<{

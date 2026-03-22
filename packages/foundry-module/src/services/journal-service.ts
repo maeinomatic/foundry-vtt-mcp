@@ -1,6 +1,6 @@
 import { permissionManager } from '../permissions.js';
 import type { FoundryJournalEntryResponse, FoundryJournalSummary } from '@foundry-mcp/shared';
-import { getOrCreateFolder } from './folder-access.js';
+import { getOrCreateFolder } from './folder-service.js';
 
 type AuditStatus = 'success' | 'failure';
 
@@ -25,7 +25,7 @@ interface JournalCollectionLike {
   [Symbol.iterator]?: () => Iterator<unknown>;
 }
 
-export interface JournalAccessContext {
+export interface JournalServiceContext {
   moduleId: string;
   validateFoundryState(): void;
   auditLog(action: string, data: unknown, status: AuditStatus, errorMessage?: string): void;
@@ -59,8 +59,8 @@ function findTextPage(journal: JournalEntryLike | null): JournalPageLike | null 
   return textPageRaw && typeof textPageRaw === 'object' ? (textPageRaw as JournalPageLike) : null;
 }
 
-export class FoundryJournalAccess {
-  constructor(private readonly context: JournalAccessContext) {}
+export class FoundryJournalService {
+  constructor(private readonly context: JournalServiceContext) {}
 
   async createJournalEntry(request: {
     name: string;

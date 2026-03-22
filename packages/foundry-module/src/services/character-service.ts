@@ -5,7 +5,7 @@ import type {
   FoundryCharacterInfo,
   UnknownRecord,
 } from '@foundry-mcp/shared';
-import { getCharacterSystemHelper } from './character-system-helpers/character-system-helper-registry.js';
+import { getCharacterSystemStrategy } from './character-system-strategies/character-system-strategy-registry.js';
 import {
   getActorItems,
   getDescriptionText,
@@ -14,21 +14,21 @@ import {
   type ModuleRuleElement,
   type ModuleSearchItemDocument,
   type SpellcastingEntry,
-} from './character-system-helpers/character-system-types.js';
+} from './character-system-strategies/character-system-contract.js';
 
 type CharacterInfo = FoundryCharacterInfo<UnknownRecord, UnknownRecord, UnknownRecord>;
 type CharacterEffect = FoundryCharacterEffect<UnknownRecord>;
 type AuditStatus = 'success' | 'failure';
 
-export interface CharacterAccessContext {
+export interface CharacterServiceContext {
   auditLog(action: string, data: unknown, status: AuditStatus, errorMessage?: string): void;
   findActorByIdentifier(identifier: string): CharacterActorLike | null;
   sanitizeData(data: unknown): unknown;
   validateFoundryState(): void;
 }
 
-export class FoundryCharacterAccess {
-  constructor(private readonly context: CharacterAccessContext) {}
+export class FoundryCharacterService {
+  constructor(private readonly context: CharacterServiceContext) {}
 
   private createCharacterEffect(data: {
     id: string;
@@ -289,7 +289,7 @@ export class FoundryCharacterAccess {
 
     const actorSystem = actor.system as ModuleCharacterSystemData | UnknownRecord | undefined;
     const systemId = (game as { system?: { id?: string } }).system?.id ?? '';
-    const systemHelper = getCharacterSystemHelper(systemId);
+    const systemStrategy = getCharacterSystemStrategy(systemId);
     const matches: Array<Record<string, unknown>> = [];
 
     const actorItems = getActorItems(actor);
@@ -363,7 +363,7 @@ export class FoundryCharacterAccess {
           plainText.length > 300 ? `${plainText.substring(0, 300)}...` : plainText;
       }
 
-      systemHelper.enrichItemSearchMatch({
+      systemStrategy.enrichItemSearchMatch({
         itemType: itemAny.type,
         itemSystem,
         result,
@@ -371,7 +371,7 @@ export class FoundryCharacterAccess {
 
       if (itemAny.type === 'spell') {
         if (searchCategory) {
-          const spellSearchFlags = systemHelper.getSpellSearchFlags({ itemSystem, result });
+          const spellSearchFlags = systemStrategy.getSpellSearchFlags({ itemSystem, result });
           if (searchCategory === 'cantrip' && !spellSearchFlags.isCantrip) continue;
           if (searchCategory === 'prepared' && !spellSearchFlags.isPrepared) continue;
           if (searchCategory === 'focus' && !spellSearchFlags.isFocus) continue;
@@ -444,7 +444,7 @@ export class FoundryCharacterAccess {
           actionType: actionAny.type ?? actionAny.actionType ?? 'action',
         };
 
-        systemHelper.enrichLooseActionSearchMatch({ action: actionAny, result });
+        systemStrategy.enrichLooseActionSearchMatch({ action: actionAny, result });
 
         matches.push(result);
       }
@@ -508,6 +508,6 @@ export class FoundryCharacterAccess {
 
   private extractSpellcastingData(actor: CharacterActorLike): SpellcastingEntry[] {
     const systemId = (game as { system?: { id?: string } }).system?.id ?? '';
-    return getCharacterSystemHelper(systemId).extractSpellcastingEntries({ actor });
+    return getCharacterSystemStrategy(systemId).extractSpellcastingEntries({ actor });
   }
 }

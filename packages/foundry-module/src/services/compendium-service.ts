@@ -4,7 +4,7 @@ import {
   getCreatureIndexBuilder,
   type PackFingerprint,
   type PF2eCreatureIndex,
-} from './creature-index-builders.js';
+} from './creature-index-strategy-registry.js';
 import type {
   FoundryActiveEffectDocumentBase,
   FoundryCompendiumEntryFull,
@@ -711,15 +711,15 @@ class PersistentCreatureIndex {
   }
 }
 
-export interface CompendiumAccessContext {
+export interface CompendiumServiceContext {
   moduleId: string;
   sanitizeData(data: unknown): unknown;
 }
 
-export class FoundryCompendiumAccess {
+export class FoundryCompendiumService {
   private readonly persistentIndex: PersistentCreatureIndex;
 
-  constructor(private readonly context: CompendiumAccessContext) {
+  constructor(private readonly context: CompendiumServiceContext) {
     this.persistentIndex = new PersistentCreatureIndex(context.moduleId);
   }
 

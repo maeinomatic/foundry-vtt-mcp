@@ -58,7 +58,7 @@ interface UserCollectionLike {
   [Symbol.iterator]?: () => Iterator<unknown>;
 }
 
-export interface RollRequestAccessContext {
+export interface RollRequestServiceContext {
   moduleId: string;
   validateFoundryState(): void;
   auditLog?(action: string, data: unknown, status: AuditStatus, errorMessage?: string): void;
@@ -98,10 +98,10 @@ function getActorArray(): ActorLookupLike[] {
   );
 }
 
-export class FoundryRollRequestAccess {
+export class FoundryRollRequestService {
   private readonly rollButtonProcessingStates = new Map<string, boolean>();
 
-  constructor(private readonly context: RollRequestAccessContext) {}
+  constructor(private readonly context: RollRequestServiceContext) {}
 
   async requestPlayerRolls(data: {
     rollType: string;

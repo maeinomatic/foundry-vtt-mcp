@@ -1,11 +1,11 @@
-import { getItemUseSystemHandler } from './item-use-system-handlers/item-use-handler-registry.js';
+import { getItemUseStrategy } from './item-use-strategies/item-use-strategy-registry.js';
 import {
   createItemChatMessage,
   runItemAction,
   type ItemUseActorLike,
   type ItemUseOptions,
   type UsableItemLike,
-} from './item-use-system-handlers/item-use-system-shared.js';
+} from './item-use-strategies/item-use-strategy-contract.js';
 
 export type { ItemUseActorLike, ItemUseOptions, UsableItemLike };
 
@@ -39,9 +39,9 @@ export function executeItemUse(params: {
   options: ItemUseOptions;
 }): void {
   const { actor, item, systemId, options } = params;
-  const systemHandler = getItemUseSystemHandler(systemId);
+  const systemStrategy = getItemUseStrategy(systemId);
 
-  if (systemHandler?.execute({ actor, item, options })) {
+  if (systemStrategy?.execute({ actor, item, options })) {
     return;
   }
 

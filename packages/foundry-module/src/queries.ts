@@ -1,5 +1,5 @@
 import { MODULE_ID } from './constants.js';
-import { FoundryDataAccess } from './data-access.js';
+import { FoundryModuleFacade } from './foundry-module-facade.js';
 import { ComfyUIManager } from './comfyui-manager.js';
 import { notifyGM } from './gm-notifications.js';
 import type {
@@ -72,11 +72,11 @@ type ComfyMapResponse = {
 };
 
 export class QueryHandlers {
-  public dataAccess: FoundryDataAccess;
+  public dataAccess: FoundryModuleFacade;
   private comfyuiManager: ComfyUIManager;
 
   constructor() {
-    this.dataAccess = new FoundryDataAccess();
+    this.dataAccess = new FoundryModuleFacade();
     this.comfyuiManager = new ComfyUIManager();
   }
 

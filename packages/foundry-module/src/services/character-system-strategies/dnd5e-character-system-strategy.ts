@@ -1,8 +1,8 @@
 import {
-  BaseCharacterSystemHelper,
+  BaseCharacterSystemStrategy,
   type EnrichItemSearchMatchParams,
   type SpellcastingExtractionParams,
-} from './base-character-system-helper.js';
+} from './base-character-system-strategy.js';
 import {
   createSpellInfo,
   createSpellcastingEntry,
@@ -19,7 +19,7 @@ import {
   type SpellInfo,
   type SpellTargetingData,
   type SpellcastingEntry,
-} from './character-system-types.js';
+} from './character-system-contract.js';
 
 function extractDnD5eSpellSlots(
   spellsData: Record<string, { value?: number; max?: number }>
@@ -94,7 +94,7 @@ function extractDnD5eSpellTargeting(
   return result;
 }
 
-export class Dnd5eCharacterSystemHelper extends BaseCharacterSystemHelper {
+export class Dnd5eCharacterSystemStrategy extends BaseCharacterSystemStrategy {
   override enrichItemSearchMatch(params: EnrichItemSearchMatchParams): void {
     if (params.itemType !== 'spell') {
       return;
@@ -214,4 +214,4 @@ function ensureSpellItem(item: unknown): ModuleSearchItemDocument | undefined {
   return isModuleSearchItemDocument(item) && item.type === 'spell' ? item : undefined;
 }
 
-export const dnd5eCharacterSystemHelper = new Dnd5eCharacterSystemHelper();
+export const dnd5eCharacterSystemStrategy = new Dnd5eCharacterSystemStrategy();

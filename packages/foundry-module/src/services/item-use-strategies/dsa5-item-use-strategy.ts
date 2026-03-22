@@ -1,14 +1,14 @@
 import {
   createItemChatMessage,
   runItemAction,
-  type ItemUseSystemHandler,
-  type ItemUseSystemHandlerParams,
-} from './item-use-system-shared.js';
+  type ItemUseStrategy,
+  type ItemUseStrategyParams,
+} from './item-use-strategy-contract.js';
 
 const dsa5SpellLikeItemTypes = new Set(['spell', 'liturgy', 'ceremony', 'ritual']);
 
-export const dsa5ItemUseHandler: ItemUseSystemHandler = {
-  execute(params: ItemUseSystemHandlerParams): boolean {
+export const dsa5ItemUseStrategy: ItemUseStrategy = {
+  execute(params: ItemUseStrategyParams): boolean {
     const isSpellLike = Boolean(params.item.type && dsa5SpellLikeItemTypes.has(params.item.type));
 
     if (isSpellLike) {

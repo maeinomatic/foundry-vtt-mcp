@@ -1,11 +1,11 @@
 import {
   runItemAction,
-  type ItemUseSystemHandler,
-  type ItemUseSystemHandlerParams,
-} from './item-use-system-shared.js';
+  type ItemUseStrategy,
+  type ItemUseStrategyParams,
+} from './item-use-strategy-contract.js';
 
-export const dnd5eItemUseHandler: ItemUseSystemHandler = {
-  execute(params: ItemUseSystemHandlerParams): boolean {
+export const dnd5eItemUseStrategy: ItemUseStrategy = {
+  execute(params: ItemUseStrategyParams): boolean {
     if (typeof params.item.use !== 'function') {
       return false;
     }

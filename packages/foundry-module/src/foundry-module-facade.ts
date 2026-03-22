@@ -1,34 +1,34 @@
 import { MODULE_ID } from './constants.js';
 import { permissionManager } from './permissions.js';
-import { FoundryActorDirectoryAccess } from './data-access/actor-directory-access.js';
+import { FoundryActorDirectoryService } from './services/actor-directory-service.js';
 import {
-  FoundryActorCreationAccess,
+  FoundryActorCreationService,
   type ActorCreationRequest,
   type ActorCreationResult,
   type CompendiumEntryActorCreationRequest,
   type SceneTokenPlacement,
   type TokenPlacementResult,
-} from './data-access/actor-creation-access.js';
-import { FoundryCharacterAccess } from './data-access/character-access.js';
+} from './services/actor-creation-service.js';
+import { FoundryCharacterService } from './services/character-service.js';
 import {
-  FoundryCompendiumAccess,
+  FoundryCompendiumService,
   type CompendiumSearchFilters,
   type CompendiumSearchResult,
   type CreatureSearchCriteria,
   type CreatureSearchResponse,
-} from './data-access/compendium-access.js';
-import { FoundryJournalAccess } from './data-access/journal-access.js';
+} from './services/compendium-service.js';
+import { FoundryJournalService } from './services/journal-service.js';
 import {
-  FoundryRollRequestAccess,
+  FoundryRollRequestService,
   type RollButtonState,
-} from './data-access/roll-request-access.js';
-import { FoundrySceneInteractionAccess } from './data-access/scene-interaction-access.js';
+} from './services/roll-request-service.js';
+import { FoundrySceneInteractionService } from './services/scene-interaction-service.js';
 import {
-  FoundryWorldAccess,
+  FoundryWorldService,
   type AvailablePackSummary,
   type SceneInfo,
   type WorldInfo,
-} from './data-access/world-access.js';
+} from './services/world-service.js';
 import type {
   FoundryCharacterInfo,
   FoundryCompendiumEntryFull,
@@ -60,22 +60,22 @@ type CompendiumEntryFull = FoundryCompendiumEntryFull<
   Record<string, unknown>
 >;
 
-export class FoundryDataAccess {
+export class FoundryModuleFacade {
   private moduleId: string = MODULE_ID;
-  private actorDirectoryAccess: FoundryActorDirectoryAccess;
-  private actorCreationAccess: FoundryActorCreationAccess;
-  private characterAccess: FoundryCharacterAccess;
-  private compendiumAccess: FoundryCompendiumAccess;
-  private journalAccess: FoundryJournalAccess;
-  private rollRequestAccess: FoundryRollRequestAccess;
-  private sceneInteractionAccess: FoundrySceneInteractionAccess;
-  private worldAccess: FoundryWorldAccess;
+  private actorDirectoryService: FoundryActorDirectoryService;
+  private actorCreationService: FoundryActorCreationService;
+  private characterService: FoundryCharacterService;
+  private compendiumService: FoundryCompendiumService;
+  private journalService: FoundryJournalService;
+  private rollRequestService: FoundryRollRequestService;
+  private sceneInteractionService: FoundrySceneInteractionService;
+  private worldService: FoundryWorldService;
 
   constructor() {
-    this.actorDirectoryAccess = new FoundryActorDirectoryAccess({
+    this.actorDirectoryService = new FoundryActorDirectoryService({
       validateFoundryState: (): void => this.validateFoundryState(),
     });
-    this.actorCreationAccess = new FoundryActorCreationAccess({
+    this.actorCreationService = new FoundryActorCreationService({
       moduleId: this.moduleId,
       validateFoundryState: (): void => this.validateFoundryState(),
       auditLog: (
@@ -88,11 +88,11 @@ export class FoundryDataAccess {
         packId: string,
         documentId: string
       ): Promise<CompendiumEntryFull> =>
-        this.compendiumAccess.getCompendiumDocumentFull(packId, documentId),
+        this.compendiumService.getCompendiumDocumentFull(packId, documentId),
       searchCompendium: (query: string, packType?: string): Promise<CompendiumSearchResult[]> =>
-        this.compendiumAccess.searchCompendium(query, packType),
+        this.compendiumService.searchCompendium(query, packType),
     });
-    this.characterAccess = new FoundryCharacterAccess({
+    this.characterService = new FoundryCharacterService({
       auditLog: (
         action: string,
         data: unknown,
@@ -104,11 +104,11 @@ export class FoundryDataAccess {
       sanitizeData: (data: unknown): unknown => this.sanitizeData(data),
       validateFoundryState: (): void => this.validateFoundryState(),
     });
-    this.compendiumAccess = new FoundryCompendiumAccess({
+    this.compendiumService = new FoundryCompendiumService({
       moduleId: this.moduleId,
       sanitizeData: (data: unknown): unknown => this.sanitizeData(data),
     });
-    this.journalAccess = new FoundryJournalAccess({
+    this.journalService = new FoundryJournalService({
       moduleId: this.moduleId,
       validateFoundryState: (): void => this.validateFoundryState(),
       auditLog: (
@@ -118,7 +118,7 @@ export class FoundryDataAccess {
         errorMessage?: string
       ): void => this.auditLog(action, data, status, errorMessage),
     });
-    this.rollRequestAccess = new FoundryRollRequestAccess({
+    this.rollRequestService = new FoundryRollRequestService({
       moduleId: this.moduleId,
       validateFoundryState: (): void => this.validateFoundryState(),
       auditLog: (
@@ -128,7 +128,7 @@ export class FoundryDataAccess {
         errorMessage?: string
       ): void => this.auditLog(action, data, status, errorMessage),
     });
-    this.sceneInteractionAccess = new FoundrySceneInteractionAccess({
+    this.sceneInteractionService = new FoundrySceneInteractionService({
       moduleId: this.moduleId,
       validateFoundryState: (): void => this.validateFoundryState(),
       auditLog: (
@@ -140,7 +140,7 @@ export class FoundryDataAccess {
       findActorByIdentifier: (identifier: string): ActorLookupLike | null =>
         this.findActorByIdentifier(identifier),
     });
-    this.worldAccess = new FoundryWorldAccess({
+    this.worldService = new FoundryWorldService({
       validateFoundryState: (): void => this.validateFoundryState(),
     });
   }
@@ -153,14 +153,14 @@ export class FoundryDataAccess {
     totalCreatures: number;
     message: string;
   }> {
-    return this.compendiumAccess.rebuildEnhancedCreatureIndex();
+    return this.compendiumService.rebuildEnhancedCreatureIndex();
   }
 
   /**
    * Get character/actor information by name or ID
    */
   getCharacterInfo(identifier: string): Promise<CharacterInfo> {
-    return this.characterAccess.getCharacterInfo(identifier);
+    return this.characterService.getCharacterInfo(identifier);
   }
 
   /**
@@ -182,7 +182,7 @@ export class FoundryDataAccess {
     matches: Array<Record<string, unknown>>;
     totalMatches: number;
   }> {
-    return this.characterAccess.searchCharacterItems(params);
+    return this.characterService.searchCharacterItems(params);
   }
 
   /**
@@ -193,42 +193,42 @@ export class FoundryDataAccess {
     packType?: string,
     filters?: CompendiumSearchFilters
   ): Promise<CompendiumSearchResult[]> {
-    return this.compendiumAccess.searchCompendium(query, packType, filters);
+    return this.compendiumService.searchCompendium(query, packType, filters);
   }
 
   /**
    * List creatures by criteria using enhanced persistent index - optimized for instant filtering
    */
   async listCreaturesByCriteria(criteria: CreatureSearchCriteria): Promise<CreatureSearchResponse> {
-    return this.compendiumAccess.listCreaturesByCriteria(criteria);
+    return this.compendiumService.listCreaturesByCriteria(criteria);
   }
 
   /**
    * List all actors with basic information
    */
   listActors(): Promise<Array<{ id: string; name: string; type: string; img?: string }>> {
-    return this.worldAccess.listActors();
+    return this.worldService.listActors();
   }
 
   /**
    * Get active scene information
    */
   getActiveScene(): Promise<SceneInfo> {
-    return this.worldAccess.getActiveScene();
+    return this.worldService.getActiveScene();
   }
 
   /**
    * Get world information
    */
   getWorldInfo(): Promise<WorldInfo> {
-    return this.worldAccess.getWorldInfo();
+    return this.worldService.getWorldInfo();
   }
 
   /**
    * Get available compendium packs
    */
   getAvailablePacks(): Promise<AvailablePackSummary[]> {
-    return this.worldAccess.getAvailablePacks();
+    return this.worldService.getAvailablePacks();
   }
 
   /**
@@ -444,21 +444,21 @@ export class FoundryDataAccess {
     content: string;
     folderName?: string;
   }): Promise<FoundryJournalEntryResponse> {
-    return this.journalAccess.createJournalEntry(request);
+    return this.journalService.createJournalEntry(request);
   }
 
   /**
    * List all journal entries
    */
   listJournals(): Promise<FoundryJournalSummary[]> {
-    return this.journalAccess.listJournals();
+    return this.journalService.listJournals();
   }
 
   /**
    * Get journal entry content
    */
   getJournalContent(journalId: string): Promise<FoundryJournalEntryResponse | null> {
-    return this.journalAccess.getJournalContent(journalId);
+    return this.journalService.getJournalContent(journalId);
   }
 
   /**
@@ -468,14 +468,14 @@ export class FoundryDataAccess {
     journalId: string;
     content: string;
   }): Promise<{ success: boolean }> {
-    return this.journalAccess.updateJournalContent(request);
+    return this.journalService.updateJournalContent(request);
   }
 
   /**
    * Create actors from compendium entries with custom names
    */
   async createActorFromCompendium(request: ActorCreationRequest): Promise<ActorCreationResult> {
-    return this.actorCreationAccess.createActorFromCompendium(request);
+    return this.actorCreationService.createActorFromCompendium(request);
   }
 
   /**
@@ -484,7 +484,7 @@ export class FoundryDataAccess {
   async createActorFromCompendiumEntry(
     request: CompendiumEntryActorCreationRequest
   ): Promise<ActorCreationResult> {
-    return this.actorCreationAccess.createActorFromCompendiumEntry(request);
+    return this.actorCreationService.createActorFromCompendiumEntry(request);
   }
 
   /**
@@ -494,7 +494,7 @@ export class FoundryDataAccess {
     packId: string,
     documentId: string
   ): Promise<CompendiumEntryFull> {
-    return this.compendiumAccess.getCompendiumDocumentFull(packId, documentId);
+    return this.compendiumService.getCompendiumDocumentFull(packId, documentId);
   }
 
   /**
@@ -504,7 +504,7 @@ export class FoundryDataAccess {
     placement: SceneTokenPlacement,
     transactionId?: string
   ): Promise<TokenPlacementResult> {
-    return this.actorCreationAccess.addActorsToScene(placement, transactionId);
+    return this.actorCreationService.addActorsToScene(placement, transactionId);
   }
 
   /**
@@ -544,7 +544,7 @@ export class FoundryDataAccess {
     rollModifier: string;
     flavor: string;
   }): Promise<{ success: boolean; message: string; error?: string }> {
-    return this.rollRequestAccess.requestPlayerRolls(data);
+    return this.rollRequestService.requestPlayerRolls(data);
   }
 
   /**
@@ -557,7 +557,7 @@ export class FoundryDataAccess {
    * Called by global renderChatMessageHTML hook in main.ts
    */
   public attachRollButtonHandlers(html: JQuery): void {
-    this.rollRequestAccess.attachRollButtonHandlers(html);
+    this.rollRequestService.attachRollButtonHandlers(html);
   }
 
   /**
@@ -565,42 +565,42 @@ export class FoundryDataAccess {
    */
   async getEnhancedCreatureIndex(): Promise<Record<string, unknown>[]> {
     this.validateFoundryState();
-    return this.compendiumAccess.getEnhancedCreatureIndex();
+    return this.compendiumService.getEnhancedCreatureIndex();
   }
 
   /**
    * Save roll button state to persistent storage
    */
   async saveRollState(buttonId: string, userId: string): Promise<void> {
-    return this.rollRequestAccess.saveRollState(buttonId, userId);
+    return this.rollRequestService.saveRollState(buttonId, userId);
   }
 
   /**
    * Get roll button state from persistent storage
    */
   getRollState(buttonId: string): RollButtonState | null {
-    return this.rollRequestAccess.getRollState(buttonId);
+    return this.rollRequestService.getRollState(buttonId);
   }
 
   /**
    * Save button ID to message ID mapping for ChatMessage updates
    */
   saveRollButtonMessageId(buttonId: string, messageId: string): void {
-    this.rollRequestAccess.saveRollButtonMessageId(buttonId, messageId);
+    this.rollRequestService.saveRollButtonMessageId(buttonId, messageId);
   }
 
   /**
    * Get message ID for a roll button
    */
   getRollButtonMessageId(buttonId: string): string | null {
-    return this.rollRequestAccess.getRollButtonMessageId(buttonId);
+    return this.rollRequestService.getRollButtonMessageId(buttonId);
   }
 
   /**
    * Get roll button state from ChatMessage flags
    */
   getRollStateFromMessage(chatMessage: unknown, buttonId: string): RollButtonState | null {
-    return this.rollRequestAccess.getRollStateFromMessage(chatMessage, buttonId);
+    return this.rollRequestService.getRollStateFromMessage(chatMessage, buttonId);
   }
 
   /**
@@ -611,21 +611,21 @@ export class FoundryDataAccess {
     userId: string,
     rollLabel: string
   ): Promise<void> {
-    return this.rollRequestAccess.updateRollButtonMessage(buttonId, userId, rollLabel);
+    return this.rollRequestService.updateRollButtonMessage(buttonId, userId, rollLabel);
   }
 
   /**
    * Request GM to save roll state (for non-GM users who can't write to world settings)
    */
   requestRollStateSave(buttonId: string, userId: string): void {
-    this.rollRequestAccess.requestRollStateSave(buttonId, userId);
+    this.rollRequestService.requestRollStateSave(buttonId, userId);
   }
 
   /**
    * Broadcast roll state change to all connected users for real-time sync
    */
   broadcastRollState(buttonId: string, rollState: unknown): void {
-    this.rollRequestAccess.broadcastRollState(buttonId, rollState);
+    this.rollRequestService.broadcastRollState(buttonId, rollState);
   }
 
   /**
@@ -633,7 +633,7 @@ export class FoundryDataAccess {
    * Removes roll states older than 30 days to prevent storage bloat
    */
   async cleanOldRollStates(): Promise<number> {
-    return this.rollRequestAccess.cleanOldRollStates();
+    return this.rollRequestService.cleanOldRollStates();
   }
 
   /**
@@ -644,7 +644,7 @@ export class FoundryDataAccess {
     userId: string;
     permission: number;
   }): Promise<{ success: boolean; message: string; error?: string }> {
-    return this.actorDirectoryAccess.setActorOwnership(data);
+    return this.actorDirectoryService.setActorOwnership(data);
   }
 
   /**
@@ -663,35 +663,35 @@ export class FoundryDataAccess {
       }>;
     }>
   > {
-    return this.actorDirectoryAccess.getActorOwnership(data);
+    return this.actorDirectoryService.getActorOwnership(data);
   }
 
   /**
    * Find actor by name or ID
    */
   private findActorByIdentifier(identifier: string): ActorLookupLike | null {
-    return this.actorDirectoryAccess.findActorByIdentifier(identifier) as ActorLookupLike | null;
+    return this.actorDirectoryService.findActorByIdentifier(identifier) as ActorLookupLike | null;
   }
 
   /**
    * Get friendly NPCs from current scene
    */
   getFriendlyNPCs(): Promise<Array<{ id: string; name: string }>> {
-    return this.actorDirectoryAccess.getFriendlyNPCs();
+    return this.actorDirectoryService.getFriendlyNPCs();
   }
 
   /**
    * Get party characters (player-owned actors)
    */
   getPartyCharacters(): Promise<Array<{ id: string; name: string }>> {
-    return this.actorDirectoryAccess.getPartyCharacters();
+    return this.actorDirectoryService.getPartyCharacters();
   }
 
   /**
    * Get connected players (excluding GM)
    */
   getConnectedPlayers(): Promise<Array<{ id: string; name: string }>> {
-    return this.actorDirectoryAccess.getConnectedPlayers();
+    return this.actorDirectoryService.getConnectedPlayers();
   }
 
   /**
@@ -702,14 +702,14 @@ export class FoundryDataAccess {
     allowPartialMatch?: boolean;
     includeCharacterOwners?: boolean;
   }): Promise<Array<{ id: string; name: string }>> {
-    return this.actorDirectoryAccess.findPlayers(data);
+    return this.actorDirectoryService.findPlayers(data);
   }
 
   /**
    * Find single actor by identifier
    */
   findActor(data: { identifier: string }): Promise<{ id: string; name: string } | null> {
-    return this.actorDirectoryAccess.findActor(data);
+    return this.actorDirectoryService.findActor(data);
   }
 
   /**
@@ -730,7 +730,7 @@ export class FoundryDataAccess {
       navigation: boolean;
     }>
   > {
-    return this.sceneInteractionAccess.listScenes(options);
+    return this.sceneInteractionService.listScenes(options);
   }
 
   /**
@@ -742,7 +742,7 @@ export class FoundryDataAccess {
     sceneName?: string;
     dimensions: { width: number; height: number };
   }> {
-    return this.sceneInteractionAccess.switchScene(options);
+    return this.sceneInteractionService.switchScene(options);
   }
 
   // ===== PHASE 7: CHARACTER ENTITY AND TOKEN MANIPULATION METHODS =====
@@ -754,7 +754,7 @@ export class FoundryDataAccess {
     characterIdentifier: string;
     entityIdentifier: string;
   }): Record<string, unknown> {
-    return this.sceneInteractionAccess.getCharacterEntity(data);
+    return this.sceneInteractionService.getCharacterEntity(data);
   }
 
   /**
@@ -767,7 +767,7 @@ export class FoundryDataAccess {
     newPosition: { x: number; y: number };
     animated: boolean;
   }> {
-    return this.sceneInteractionAccess.moveToken(data);
+    return this.sceneInteractionService.moveToken(data);
   }
 
   /**
@@ -779,7 +779,7 @@ export class FoundryDataAccess {
     tokenName?: string;
     updatedProperties: string[];
   }> {
-    return this.sceneInteractionAccess.updateToken(data);
+    return this.sceneInteractionService.updateToken(data);
   }
 
   /**
@@ -791,14 +791,14 @@ export class FoundryDataAccess {
     deletedTokens: string[];
     failedTokens?: string[];
   }> {
-    return this.sceneInteractionAccess.deleteTokens(data);
+    return this.sceneInteractionService.deleteTokens(data);
   }
 
   /**
    * Get detailed information about a token
    */
   getTokenDetails(data: { tokenId: string }): Record<string, unknown> {
-    return this.sceneInteractionAccess.getTokenDetails(data);
+    return this.sceneInteractionService.getTokenDetails(data);
   }
 
   /**
@@ -809,14 +809,14 @@ export class FoundryDataAccess {
     conditionId: string;
     active: boolean;
   }): Promise<Record<string, unknown>> {
-    return this.sceneInteractionAccess.toggleTokenCondition(data);
+    return this.sceneInteractionService.toggleTokenCondition(data);
   }
 
   /**
    * Get all available conditions for the current game system
    */
   getAvailableConditions(): Record<string, unknown> {
-    return this.sceneInteractionAccess.getAvailableConditions();
+    return this.sceneInteractionService.getAvailableConditions();
   }
 
   /**
@@ -849,6 +849,6 @@ export class FoundryDataAccess {
     targets?: string[];
     requiresGMInteraction?: boolean;
   }> {
-    return this.sceneInteractionAccess.useItem(params);
+    return this.sceneInteractionService.useItem(params);
   }
 }

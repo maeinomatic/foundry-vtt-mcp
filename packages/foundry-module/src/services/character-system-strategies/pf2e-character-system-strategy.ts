@@ -1,10 +1,10 @@
 import {
-  BaseCharacterSystemHelper,
+  BaseCharacterSystemStrategy,
   type EnrichItemSearchMatchParams,
   type EnrichLooseActionSearchMatchParams,
   type SpellSearchFlagParams,
   type SpellcastingExtractionParams,
-} from './base-character-system-helper.js';
+} from './base-character-system-strategy.js';
 import {
   createSpellInfo,
   createSpellcastingEntry,
@@ -26,7 +26,7 @@ import {
   type SpellInfo,
   type SpellTargetingData,
   type SpellcastingEntry,
-} from './character-system-types.js';
+} from './character-system-contract.js';
 
 function formatPF2eActionCost(actionValue: unknown): string | undefined {
   if (!actionValue) return undefined;
@@ -98,7 +98,7 @@ function getPF2eSpellReferences(
   return Array.isArray(value.value) ? value.value : [];
 }
 
-export class Pf2eCharacterSystemHelper extends BaseCharacterSystemHelper {
+export class Pf2eCharacterSystemStrategy extends BaseCharacterSystemStrategy {
   override enrichItemSearchMatch(params: EnrichItemSearchMatchParams): void {
     const itemSystem = params.itemSystem as ModulePF2eItemSystemData | undefined;
 
@@ -323,4 +323,4 @@ function ensureSpellItem(item: unknown): ModuleSearchItemDocument | undefined {
   return isModuleSearchItemDocument(item) && item.type === 'spell' ? item : undefined;
 }
 
-export const pf2eCharacterSystemHelper = new Pf2eCharacterSystemHelper();
+export const pf2eCharacterSystemStrategy = new Pf2eCharacterSystemStrategy();

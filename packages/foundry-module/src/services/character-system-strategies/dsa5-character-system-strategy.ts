@@ -1,8 +1,8 @@
 import {
-  BaseCharacterSystemHelper,
+  BaseCharacterSystemStrategy,
   type EnrichItemSearchMatchParams,
   type SpellcastingExtractionParams,
-} from './base-character-system-helper.js';
+} from './base-character-system-strategy.js';
 import {
   createSpellInfo,
   createSpellcastingEntry,
@@ -18,7 +18,7 @@ import {
   type SpellInfo,
   type SpellTargetingData,
   type SpellcastingEntry,
-} from './character-system-types.js';
+} from './character-system-contract.js';
 
 function extractDSA5SpellTargeting(
   spellSystem: ModuleDSA5ItemSystemData | undefined
@@ -59,7 +59,7 @@ function createDsa5SpellInfo(spell: ModuleSearchItemDocument): SpellInfo {
   });
 }
 
-export class Dsa5CharacterSystemHelper extends BaseCharacterSystemHelper {
+export class Dsa5CharacterSystemStrategy extends BaseCharacterSystemStrategy {
   override enrichItemSearchMatch(params: EnrichItemSearchMatchParams): void {
     if (params.itemType !== 'spell') {
       return;
@@ -145,4 +145,4 @@ function ensureSpellLikeItem(
   return isModuleSearchItemDocument(item) && itemTypes.includes(item.type) ? item : undefined;
 }
 
-export const dsa5CharacterSystemHelper = new Dsa5CharacterSystemHelper();
+export const dsa5CharacterSystemStrategy = new Dsa5CharacterSystemStrategy();

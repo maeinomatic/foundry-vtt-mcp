@@ -6,7 +6,7 @@ import {
   type ModuleSearchItemSystemData,
   type SpellSearchFlags,
   type SpellcastingEntry,
-} from './character-system-types.js';
+} from './character-system-contract.js';
 
 export interface EnrichItemSearchMatchParams {
   itemType: string;
@@ -28,14 +28,14 @@ export interface SpellcastingExtractionParams {
   actor: CharacterActorLike;
 }
 
-export interface CharacterSystemHelper {
+export interface CharacterSystemStrategy {
   enrichItemSearchMatch(params: EnrichItemSearchMatchParams): void;
   getSpellSearchFlags(params: SpellSearchFlagParams): SpellSearchFlags;
   enrichLooseActionSearchMatch(params: EnrichLooseActionSearchMatchParams): void;
   extractSpellcastingEntries(params: SpellcastingExtractionParams): SpellcastingEntry[];
 }
 
-export class BaseCharacterSystemHelper implements CharacterSystemHelper {
+export class BaseCharacterSystemStrategy implements CharacterSystemStrategy {
   enrichItemSearchMatch(params: EnrichItemSearchMatchParams): void {
     if (params.itemType !== 'spell') {
       return;
@@ -73,4 +73,4 @@ export class BaseCharacterSystemHelper implements CharacterSystemHelper {
   }
 }
 
-export const baseCharacterSystemHelper = new BaseCharacterSystemHelper();
+export const baseCharacterSystemStrategy = new BaseCharacterSystemStrategy();

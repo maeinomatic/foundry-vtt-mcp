@@ -23,14 +23,14 @@ export interface ItemUseOptions {
   versatile?: boolean | undefined;
 }
 
-export interface ItemUseSystemHandlerParams {
+export interface ItemUseStrategyParams {
   actor: ItemUseActorLike;
   item: UsableItemLike;
   options: ItemUseOptions;
 }
 
-export interface ItemUseSystemHandler {
-  execute(params: ItemUseSystemHandlerParams): boolean;
+export interface ItemUseStrategy {
+  execute(params: ItemUseStrategyParams): boolean;
 }
 
 interface ChatMessageApiLike {

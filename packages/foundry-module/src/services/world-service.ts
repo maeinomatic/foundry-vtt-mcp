@@ -82,7 +82,7 @@ interface PackSummaryLike {
   };
 }
 
-export interface WorldAccessContext {
+export interface WorldServiceContext {
   validateFoundryState(): void;
 }
 
@@ -94,8 +94,8 @@ function getTokenDisposition(disposition: unknown): number {
   return typeof disposition === 'number' ? disposition : TOKEN_DISPOSITIONS.NEUTRAL;
 }
 
-export class FoundryWorldAccess {
-  constructor(private readonly context: WorldAccessContext) {}
+export class FoundryWorldService {
+  constructor(private readonly context: WorldServiceContext) {}
 
   listActors(): Promise<Array<{ id: string; name: string; type: string; img?: string }>> {
     const actorsSource: unknown = game.actors;

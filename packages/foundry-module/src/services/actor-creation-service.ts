@@ -1,13 +1,13 @@
 import { ERROR_MESSAGES } from '../constants.js';
 import { permissionManager } from '../permissions.js';
 import { transactionManager } from '../transaction-manager.js';
-import { getOrCreateFolder } from './folder-access.js';
+import { getOrCreateFolder } from './folder-service.js';
 import type {
   FoundryActorCreationResult,
   FoundryCompendiumEntryFull,
   FoundryCreatedActorInfo,
 } from '@foundry-mcp/shared';
-import type { CompendiumSearchResult } from './compendium-access.js';
+import type { CompendiumSearchResult } from './compendium-service.js';
 
 type AuditStatus = 'success' | 'failure';
 
@@ -110,7 +110,7 @@ interface TokenDocumentLike extends Record<string, unknown> {
   texture?: { src?: string | null };
 }
 
-export interface ActorCreationAccessContext {
+export interface ActorCreationServiceContext {
   moduleId: string;
   validateFoundryState(): void;
   auditLog(action: string, data: unknown, status: AuditStatus, errorMessage?: string): void;
@@ -208,8 +208,8 @@ function calculateTokenPosition(
   }
 }
 
-export class FoundryActorCreationAccess {
-  constructor(private readonly context: ActorCreationAccessContext) {}
+export class FoundryActorCreationService {
+  constructor(private readonly context: ActorCreationServiceContext) {}
 
   async createActorFromCompendium(request: ActorCreationRequest): Promise<ActorCreationResult> {
     this.context.validateFoundryState();
