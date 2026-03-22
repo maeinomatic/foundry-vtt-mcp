@@ -191,4 +191,164 @@ describe('CompendiumTools', () => {
       })
     ).rejects.toThrow('UNSUPPORTED_CAPABILITY');
   });
+
+  it('uses the shared compendium-search bridge request shape and formats lightweight results', async () => {
+    const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
+      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+        return Promise.resolve({ system: 'dnd5e' });
+      }
+
+      if (method === 'foundry-mcp-bridge.searchCompendium') {
+        expect(data).toEqual({
+          query: 'dragon',
+          packType: 'Actor',
+        });
+        return Promise.resolve([
+          {
+            id: 'adult-black-dragon',
+            name: 'Adult Black Dragon',
+            type: 'npc',
+            pack: 'dnd5e.monsters',
+            packLabel: 'SRD Monsters',
+            summary: 'CR 14 dragon from SRD Monsters',
+            system: {
+              details: {
+                cr: 14,
+                type: { value: 'dragon' },
+                alignment: 'chaotic evil',
+              },
+              traits: {
+                size: 'huge',
+              },
+              attributes: {
+                hp: { value: 195, max: 195 },
+                ac: { value: 19 },
+              },
+              resources: {
+                legres: { value: 3 },
+              },
+            },
+          },
+        ]);
+      }
+
+      return Promise.reject(new Error(`Unexpected query: ${method}`));
+    });
+
+    const systemRegistry = new SystemRegistry();
+    systemRegistry.register(new DnD5eAdapter());
+
+    const tools = new CompendiumTools({
+      foundryClient: { query } as unknown as FoundryClient,
+      logger: createLoggerStub(),
+      systemRegistry,
+    });
+
+    const result = (await tools.handleSearchCompendium({
+      query: 'dragon',
+      packType: 'Actor',
+    })) as Record<string, unknown>;
+
+    expect(query).toHaveBeenCalledWith('foundry-mcp-bridge.searchCompendium', {
+      query: 'dragon',
+      packType: 'Actor',
+      filters: undefined,
+    });
+    expect(result.results).toMatchObject([
+      {
+        id: 'adult-black-dragon',
+        name: 'Adult Black Dragon',
+      },
+    ]);
+  });
+
+  it('uses the shared creature-search envelope and surfaces search summary data', async () => {
+    const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
+      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+        return Promise.resolve({ system: 'dnd5e' });
+      }
+
+      if (method === 'foundry-mcp-bridge.listCreaturesByCriteria') {
+        expect(data).toEqual({
+          challengeRating: 3,
+          limit: 100,
+        });
+        return Promise.resolve({
+          response: {
+            creatures: [
+              {
+                id: 'owlbear',
+                name: 'Owlbear',
+                type: 'npc',
+                pack: 'dnd5e.monsters',
+                packLabel: 'SRD Monsters',
+                challengeRating: 3,
+                creatureType: 'monstrosity',
+                size: 'large',
+                system: {
+                  details: {
+                    cr: 3,
+                    type: { value: 'monstrosity' },
+                  },
+                  traits: {
+                    size: 'large',
+                  },
+                },
+              },
+            ],
+            searchSummary: {
+              packsSearched: 1,
+              topPacks: [
+                {
+                  id: 'dnd5e.monsters',
+                  label: 'SRD Monsters',
+                  priority: 100,
+                },
+              ],
+              totalCreaturesFound: 1,
+              resultsByPack: {
+                'SRD Monsters': 1,
+              },
+              criteria: {
+                challengeRating: 3,
+                limit: 100,
+              },
+              searchMethod: 'enhanced_persistent_index',
+            },
+          },
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected query: ${method}`));
+    });
+
+    const systemRegistry = new SystemRegistry();
+    systemRegistry.register(new DnD5eAdapter());
+
+    const tools = new CompendiumTools({
+      foundryClient: { query } as unknown as FoundryClient,
+      logger: createLoggerStub(),
+      systemRegistry,
+    });
+
+    const result = (await tools.handleListCreaturesByCriteria({
+      challengeRating: 3,
+    })) as Record<string, unknown>;
+
+    expect(query).toHaveBeenCalledWith('foundry-mcp-bridge.listCreaturesByCriteria', {
+      challengeRating: 3,
+      limit: 100,
+    });
+    expect(result.creatures).toMatchObject([
+      {
+        id: 'owlbear',
+        name: 'Owlbear',
+      },
+    ]);
+    expect(result.searchSummary).toMatchObject({
+      packsSearched: 1,
+      totalCreaturesFound: 1,
+      searchMethod: 'enhanced_persistent_index',
+    });
+  });
 });
