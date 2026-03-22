@@ -9,6 +9,7 @@ import {
   type SceneTokenPlacement,
   type TokenPlacementResult,
 } from './services/actor-creation-service.js';
+import { FoundryActorProgressionService } from './services/actor-progression-service.js';
 import { FoundryActorUpdateService } from './services/actor-update-service.js';
 import { FoundryCharacterService } from './services/character-service.js';
 import { FoundryCompendiumService } from './services/compendium-service.js';
@@ -33,6 +34,8 @@ import type {
   FoundryCompendiumEntryFull,
   FoundryJournalEntryResponse,
   FoundryJournalSummary,
+  FoundryPreviewCharacterProgressionRequest,
+  FoundryPreviewCharacterProgressionResponse,
   FoundrySearchCharacterItemsRequest,
   FoundrySearchCharacterItemsResponse,
   FoundryUpdateActorEmbeddedItemRequest,
@@ -73,6 +76,7 @@ export class FoundryModuleFacade {
   private moduleId: string = MODULE_ID;
   private actorDirectoryService: FoundryActorDirectoryService;
   private actorCreationService: FoundryActorCreationService;
+  private actorProgressionService: FoundryActorProgressionService;
   private actorUpdateService: FoundryActorUpdateService;
   private characterService: FoundryCharacterService;
   private compendiumService: FoundryCompendiumService;
@@ -101,6 +105,18 @@ export class FoundryModuleFacade {
         this.compendiumService.getCompendiumDocumentFull(packId, documentId),
       searchCompendium: (query: string, packType?: string): Promise<CompendiumSearchResult[]> =>
         this.compendiumService.searchCompendium(query, packType),
+    });
+    this.actorProgressionService = new FoundryActorProgressionService({
+      auditLog: (
+        action: string,
+        data: unknown,
+        status: 'success' | 'failure',
+        errorMessage?: string
+      ): void => this.auditLog(action, data, status, errorMessage),
+      findActorByIdentifier: (identifier: string): ActorLookupLike | null =>
+        this.findActorByIdentifier(identifier),
+      validateFoundryState: (): void => this.validateFoundryState(),
+      getSystemId: (): string => game.system?.id ?? 'unknown',
     });
     this.actorUpdateService = new FoundryActorUpdateService({
       auditLog: (
@@ -494,6 +510,12 @@ export class FoundryModuleFacade {
     request: CompendiumEntryActorCreationRequest
   ): Promise<ActorCreationResult> {
     return this.actorCreationService.createActorFromCompendiumEntry(request);
+  }
+
+  async previewCharacterProgression(
+    request: FoundryPreviewCharacterProgressionRequest
+  ): Promise<FoundryPreviewCharacterProgressionResponse> {
+    return this.actorProgressionService.previewCharacterProgression(request);
   }
 
   async updateActor(request: FoundryUpdateActorRequest): Promise<FoundryUpdateActorResponse> {

@@ -750,10 +750,6 @@ export class DnD5eAdapter implements SystemAdapter {
     }
 
     const currentLevel = toNumber(classItem.system?.levels);
-    const advancementRules = Array.isArray(classItem.system?.advancement)
-      ? classItem.system.advancement.length
-      : 0;
-
     return {
       target: {
         kind: 'embedded-item',
@@ -772,11 +768,6 @@ export class DnD5eAdapter implements SystemAdapter {
       },
       warnings: [
         'DnD5e progression is applied to the owned class item, not the actor level field.',
-        ...(advancementRules > 0
-          ? [
-              `This class has ${advancementRules} advancement definition(s). Additional DnD5e advancement choices or feature grants may still need confirmation in Foundry.`,
-            ]
-          : []),
       ],
     };
   }

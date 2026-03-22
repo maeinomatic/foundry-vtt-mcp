@@ -245,6 +245,37 @@ export interface FoundrySearchCharacterItemsResponse extends UnknownRecord {
   totalMatches: number;
 }
 
+export interface FoundryProgressionPreviewStep extends UnknownRecord {
+  id: string;
+  level: number;
+  type: string;
+  title: string;
+  required: boolean;
+  choicesRequired: boolean;
+  autoApplySafe: boolean;
+  hints?: string[];
+}
+
+export interface FoundryPreviewCharacterProgressionRequest {
+  actorIdentifier: string;
+  targetLevel: number;
+  classIdentifier?: string;
+}
+
+export interface FoundryPreviewCharacterProgressionResponse extends UnknownRecord {
+  system: string;
+  actorId: string;
+  actorName: string;
+  actorType: string;
+  targetLevel: number;
+  currentLevel?: number;
+  classId?: string;
+  className?: string;
+  safeToApplyDirectly: boolean;
+  pendingSteps: FoundryProgressionPreviewStep[];
+  warnings?: string[];
+}
+
 export interface FoundryUpdateActorRequest {
   identifier: string;
   updates: UnknownRecord;

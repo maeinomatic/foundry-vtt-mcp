@@ -1628,6 +1628,11 @@ async function startBackend(): Promise<void> {
 
                     break;
 
+                  case 'preview-character-progression':
+                    result = await characterTools.handlePreviewCharacterProgression(args);
+
+                    break;
+
                   case 'update-character-progression':
                     result = await characterTools.handleUpdateCharacterProgression(args);
 

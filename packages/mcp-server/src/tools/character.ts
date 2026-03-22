@@ -7,6 +7,8 @@ import type {
   FoundryCharacterInfo,
   FoundryItemDocumentBase,
   FoundryItemSystemBase,
+  FoundryPreviewCharacterProgressionRequest,
+  FoundryPreviewCharacterProgressionResponse,
   FoundrySearchCharacterItemsResponse,
   FoundryUpdateActorEmbeddedItemRequest,
   FoundryUpdateActorEmbeddedItemResponse,
@@ -241,6 +243,38 @@ export class CharacterTools {
             limit: {
               type: 'number',
               description: 'Maximum number of results to return (default: 20)',
+            },
+          },
+          required: ['characterIdentifier'],
+        },
+      },
+      {
+        name: 'preview-character-progression',
+        description:
+          'Preview a progression update before applying it. For DnD5e this returns pending advancement steps and required choices when the class level change is managed by the system workflow.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            characterIdentifier: {
+              type: 'string',
+              description: 'Character name or ID to preview',
+            },
+            targetLevel: {
+              type: 'number',
+              description: 'Target level when the active system supports direct level updates',
+            },
+            classIdentifier: {
+              type: 'string',
+              description:
+                'DnD5e only: class item name or ID. Required for multiclass characters and recommended for explicit class targeting.',
+            },
+            experiencePoints: {
+              type: 'number',
+              description: 'Direct experience/AP total for systems that use it',
+            },
+            experienceSpent: {
+              type: 'number',
+              description: 'Optional spent experience/AP value for systems that track it',
             },
           },
           required: ['characterIdentifier'],
@@ -515,7 +549,88 @@ export class CharacterTools {
     }
   }
 
+  async handlePreviewCharacterProgression(args: unknown): Promise<UnknownRecord> {
+    const parsed = this.parseProgressionArgs(args);
+
+    this.logger.info('Previewing character progression', parsed);
+
+    const previewResult = await this.buildProgressionPreviewResult(parsed);
+
+    return {
+      success: true,
+      safeToApplyDirectly: previewResult.preview?.safeToApplyDirectly ?? true,
+      character: previewResult.character,
+      progression: previewResult.prepared.summary,
+      target: previewResult.prepared.target,
+      proposedUpdates: previewResult.prepared.updates,
+      pendingAdvancements: previewResult.preview?.pendingSteps ?? [],
+      ...(previewResult.warnings.length > 0 ? { warnings: previewResult.warnings } : {}),
+    };
+  }
+
   async handleUpdateCharacterProgression(args: unknown): Promise<UnknownRecord> {
+    const parsed = this.parseProgressionArgs(args);
+
+    this.logger.info('Updating character progression', parsed);
+
+    const previewResult = await this.buildProgressionPreviewResult(parsed);
+    if (previewResult.preview && !previewResult.preview.safeToApplyDirectly) {
+      return {
+        success: false,
+        requiresChoices: true,
+        character: previewResult.character,
+        progression: previewResult.prepared.summary,
+        pendingAdvancements: previewResult.preview.pendingSteps,
+        nextStep:
+          'Review the pending DnD5e advancement steps and complete the required choices through a dedicated advancement flow before applying the level change.',
+        ...(previewResult.warnings.length > 0 ? { warnings: previewResult.warnings } : {}),
+      };
+    }
+
+    const result = await this.applyProgressionUpdate(
+      parsed.characterIdentifier,
+      previewResult.prepared
+    );
+
+    return {
+      success: result.success,
+      character:
+        'actorType' in result
+          ? {
+              id: result.actorId,
+              name: result.actorName,
+              type: result.actorType,
+            }
+          : {
+              id: result.actorId,
+              name: result.actorName,
+            },
+      progression: previewResult.prepared.summary,
+      appliedUpdates: result.appliedUpdates,
+      updatedFields: result.updatedFields,
+      ...(previewResult.warnings.length > 0 ? { warnings: previewResult.warnings } : {}),
+      ...(previewResult.preview && previewResult.preview.pendingSteps.length > 0
+        ? { pendingAdvancements: previewResult.preview.pendingSteps }
+        : {}),
+    };
+  }
+
+  private async previewCharacterProgression(
+    request: FoundryPreviewCharacterProgressionRequest
+  ): Promise<FoundryPreviewCharacterProgressionResponse> {
+    return this.foundryClient.query<FoundryPreviewCharacterProgressionResponse>(
+      'foundry-mcp-bridge.previewCharacterProgression',
+      request
+    );
+  }
+
+  private parseProgressionArgs(args: unknown): {
+    characterIdentifier: string;
+    targetLevel?: number;
+    classIdentifier?: string;
+    experiencePoints?: number;
+    experienceSpent?: number;
+  } {
     const schema = z
       .object({
         characterIdentifier: z.string().min(1, 'Character identifier cannot be empty'),
@@ -530,9 +645,29 @@ export class CharacterTools {
       );
 
     const parsed = schema.parse(args);
+    return {
+      characterIdentifier: parsed.characterIdentifier,
+      ...(parsed.targetLevel !== undefined ? { targetLevel: parsed.targetLevel } : {}),
+      ...(parsed.classIdentifier !== undefined ? { classIdentifier: parsed.classIdentifier } : {}),
+      ...(parsed.experiencePoints !== undefined
+        ? { experiencePoints: parsed.experiencePoints }
+        : {}),
+      ...(parsed.experienceSpent !== undefined ? { experienceSpent: parsed.experienceSpent } : {}),
+    };
+  }
 
-    this.logger.info('Updating character progression', parsed);
-
+  private async buildProgressionPreviewResult(parsed: {
+    characterIdentifier: string;
+    targetLevel?: number;
+    classIdentifier?: string;
+    experiencePoints?: number;
+    experienceSpent?: number;
+  }): Promise<{
+    character: { id: string; name: string; type: string };
+    prepared: PreparedCharacterProgressionUpdate;
+    preview: FoundryPreviewCharacterProgressionResponse | null;
+    warnings: string[];
+  }> {
     const characterData = await this.foundryClient.query<CharacterInfoResponse>(
       'foundry-mcp-bridge.getCharacterInfo',
       {
@@ -550,26 +685,38 @@ export class CharacterTools {
     };
 
     const prepared = await this.prepareProgressionUpdate(characterData, progressionRequest);
-    const result = await this.applyProgressionUpdate(parsed.characterIdentifier, prepared);
+    const gameSystem = await this.getGameSystem();
+    const preview =
+      gameSystem === 'dnd5e' &&
+      parsed.targetLevel !== undefined &&
+      prepared.target.kind === 'embedded-item'
+        ? await this.previewCharacterProgression({
+            actorIdentifier: parsed.characterIdentifier,
+            targetLevel: parsed.targetLevel,
+            ...(parsed.classIdentifier !== undefined
+              ? { classIdentifier: parsed.classIdentifier }
+              : {}),
+          })
+        : null;
 
     return {
-      success: result.success,
-      character:
-        'actorType' in result
-          ? {
-              id: result.actorId,
-              name: result.actorName,
-              type: result.actorType,
-            }
-          : {
-              id: result.actorId,
-              name: result.actorName,
-            },
-      progression: prepared.summary,
-      appliedUpdates: result.appliedUpdates,
-      updatedFields: result.updatedFields,
-      ...(prepared.warnings ? { warnings: prepared.warnings } : {}),
+      character: {
+        id: characterData.id,
+        name: characterData.name,
+        type: characterData.type,
+      },
+      prepared,
+      preview,
+      warnings: this.mergeWarnings(prepared.warnings, preview?.warnings),
     };
+  }
+
+  private mergeWarnings(...warningSets: Array<string[] | undefined>): string[] {
+    return Array.from(
+      new Set(
+        warningSets.flatMap(warnings => warnings ?? []).filter(warning => warning.trim().length > 0)
+      )
+    );
   }
 
   private async prepareProgressionUpdate(

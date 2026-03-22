@@ -19,6 +19,8 @@ import type {
   FoundryGetCharacterInfoRequest,
   FoundryGetCompendiumDocumentRequest,
   FoundryListActorsRequest,
+  FoundryPreviewCharacterProgressionRequest,
+  FoundryPreviewCharacterProgressionResponse,
   FoundrySearchCharacterItemsRequest,
   FoundrySearchCharacterItemsResponse,
   FoundryUpdateActorRequest,
@@ -95,6 +97,10 @@ export class FoundryClient {
     method: 'foundry-mcp-bridge.updateActor',
     data: FoundryUpdateActorRequest
   ): Promise<FoundryUpdateActorResponse>;
+  async query(
+    method: 'foundry-mcp-bridge.previewCharacterProgression',
+    data: FoundryPreviewCharacterProgressionRequest
+  ): Promise<FoundryPreviewCharacterProgressionResponse>;
   async query(
     method: 'foundry-mcp-bridge.updateActorEmbeddedItem',
     data: FoundryUpdateActorEmbeddedItemRequest

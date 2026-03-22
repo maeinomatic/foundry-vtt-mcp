@@ -12,6 +12,8 @@ import type {
   FoundryGetCharacterInfoRequest,
   FoundryJournalEntryResponse,
   FoundryJournalSummary,
+  FoundryPreviewCharacterProgressionRequest,
+  FoundryPreviewCharacterProgressionResponse,
   FoundrySearchCharacterItemsRequest,
   FoundryUpdateActorEmbeddedItemRequest,
   FoundryUpdateActorEmbeddedItemResponse,
@@ -167,6 +169,8 @@ export class QueryHandlers {
     // Phase 2 & 3: Write operation queries
     CONFIG.queries[`${modulePrefix}.createActorFromCompendium`] =
       this.handleCreateActorFromCompendium.bind(this);
+    CONFIG.queries[`${modulePrefix}.previewCharacterProgression`] =
+      this.handlePreviewCharacterProgression.bind(this);
     CONFIG.queries[`${modulePrefix}.updateActor`] = this.handleUpdateActor.bind(this);
     CONFIG.queries[`${modulePrefix}.updateActorEmbeddedItem`] =
       this.handleUpdateActorEmbeddedItem.bind(this);
@@ -523,6 +527,36 @@ export class QueryHandlers {
     } catch (error) {
       throw new Error(
         `Failed to create actor from compendium: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+    }
+  }
+
+  /**
+   * Handle character progression preview request
+   */
+  private async handlePreviewCharacterProgression(
+    data: FoundryPreviewCharacterProgressionRequest
+  ): Promise<FoundryPreviewCharacterProgressionResponse | QueryErrorResult> {
+    try {
+      const gmCheck = this.validateGMAccess();
+      if (!gmCheck.allowed) {
+        return { error: 'Access denied', success: false };
+      }
+
+      this.dataAccess.validateFoundryState();
+
+      if (!data.actorIdentifier) {
+        throw new Error('actorIdentifier is required');
+      }
+
+      if (!Number.isInteger(data.targetLevel) || data.targetLevel <= 0) {
+        throw new Error('targetLevel must be a positive integer');
+      }
+
+      return await this.dataAccess.previewCharacterProgression(data);
+    } catch (error) {
+      throw new Error(
+        `Failed to preview character progression: ${error instanceof Error ? error.message : 'Unknown error'}`
       );
     }
   }
