@@ -37,22 +37,24 @@ export type CreatureSize = (typeof CreatureSizes)[number];
 /**
  * D&D 5e filter schema
  */
-export const DnD5eFiltersSchema = z.object({
-  challengeRating: z
-    .union([
-      z.number(),
-      z.object({
-        min: z.number().optional(),
-        max: z.number().optional(),
-      }),
-    ])
-    .optional(),
-  creatureType: z.enum(DnD5eCreatureTypes).optional(),
-  size: z.enum(CreatureSizes).optional(),
-  alignment: z.string().optional(),
-  hasLegendaryActions: z.boolean().optional(),
-  spellcaster: z.boolean().optional(),
-}).strict();
+export const DnD5eFiltersSchema = z
+  .object({
+    challengeRating: z
+      .union([
+        z.number(),
+        z.object({
+          min: z.number().optional(),
+          max: z.number().optional(),
+        }),
+      ])
+      .optional(),
+    creatureType: z.enum(DnD5eCreatureTypes).optional(),
+    size: z.enum(CreatureSizes).optional(),
+    alignment: z.string().optional(),
+    hasLegendaryActions: z.boolean().optional(),
+    spellcaster: z.boolean().optional(),
+  })
+  .strict();
 
 export type DnD5eFilters = z.infer<typeof DnD5eFiltersSchema>;
 

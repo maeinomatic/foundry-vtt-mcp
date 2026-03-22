@@ -45,23 +45,25 @@ export type CreatureSize = (typeof CreatureSizes)[number];
 /**
  * Pathfinder 2e filter schema
  */
-export const PF2eFiltersSchema = z.object({
-  level: z
-    .union([
-      z.number().min(-1).max(30), // PF2e levels range from -1 to 25+ (accounting for higher levels)
-      z.object({
-        min: z.number().min(-1).optional(),
-        max: z.number().max(30).optional(),
-      }),
-    ])
-    .optional(),
-  creatureType: z.enum(PF2eCreatureTypes).optional(),
-  traits: z.array(z.string()).optional(), // Array of trait names
-  rarity: z.enum(PF2eRarities).optional(),
-  size: z.enum(CreatureSizes).optional(),
-  alignment: z.string().optional(),
-  hasSpells: z.boolean().optional(), // PF2e uses spellcasting entries
-}).strict();
+export const PF2eFiltersSchema = z
+  .object({
+    level: z
+      .union([
+        z.number().min(-1).max(30), // PF2e levels range from -1 to 25+ (accounting for higher levels)
+        z.object({
+          min: z.number().min(-1).optional(),
+          max: z.number().max(30).optional(),
+        }),
+      ])
+      .optional(),
+    creatureType: z.enum(PF2eCreatureTypes).optional(),
+    traits: z.array(z.string()).optional(), // Array of trait names
+    rarity: z.enum(PF2eRarities).optional(),
+    size: z.enum(CreatureSizes).optional(),
+    alignment: z.string().optional(),
+    hasSpells: z.boolean().optional(), // PF2e uses spellcasting entries
+  })
+  .strict();
 
 export type PF2eFilters = z.infer<typeof PF2eFiltersSchema>;
 

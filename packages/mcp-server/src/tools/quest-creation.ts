@@ -234,10 +234,13 @@ export class QuestCreationTools {
       const questContent = this.generateQuestContent(request);
 
       // Create journal entry via Foundry client
-      const result = (await this.foundryClient.query('foundry-mcp-bridge.createJournalEntry', {
-        name: request.questTitle,
-        content: questContent,
-      })) as FoundryJournalResponse | null;
+      const result = await this.foundryClient.query<FoundryJournalResponse>(
+        'foundry-mcp-bridge.createJournalEntry',
+        {
+          name: request.questTitle,
+          content: questContent,
+        }
+      );
 
       if (!result || result.error) {
         throw new Error(result?.error ?? 'Failed to create quest journal');
@@ -255,11 +258,7 @@ export class QuestCreationTools {
         message: `Quest "${request.questTitle}" created successfully`,
       };
     } catch (error) {
-      return this.errorHandler.handleToolError(
-        error,
-        'create-quest-journal',
-        'quest creation'
-      ) as unknown;
+      return this.errorHandler.handleToolError(error, 'create-quest-journal', 'quest creation');
     }
   }
 
@@ -277,12 +276,12 @@ export class QuestCreationTools {
       const request = requestSchema.parse(args);
 
       // Get journal content first
-      const journalResult = (await this.foundryClient.query(
+      const journalResult = await this.foundryClient.query<FoundryJournalResponse>(
         'foundry-mcp-bridge.getJournalContent',
         {
           journalId: request.journalId,
         }
-      )) as FoundryJournalResponse | null;
+      );
 
       if (!journalResult || journalResult.error) {
         throw new Error('Journal not found');
@@ -299,13 +298,13 @@ export class QuestCreationTools {
       );
 
       // Update journal with NPC link
-      const updateResult = (await this.foundryClient.query(
+      const updateResult = await this.foundryClient.query<FoundryJournalResponse>(
         'foundry-mcp-bridge.updateJournalContent',
         {
           journalId: request.journalId,
           content: updatedContent,
         }
-      )) as FoundryJournalResponse | null;
+      );
 
       if (!updateResult || updateResult.error) {
         throw new Error('Failed to update journal with NPC link');
@@ -316,11 +315,7 @@ export class QuestCreationTools {
         message: `Linked ${request.npcName} to quest as ${request.relationship.replace('_', ' ')}`,
       };
     } catch (error) {
-      return this.errorHandler.handleToolError(
-        error,
-        'link-quest-to-npc',
-        'linking quest to NPC'
-      ) as unknown;
+      return this.errorHandler.handleToolError(error, 'link-quest-to-npc', 'linking quest to NPC');
     }
   }
 
@@ -344,12 +339,12 @@ export class QuestCreationTools {
       request.newContent = this.convertMarkdownToPlainText(request.newContent);
 
       // Get current journal content
-      const currentJournal = (await this.foundryClient.query(
+      const currentJournal = await this.foundryClient.query<FoundryJournalResponse>(
         'foundry-mcp-bridge.getJournalContent',
         {
           journalId: request.journalId,
         }
-      )) as FoundryJournalResponse | null;
+      );
 
       if (!currentJournal || currentJournal.error) {
         throw new Error(
@@ -369,10 +364,13 @@ export class QuestCreationTools {
       );
 
       // Update the journal
-      const result = (await this.foundryClient.query('foundry-mcp-bridge.updateJournalContent', {
-        journalId: request.journalId,
-        content: updatedContent,
-      })) as FoundryJournalResponse | null;
+      const result = await this.foundryClient.query<FoundryJournalResponse>(
+        'foundry-mcp-bridge.updateJournalContent',
+        {
+          journalId: request.journalId,
+          content: updatedContent,
+        }
+      );
 
       if (!result) {
         throw new Error('Failed to update quest journal: No response from Foundry');
@@ -387,9 +385,12 @@ export class QuestCreationTools {
       }
 
       // Verify the update by reading the content back
-      const verifyResult = (await this.foundryClient.query('foundry-mcp-bridge.getJournalContent', {
-        journalId: request.journalId,
-      })) as FoundryJournalResponse | null;
+      const verifyResult = await this.foundryClient.query<FoundryJournalResponse>(
+        'foundry-mcp-bridge.getJournalContent',
+        {
+          journalId: request.journalId,
+        }
+      );
 
       if (!verifyResult) {
         throw new Error('Failed to verify journal update: Could not retrieve updated content');
@@ -421,11 +422,7 @@ export class QuestCreationTools {
         updatedContent: verifyResult.content,
       };
     } catch (error) {
-      return this.errorHandler.handleToolError(
-        error,
-        'update-quest-journal',
-        'journal update'
-      ) as unknown;
+      return this.errorHandler.handleToolError(error, 'update-quest-journal', 'journal update');
     }
   }
 
@@ -442,7 +439,10 @@ export class QuestCreationTools {
       const request = requestSchema.parse(args);
 
       // Get all journals
-      const journalsResult = await this.foundryClient.query('foundry-mcp-bridge.listJournals', {});
+      const journalsResult = await this.foundryClient.query<unknown[] | { error: string }>(
+        'foundry-mcp-bridge.listJournals',
+        {}
+      );
 
       if (this.isErrorResult(journalsResult)) {
         throw new Error(journalsResult.error);
@@ -469,17 +469,14 @@ export class QuestCreationTools {
       if (request.includeContent) {
         for (const journal of filteredJournals) {
           try {
-            const content: unknown = await this.foundryClient.query(
+            const content = await this.foundryClient.query<FoundryJournalResponse>(
               'foundry-mcp-bridge.getJournalContent',
               {
                 journalId: journal.id,
               }
             );
-            const contentResult = content as FoundryJournalResponse | null;
             journal.contentPreview =
-              typeof contentResult?.content === 'string'
-                ? `${contentResult.content.substring(0, 150)}...`
-                : '';
+              typeof content.content === 'string' ? `${content.content.substring(0, 150)}...` : '';
           } catch (error) {
             journal.contentPreview = 'Error loading content';
           }
@@ -510,7 +507,10 @@ export class QuestCreationTools {
       const request = requestSchema.parse(args);
 
       // Get all journals
-      const journalsResult = await this.foundryClient.query('foundry-mcp-bridge.listJournals', {});
+      const journalsResult = await this.foundryClient.query<unknown[] | { error: string }>(
+        'foundry-mcp-bridge.listJournals',
+        {}
+      );
 
       if (this.isErrorResult(journalsResult)) {
         throw new Error('Failed to retrieve journals');
@@ -546,15 +546,17 @@ export class QuestCreationTools {
         // Search content
         if (request.searchType === 'content' || request.searchType === 'both') {
           try {
-            const content: unknown = await this.foundryClient.query(
+            const contentResult = await this.foundryClient.query<FoundryJournalResponse>(
               'foundry-mcp-bridge.getJournalContent',
               {
                 journalId: journal.id,
               }
             );
-            const contentResult = content as FoundryJournalResponse | null;
 
-            if (contentResult?.content?.toLowerCase().includes(query)) {
+            if (
+              typeof contentResult.content === 'string' &&
+              contentResult.content.toLowerCase().includes(query)
+            ) {
               matches = true;
               matchInfo.matchType.push('content');
               matchInfo.contentSnippet = this.extractSnippet(
@@ -580,11 +582,7 @@ export class QuestCreationTools {
         totalMatches: searchResults.length,
       };
     } catch (error) {
-      return this.errorHandler.handleToolError(
-        error,
-        'search-journals',
-        'journal search'
-      ) as unknown;
+      return this.errorHandler.handleToolError(error, 'search-journals', 'journal search');
     }
   }
 

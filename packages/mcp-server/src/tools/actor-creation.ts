@@ -1,5 +1,11 @@
 import { z } from 'zod';
 import { FoundryClient } from '../foundry-client.js';
+import type {
+  FoundryActorCreationResult,
+  FoundryCompendiumEntryFull,
+  FoundryDocumentBase,
+  UnknownRecord,
+} from '../foundry-types.js';
 import { Logger } from '../logger.js';
 import { ErrorHandler } from '../utils/error-handler.js';
 
@@ -8,28 +14,7 @@ export interface ActorCreationToolsOptions {
   logger: Logger;
 }
 
-interface NamedEntity {
-  name?: string;
-}
-
-interface ActorCreationResult {
-  success?: boolean;
-  totalCreated?: number;
-  totalRequested?: number;
-  tokensPlaced?: number;
-  errors?: string[];
-  actors?: Array<{ name?: string }>;
-}
-
-interface CompendiumEntryFull {
-  name?: string;
-  type?: string;
-  packLabel?: string;
-  system?: unknown;
-  fullData?: unknown;
-  items?: NamedEntity[];
-  effects?: NamedEntity[];
-}
+type NamedEntity = Pick<FoundryDocumentBase, 'name'>;
 
 export class ActorCreationTools {
   private foundryClient: FoundryClient;
@@ -45,7 +30,7 @@ export class ActorCreationTools {
   /**
    * Tool definitions for actor creation operations
    */
-  getToolDefinitions(): Array<Record<string, unknown>> {
+  getToolDefinitions(): UnknownRecord[] {
     return [
       {
         name: 'create-actor-from-compendium',
@@ -137,7 +122,7 @@ export class ActorCreationTools {
   /**
    * Handle actor creation from specific compendium entry
    */
-  async handleCreateActorFromCompendium(args: unknown): Promise<unknown> {
+  async handleCreateActorFromCompendium(args: unknown): Promise<UnknownRecord> {
     const schema = z.object({
       packId: z.string().min(1, 'Pack ID cannot be empty'),
       itemId: z.string().min(1, 'Item ID cannot be empty'),
@@ -179,7 +164,7 @@ export class ActorCreationTools {
       }
 
       // Create the actors via Foundry module using exact pack/item IDs
-      const result = (await this.foundryClient.query(
+      const result = await this.foundryClient.query<FoundryActorCreationResult>(
         'foundry-mcp-bridge.createActorFromCompendium',
         {
           packId,
@@ -194,7 +179,7 @@ export class ActorCreationTools {
               }
             : undefined,
         }
-      )) as ActorCreationResult;
+      );
 
       this.logger.info('Actor creation completed', {
         totalCreated: result.totalCreated ?? 0,
@@ -215,14 +200,14 @@ export class ActorCreationTools {
         error,
         'create-actor-from-compendium',
         'actor creation'
-      ) as unknown;
+      );
     }
   }
 
   /**
    * Handle getting full compendium entry data
    */
-  async handleGetCompendiumEntryFull(args: unknown): Promise<unknown> {
+  async handleGetCompendiumEntryFull(args: unknown): Promise<UnknownRecord> {
     const schema = z.object({
       packId: z.string().min(1, 'Pack ID cannot be empty'),
       entryId: z.string().min(1, 'Entry ID cannot be empty'),
@@ -233,13 +218,13 @@ export class ActorCreationTools {
     this.logger.info('Getting full compendium entry', { packId, entryId });
 
     try {
-      const fullEntry = (await this.foundryClient.query(
+      const fullEntry = await this.foundryClient.query<FoundryCompendiumEntryFull>(
         'foundry-mcp-bridge.getCompendiumDocumentFull',
         {
           packId,
           documentId: entryId,
         }
-      )) as CompendiumEntryFull;
+      );
 
       this.logger.debug('Successfully retrieved full compendium entry', {
         packId,
@@ -255,14 +240,14 @@ export class ActorCreationTools {
         error,
         'get-compendium-entry-full',
         'compendium retrieval'
-      ) as unknown;
+      );
     }
   }
 
   /**
    * Format compendium entry response
    */
-  private formatCompendiumEntryResponse(entry: CompendiumEntryFull): Record<string, unknown> {
+  private formatCompendiumEntryResponse(entry: FoundryCompendiumEntryFull): UnknownRecord {
     const items = entry.items ?? [];
     const effects = entry.effects ?? [];
 
@@ -292,11 +277,11 @@ export class ActorCreationTools {
    * Format simplified actor creation response
    */
   private formatSimpleActorCreationResponse(
-    result: ActorCreationResult,
+    result: FoundryActorCreationResult,
     packId: string,
     itemId: string,
     customNames: string[]
-  ): Record<string, unknown> {
+  ): UnknownRecord {
     const totalCreated = result.totalCreated ?? 0;
     const totalRequested = result.totalRequested ?? customNames.length;
     const actors = result.actors ?? [];

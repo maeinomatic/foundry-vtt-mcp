@@ -17,6 +17,7 @@ interface DeleteTokensResult {
 }
 
 interface ToggleConditionResult {
+  success?: boolean;
   isActive?: boolean;
   conditionName?: string;
 }
@@ -289,9 +290,12 @@ export class TokenManipulationTools {
     this.logger.info('Deleting tokens', { count: tokenIds.length, tokenIds });
 
     try {
-      const result = (await this.foundryClient.query('foundry-mcp-bridge.delete-tokens', {
-        tokenIds,
-      })) as DeleteTokensResult;
+      const result = await this.foundryClient.query<DeleteTokensResult>(
+        'foundry-mcp-bridge.delete-tokens',
+        {
+          tokenIds,
+        }
+      );
 
       this.logger.debug('Tokens deleted successfully', {
         deleted: result.deletedCount,
@@ -322,9 +326,12 @@ export class TokenManipulationTools {
     this.logger.info('Getting token details', { tokenId });
 
     try {
-      const tokenData = (await this.foundryClient.query('foundry-mcp-bridge.get-token-details', {
-        tokenId,
-      })) as UnknownRecord;
+      const tokenData = await this.foundryClient.query<UnknownRecord>(
+        'foundry-mcp-bridge.get-token-details',
+        {
+          tokenId,
+        }
+      );
 
       const actorData = this.asRecord(tokenData.actorData);
 
@@ -406,11 +413,14 @@ export class TokenManipulationTools {
     this.logger.info('Toggling token condition', { tokenId, conditionId, active });
 
     try {
-      const result = (await this.foundryClient.query('foundry-mcp-bridge.toggle-token-condition', {
-        tokenId,
-        conditionId,
-        active,
-      })) as ToggleConditionResult;
+      const result = await this.foundryClient.query<ToggleConditionResult>(
+        'foundry-mcp-bridge.toggle-token-condition',
+        {
+          tokenId,
+          conditionId,
+          active,
+        }
+      );
 
       this.logger.debug('Token condition toggled successfully', { tokenId, conditionId, result });
 
@@ -433,10 +443,10 @@ export class TokenManipulationTools {
     this.logger.info('Getting available conditions');
 
     try {
-      const result = (await this.foundryClient.query(
+      const result = await this.foundryClient.query<AvailableConditionsResult>(
         'foundry-mcp-bridge.get-available-conditions',
         {}
-      )) as AvailableConditionsResult;
+      );
 
       this.logger.debug('Retrieved available conditions', {
         count: result.conditions?.length ?? 0,

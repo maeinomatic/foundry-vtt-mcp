@@ -10,6 +10,15 @@ import { spawn, ChildProcess } from 'child_process';
 
 import { config } from './config.js';
 
+import type {
+  FoundryBackendComfyUIHandlers,
+  FoundryBridgeMessage,
+  FoundryConnectionType,
+  FoundryMcpToolResult,
+  FoundryRpcMessage,
+  UnknownRecord,
+} from './foundry-types.js';
+
 import { Logger } from './logger.js';
 
 import { FoundryClient } from './foundry-client.js';
@@ -163,8 +172,6 @@ let comfyuiStatus: 'stopped' | 'starting' | 'running' | 'error' = 'stopped';
 
 let lockFd: number | null = null;
 
-type UnknownRecord = Record<string, unknown>;
-
 interface MapGenerationParams {
   prompt: string;
   scene_name?: string;
@@ -199,7 +206,7 @@ interface MapGenerationQueue {
 interface ComfyUIClientLike {
   checkInstallation?(): boolean;
   checkHealth(): Promise<{ available?: boolean }>;
-  startService(): Promise<unknown>;
+  startService(): Promise<void | UnknownRecord>;
   getSizePixels(size: string): number;
   submitJob(input: {
     prompt: string;
@@ -219,16 +226,13 @@ interface ComfyUIClientLike {
 }
 
 interface FoundryMessenger {
-  sendMessage(message: UnknownRecord): void;
-  broadcastMessage(message: UnknownRecord): void;
-  query(method: string, params?: UnknownRecord): Promise<unknown>;
-  getConnectionType?(): 'websocket' | 'webrtc' | null;
-}
-
-interface RpcMessage {
-  id?: string;
-  method?: string;
-  params?: UnknownRecord;
+  sendMessage(message: FoundryBridgeMessage | UnknownRecord): void;
+  broadcastMessage(message: FoundryBridgeMessage | UnknownRecord): void;
+  query<TResult = unknown, TParams extends UnknownRecord | undefined = UnknownRecord>(
+    method: string,
+    params?: TParams
+  ): Promise<TResult>;
+  getConnectionType?(): FoundryConnectionType;
 }
 
 function getErrorMessage(error: unknown): string {
@@ -247,17 +251,17 @@ function asNumber(value: unknown, fallback: number): number {
   return typeof value === 'number' ? value : fallback;
 }
 
-function asSize(value: unknown, fallback: 'small' | 'medium' | 'large'): 'small' | 'medium' | 'large' {
+function asSize(
+  value: unknown,
+  fallback: 'small' | 'medium' | 'large'
+): 'small' | 'medium' | 'large' {
   if (value === 'small' || value === 'medium' || value === 'large') {
     return value;
   }
   return fallback;
 }
 
-function asQuality(
-  value: unknown,
-  fallback: 'low' | 'medium' | 'high'
-): 'low' | 'medium' | 'high' {
+function asQuality(value: unknown, fallback: 'low' | 'medium' | 'high'): 'low' | 'medium' | 'high' {
   if (value === 'low' || value === 'medium' || value === 'high') {
     return value;
   }
@@ -1105,7 +1109,10 @@ async function processMapGenerationInBackend(
 
     let uploadResult: UnknownRecord;
     try {
-      const uploadResponse = await foundryClient.query('foundry-mcp-bridge.upload-generated-map', {
+      const uploadResponse = await foundryClient.query<
+        UnknownRecord,
+        { filename: string; imageData: string }
+      >('foundry-mcp-bridge.upload-generated-map', {
         filename,
         imageData: base64Image,
       });
@@ -1334,11 +1341,13 @@ async function startBackend(): Promise<void> {
   // Set up global ComfyUI message handlers for WebSocket messages from Foundry BEFORE creating map tools
 
   const globalHandlers = globalThis as {
-    backendComfyUIHandlers?: { handleMessage: (message: unknown) => Promise<unknown> };
+    backendComfyUIHandlers?: FoundryBackendComfyUIHandlers;
   };
 
   globalHandlers.backendComfyUIHandlers = {
-    handleMessage: async (message: unknown): Promise<unknown> => {
+    handleMessage: async (
+      message: FoundryBridgeMessage | UnknownRecord
+    ): Promise<UnknownRecord> => {
       // CRITICAL DEBUG: Write to file IMMEDIATELY when this function is called
       const fs = await import('fs').then(m => m.promises);
       const path = await import('path');
@@ -1373,7 +1382,7 @@ async function startBackend(): Promise<void> {
           `[${new Date().toISOString()}] About to switch on message.type: "${messageType}"\n`
         );
 
-        let result: unknown;
+        let result: UnknownRecord;
 
         switch (messageType) {
           case 'start-comfyui-service':
@@ -1438,7 +1447,7 @@ async function startBackend(): Promise<void> {
         // Send response back through foundryClient if requestId is provided
 
         if (requestId && foundryClient) {
-          const response = {
+          const response: FoundryBridgeMessage<UnknownRecord> = {
             type: `${messageType}-response`,
 
             requestId,
@@ -1465,7 +1474,7 @@ async function startBackend(): Promise<void> {
           error: getErrorMessage(error),
         });
 
-        const errorResult = {
+        const errorResult: UnknownRecord = {
           status: 'error',
 
           message: getErrorMessage(error),
@@ -1567,7 +1576,7 @@ async function startBackend(): Promise<void> {
           if (!line) continue;
 
           try {
-            const msg = JSON.parse(line) as RpcMessage;
+            const msg = JSON.parse(line) as FoundryRpcMessage;
             const msgId = asString(msg.id, '');
             const msgMethod = asString(msg.method, '');
             const msgParams = msg.params ?? {};
@@ -1798,7 +1807,7 @@ async function startBackend(): Promise<void> {
                     throw new Error(`Unknown tool: ${name}`);
                 }
 
-                const payload = {
+                const payload: FoundryMcpToolResult = {
                   content: [
                     {
                       type: 'text',
@@ -1817,7 +1826,7 @@ async function startBackend(): Promise<void> {
                     result: {
                       content: [{ type: 'text', text: `Error: ${errorMessage}` }],
                       isError: true,
-                    },
+                    } as FoundryMcpToolResult,
                   })}\n`
                 );
               }

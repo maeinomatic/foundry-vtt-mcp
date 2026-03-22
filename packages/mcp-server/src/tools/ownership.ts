@@ -49,6 +49,12 @@ interface OwnershipChangeResult {
   error?: string;
 }
 
+interface OwnershipUpdateResponse {
+  success?: boolean;
+  message?: string;
+  error?: string;
+}
+
 export class OwnershipTools {
   private foundryClient: FoundryClient;
   private logger: Logger;
@@ -204,11 +210,14 @@ export class OwnershipTools {
     for (const actor of actors) {
       for (const player of players) {
         try {
-          const result = (await this.foundryClient.query('foundry-mcp-bridge.setActorOwnership', {
-            actorId: actor.id,
-            userId: player.id,
-            permission: numericLevel,
-          })) as Record<string, unknown>;
+          const result = await this.foundryClient.query<OwnershipUpdateResponse>(
+            'foundry-mcp-bridge.setActorOwnership',
+            {
+              actorId: actor.id,
+              userId: player.id,
+              permission: numericLevel,
+            }
+          );
 
           results.push({
             actor: actor.name,
@@ -273,7 +282,7 @@ export class OwnershipTools {
     );
 
     try {
-      const ownershipData: unknown = await this.foundryClient.query(
+      const ownershipData = await this.foundryClient.query<unknown>(
         'foundry-mcp-bridge.getActorOwnership',
         {
           actorIdentifier,
@@ -303,7 +312,7 @@ export class OwnershipTools {
     try {
       if (identifier.toLowerCase().includes('all friendly npcs')) {
         // Get all tokens in current scene with friendly disposition
-        const actors: unknown = await this.foundryClient.query(
+        const actors = await this.foundryClient.query<unknown[]>(
           'foundry-mcp-bridge.getFriendlyNPCs',
           {}
         );
@@ -312,7 +321,7 @@ export class OwnershipTools {
         return resolved;
       } else if (identifier.toLowerCase().includes('party characters')) {
         // Get all player-owned characters
-        const actors: unknown = await this.foundryClient.query(
+        const actors = await this.foundryClient.query<unknown[]>(
           'foundry-mcp-bridge.getPartyCharacters',
           {}
         );
@@ -322,7 +331,7 @@ export class OwnershipTools {
       } else {
         // Single actor lookup
         this.logger.debug(`Looking for single actor: ${identifier}`);
-        const actor: unknown = await this.foundryClient.query('foundry-mcp-bridge.findActor', {
+        const actor = await this.foundryClient.query<unknown>('foundry-mcp-bridge.findActor', {
           identifier,
         });
         this.logger.debug(`Single actor lookup result:`, actor);
@@ -344,7 +353,7 @@ export class OwnershipTools {
     try {
       if (identifier.toLowerCase() === 'party') {
         // Get all connected players (excluding GM)
-        const players: unknown = await this.foundryClient.query(
+        const players = await this.foundryClient.query<unknown[]>(
           'foundry-mcp-bridge.getConnectedPlayers',
           {}
         );
@@ -354,11 +363,14 @@ export class OwnershipTools {
       } else {
         // Single player lookup with partial matching
         this.logger.debug(`Looking for single player: ${identifier}`);
-        const players: unknown = await this.foundryClient.query('foundry-mcp-bridge.findPlayers', {
-          identifier,
-          allowPartialMatch: true,
-          includeCharacterOwners: true, // Also match by character names they own
-        });
+        const players = await this.foundryClient.query<unknown[]>(
+          'foundry-mcp-bridge.findPlayers',
+          {
+            identifier,
+            allowPartialMatch: true,
+            includeCharacterOwners: true, // Also match by character names they own
+          }
+        );
         this.logger.debug(`Player lookup result:`, players);
         return this.toResolvedEntities(players);
       }

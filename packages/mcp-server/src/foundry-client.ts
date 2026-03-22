@@ -1,18 +1,17 @@
 import { Logger } from './logger.js';
 import { Config } from './config.js';
 import { FoundryConnector } from './foundry-connector.js';
-import type { UnknownRecord } from './foundry-types.js';
+import type {
+  FoundryBridgeMessage,
+  FoundryBridgeQueryRequest,
+  FoundryBridgeResponseEnvelope,
+  FoundryConnectionInfo,
+  UnknownRecord,
+} from './foundry-types.js';
 
-export interface FoundryQuery {
-  method: string;
-  data?: unknown;
-}
+export interface FoundryQuery<TData = unknown> extends FoundryBridgeQueryRequest<TData> {}
 
-export interface FoundryResponse {
-  success: boolean;
-  data?: unknown;
-  error?: string;
-}
+export interface FoundryResponse<TData = unknown> extends FoundryBridgeResponseEnvelope<TData> {}
 
 const asRecord = (value: unknown): UnknownRecord | undefined => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -65,7 +64,7 @@ export class FoundryClient {
     return this.connector.getConnectionType();
   }
 
-  async query<T = unknown>(method: string, data?: unknown): Promise<T> {
+  async query<TResult = unknown, TData = unknown>(method: string, data?: TData): Promise<TResult> {
     if (!this.connector.isConnected()) {
       throw new Error(
         'Foundry VTT module not connected. Please ensure Foundry is running and the MCP Bridge module is enabled.'
@@ -75,9 +74,9 @@ export class FoundryClient {
     this.logger.debug('Sending query to Foundry module', { method, data });
 
     try {
-      const result = await this.connector.query(method, data);
+      const result = await this.connector.query<TResult, TData>(method, data);
       this.logger.debug('Query successful', { method, hasResult: !!result });
-      return result as T;
+      return result;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown query error';
       this.logger.error('Query failed', { method, error: errorMessage });
@@ -89,7 +88,7 @@ export class FoundryClient {
     return this.query('foundry-mcp-bridge.ping');
   }
 
-  getConnectionInfo(): unknown {
+  getConnectionInfo(): FoundryConnectionInfo {
     return this.connector.getConnectionInfo();
   }
 
@@ -101,7 +100,7 @@ export class FoundryClient {
     return this.connector.isConnected();
   }
 
-  sendMessage(message: unknown): void {
+  sendMessage(message: FoundryBridgeMessage | UnknownRecord): void {
     const messageData = asRecord(message);
     this.logger.debug('Sending message to Foundry', {
       type: toStringValue(messageData?.type),
@@ -110,7 +109,7 @@ export class FoundryClient {
     this.connector.sendToFoundry(message);
   }
 
-  broadcastMessage(message: unknown): void {
+  broadcastMessage(message: FoundryBridgeMessage | UnknownRecord): void {
     const messageData = asRecord(message);
     this.logger.debug('Broadcasting message to Foundry', {
       type: toStringValue(messageData?.type),

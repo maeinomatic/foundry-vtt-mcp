@@ -194,7 +194,9 @@ export class CampaignManagementTools {
         ...(parsedRequest.defaultQuestGiver
           ? { defaultQuestGiver: parsedRequest.defaultQuestGiver }
           : {}),
-        ...(parsedRequest.defaultLocation ? { defaultLocation: parsedRequest.defaultLocation } : {}),
+        ...(parsedRequest.defaultLocation
+          ? { defaultLocation: parsedRequest.defaultLocation }
+          : {}),
       };
 
       // Generate campaign structure based on template
@@ -204,14 +206,14 @@ export class CampaignManagementTools {
       const dashboardContent = this.generateDashboardHTML(campaignStructure);
 
       // Create the journal entry in Foundry (organized in campaign-specific folder)
-      const journalResult = (await this.foundryClient.query(
+      const journalResult = await this.foundryClient.query<JournalResult>(
         'foundry-mcp-bridge.createJournalEntry',
         {
           name: `${request.campaignTitle} - Campaign Dashboard`,
           content: dashboardContent,
           folderName: request.campaignTitle, // Organize in campaign-named folder
         }
-      )) as JournalResult;
+      );
 
       if (!journalResult || journalResult.error) {
         throw new Error(journalResult?.error ?? 'Failed to create campaign dashboard journal');
@@ -239,7 +241,7 @@ export class CampaignManagementTools {
         error,
         'create-campaign-dashboard',
         'campaign dashboard creation'
-      ) as unknown;
+      );
     }
   }
 
@@ -701,7 +703,9 @@ export class CampaignManagementTools {
     campaign.parts.forEach((part: CampaignPart) => {
       if (part.subParts && part.subParts.length > 0) {
         total += part.subParts.length;
-        completed += part.subParts.filter((sp: CampaignSubPart) => sp.status === 'completed').length;
+        completed += part.subParts.filter(
+          (sp: CampaignSubPart) => sp.status === 'completed'
+        ).length;
       } else {
         total += 1;
         if (part.status === 'completed') completed += 1;

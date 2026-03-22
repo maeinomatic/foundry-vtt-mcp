@@ -121,9 +121,9 @@ export class SceneTools {
     this.logger.info('Getting current scene information', { includeTokens, includeHidden });
 
     try {
-      const sceneData = (await this.foundryClient.query(
+      const sceneData = await this.foundryClient.query<ActiveSceneData>(
         'foundry-mcp-bridge.getActiveScene'
-      )) as ActiveSceneData;
+      );
 
       this.logger.debug('Successfully retrieved scene data', {
         sceneId: sceneData.id,
@@ -144,9 +144,9 @@ export class SceneTools {
     this.logger.info('Getting world information');
 
     try {
-      const worldData = (await this.foundryClient.query(
+      const worldData = await this.foundryClient.query<WorldInfoData>(
         'foundry-mcp-bridge.getWorldInfo'
-      )) as WorldInfoData;
+      );
 
       this.logger.debug('Successfully retrieved world data', {
         worldId: worldData.id,

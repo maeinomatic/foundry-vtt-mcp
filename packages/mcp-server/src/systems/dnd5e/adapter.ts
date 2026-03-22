@@ -10,10 +10,17 @@ import type {
   SystemMetadata,
   SystemCreatureIndex,
   DnD5eCreatureIndex,
+  SystemCharacterAction,
+  SystemSpellcastingEntry,
 } from '../types.js';
+import type {
+  FoundryActorDocumentBase,
+  FoundryCompendiumDocumentBase,
+  FoundryCompendiumPackSummary,
+  FoundryItemDocumentBase,
+  UnknownRecord,
+} from '../../foundry-types.js';
 import { DnD5eFiltersSchema, matchesDnD5eFilters, describeDnD5eFilters } from './filters.js';
-
-type UnknownRecord = Record<string, unknown>;
 
 function asRecord(value: unknown): UnknownRecord | undefined {
   return typeof value === 'object' && value !== null ? (value as UnknownRecord) : undefined;
@@ -78,8 +85,8 @@ export class DnD5eAdapter implements SystemAdapter {
    * This is called by the index builder in Foundry's browser context
    */
   extractCreatureData(
-    _doc: unknown,
-    _pack: unknown
+    _doc: FoundryActorDocumentBase,
+    _pack: FoundryCompendiumPackSummary
   ): { creature: SystemCreatureIndex; errors: number } | null {
     // Implementation is in index-builder.ts since it runs in browser
     // This method is here for type compliance but delegates to IndexBuilder
@@ -218,7 +225,7 @@ export class DnD5eAdapter implements SystemAdapter {
   }
 
   formatRawCompendiumCreature(
-    entity: unknown,
+    entity: FoundryCompendiumDocumentBase,
     mode: 'search' | 'criteria' | 'compact' | 'details'
   ): Record<string, unknown> {
     const record = asRecord(entity);
@@ -320,7 +327,9 @@ export class DnD5eAdapter implements SystemAdapter {
             ? { hitPoints: { current: hpCurrent, max: hpMax } }
             : {}),
           ...(armorClass !== undefined ? { armorClass } : {}),
-          ...(Object.keys(significantAbilities).length > 0 ? { abilities: significantAbilities } : {}),
+          ...(Object.keys(significantAbilities).length > 0
+            ? { abilities: significantAbilities }
+            : {}),
           ...(speeds.length > 0 ? { speed: speeds.join(', ') } : {}),
           ...(hasSpellcasting ? { spellcaster: true } : {}),
           ...(hasLegendaryActions ? { hasLegendaryActions: true } : {}),
@@ -361,7 +370,7 @@ export class DnD5eAdapter implements SystemAdapter {
   /**
    * Extract character statistics from actor data
    */
-  extractCharacterStats(actorData: unknown): Record<string, unknown> {
+  extractCharacterStats(actorData: FoundryActorDocumentBase): Record<string, unknown> {
     const actor = asRecord(actorData);
     const system = asRecord(actor?.system);
     const stats: Record<string, unknown> = {};
@@ -484,7 +493,7 @@ export class DnD5eAdapter implements SystemAdapter {
     return stats;
   }
 
-  formatCharacterBasicInfo(actorData: unknown): Record<string, unknown> {
+  formatCharacterBasicInfo(actorData: FoundryActorDocumentBase): Record<string, unknown> {
     const actor = asRecord(actorData);
     const system = asRecord(actor?.system);
     const basicInfo: Record<string, unknown> = {};
@@ -526,7 +535,7 @@ export class DnD5eAdapter implements SystemAdapter {
     return basicInfo;
   }
 
-  formatCharacterItemForList(itemData: unknown): Record<string, unknown> {
+  formatCharacterItemForList(itemData: FoundryItemDocumentBase): Record<string, unknown> {
     const item = asRecord(itemData);
     const system = asRecord(item?.system);
 
@@ -554,7 +563,7 @@ export class DnD5eAdapter implements SystemAdapter {
     return formatted;
   }
 
-  formatCharacterItemForDetails(itemData: unknown): Record<string, unknown> {
+  formatCharacterItemForDetails(itemData: FoundryItemDocumentBase): Record<string, unknown> {
     const item = asRecord(itemData);
     const system = asRecord(item?.system);
     const formatted = this.formatCharacterItemForList(itemData);
@@ -585,7 +594,7 @@ export class DnD5eAdapter implements SystemAdapter {
     return formatted;
   }
 
-  formatCharacterActionForList(actionData: unknown): Record<string, unknown> {
+  formatCharacterActionForList(actionData: SystemCharacterAction): Record<string, unknown> {
     const action = asRecord(actionData);
     const formatted: Record<string, unknown> = {
       name: toStringValue(action?.name) ?? 'Unknown Action',
@@ -613,7 +622,7 @@ export class DnD5eAdapter implements SystemAdapter {
     return formatted;
   }
 
-  formatSpellcastingEntryForList(entryData: unknown): Record<string, unknown> {
+  formatSpellcastingEntryForList(entryData: SystemSpellcastingEntry): Record<string, unknown> {
     const entry = asRecord(entryData);
     const formatted: Record<string, unknown> = {
       name: toStringValue(entry?.name) ?? 'Unknown Entry',

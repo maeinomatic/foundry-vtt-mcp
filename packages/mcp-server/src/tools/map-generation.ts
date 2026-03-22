@@ -32,6 +32,18 @@ interface MapGenerationResponse {
   success?: boolean;
 }
 
+interface SceneListResponse {
+  success?: boolean;
+  error?: string;
+  scenes?: unknown[];
+}
+
+interface SwitchSceneResponse {
+  success?: boolean;
+  error?: string;
+  message?: string;
+}
+
 interface JobData {
   id: string;
   status: 'queued' | 'generating' | 'processing' | 'complete' | 'failed' | 'expired';
@@ -178,14 +190,17 @@ export class MapGenerationTools {
     ];
   }
 
-  async listScenes(input: unknown): Promise<unknown> {
+  async listScenes(input: unknown): Promise<UnknownRecord | SceneListResponse> {
     const safeInput = this.asRecord(input);
     try {
       const params = {
         filter: typeof safeInput.filter === 'string' ? safeInput.filter : undefined,
         include_active_only: Boolean(safeInput.include_active_only),
       };
-      const response = await this.foundryClient.query('foundry-mcp-bridge.list-scenes', params);
+      const response = await this.foundryClient.query<SceneListResponse>(
+        'foundry-mcp-bridge.list-scenes',
+        params
+      );
       return response;
     } catch (error: unknown) {
       this.logger.error('List scenes failed', { error, input: safeInput });
@@ -193,7 +208,7 @@ export class MapGenerationTools {
     }
   }
 
-  async switchScene(input: unknown): Promise<unknown> {
+  async switchScene(input: unknown): Promise<UnknownRecord | SwitchSceneResponse> {
     const safeInput = this.asRecord(input);
     try {
       const sceneIdentifier =
@@ -209,7 +224,10 @@ export class MapGenerationTools {
         optimize_view: safeInput.optimize_view !== false,
       };
 
-      const response = await this.foundryClient.query('foundry-mcp-bridge.switch-scene', params);
+      const response = await this.foundryClient.query<SwitchSceneResponse>(
+        'foundry-mcp-bridge.switch-scene',
+        params
+      );
       return response;
     } catch (error: unknown) {
       this.logger.error('Switch scene failed', { error, input: safeInput });
@@ -217,7 +235,7 @@ export class MapGenerationTools {
     }
   }
 
-  async generateMap(input: unknown): Promise<unknown> {
+  async generateMap(input: unknown): Promise<string> {
     const safeInput = this.asRecord(input);
     try {
       this.logger.info('Map generation requested via MCP', { input: safeInput });
@@ -244,10 +262,10 @@ export class MapGenerationTools {
         grid_size: gridSize,
       } as const;
 
-      const response = (await this.foundryClient.query(
+      const response = await this.foundryClient.query<MapGenerationResponse>(
         'foundry-mcp-bridge.generate-map',
         params
-      )) as MapGenerationResponse;
+      );
       if (response.error) {
         throw new Error(response.error);
       }
@@ -275,7 +293,7 @@ export class MapGenerationTools {
     }
   }
 
-  async checkMapStatus(input: unknown): Promise<unknown> {
+  async checkMapStatus(input: unknown): Promise<string> {
     const safeInput = this.asRecord(input);
     try {
       const jobIdCandidate =
@@ -287,9 +305,12 @@ export class MapGenerationTools {
 
       this.logger.info('Map status check requested via MCP', { jobId, input: safeInput });
 
-      const response = (await this.foundryClient.query('foundry-mcp-bridge.check-map-status', {
-        job_id: jobId,
-      })) as MapGenerationResponse;
+      const response = await this.foundryClient.query<MapGenerationResponse>(
+        'foundry-mcp-bridge.check-map-status',
+        {
+          job_id: jobId,
+        }
+      );
       if (response.error) {
         const message = response.message ?? response.error ?? 'Failed to check job status';
         return `Error: ${message}`;
@@ -327,7 +348,7 @@ export class MapGenerationTools {
     }
   }
 
-  async cancelMapJob(input: unknown): Promise<unknown> {
+  async cancelMapJob(input: unknown): Promise<string> {
     const safeInput = this.asRecord(input);
     try {
       const jobIdCandidate =
@@ -339,9 +360,12 @@ export class MapGenerationTools {
 
       this.logger.info('Map job cancellation requested via MCP', { jobId, input: safeInput });
 
-      const response = (await this.foundryClient.query('foundry-mcp-bridge.cancel-map-job', {
-        job_id: jobId,
-      })) as MapGenerationResponse;
+      const response = await this.foundryClient.query<MapGenerationResponse>(
+        'foundry-mcp-bridge.cancel-map-job',
+        {
+          job_id: jobId,
+        }
+      );
       if (response.error) {
         const message = response.message ?? response.error ?? 'Failed to cancel map job';
         return `Error: ${message}`;

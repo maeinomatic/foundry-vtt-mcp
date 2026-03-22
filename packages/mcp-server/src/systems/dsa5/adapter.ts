@@ -10,11 +10,18 @@ import type {
   SystemMetadata,
   SystemCreatureIndex,
   DSA5CreatureIndex,
+  SystemCharacterAction,
+  SystemSpellcastingEntry,
 } from '../types.js';
+import type {
+  FoundryActorDocumentBase,
+  FoundryCompendiumDocumentBase,
+  FoundryCompendiumPackSummary,
+  FoundryItemDocumentBase,
+  UnknownRecord,
+} from '../../foundry-types.js';
 import { DSA5FiltersSchema, matchesDSA5Filters, describeDSA5Filters } from './filters.js';
 import { FIELD_PATHS, getExperienceLevel, EIGENSCHAFT_NAMES } from './constants.js';
-
-type UnknownRecord = Record<string, unknown>;
 
 function asRecord(value: unknown): UnknownRecord | undefined {
   return typeof value === 'object' && value !== null ? (value as UnknownRecord) : undefined;
@@ -79,8 +86,8 @@ export class DSA5Adapter implements SystemAdapter {
    * This is called by the index builder in Foundry's browser context
    */
   extractCreatureData(
-    _doc: unknown,
-    _pack: unknown
+    _doc: FoundryActorDocumentBase,
+    _pack: FoundryCompendiumPackSummary
   ): { creature: SystemCreatureIndex; errors: number } | null {
     // Implementation is in index-builder.ts since it runs in browser
     // This method is here for type compliance but delegates to IndexBuilder
@@ -260,7 +267,7 @@ export class DSA5Adapter implements SystemAdapter {
   }
 
   formatRawCompendiumCreature(
-    entity: unknown,
+    entity: FoundryCompendiumDocumentBase,
     mode: 'search' | 'criteria' | 'compact' | 'details'
   ): Record<string, unknown> {
     const record = asRecord(entity);
@@ -353,7 +360,7 @@ export class DSA5Adapter implements SystemAdapter {
   /**
    * Extract character statistics from actor data
    */
-  extractCharacterStats(actorData: unknown): Record<string, unknown> {
+  extractCharacterStats(actorData: FoundryActorDocumentBase): Record<string, unknown> {
     const actor = asRecord(actorData);
     const system = asRecord(actor?.system);
     const stats: Record<string, unknown> = {};
@@ -517,7 +524,7 @@ export class DSA5Adapter implements SystemAdapter {
     return stats;
   }
 
-  formatCharacterBasicInfo(actorData: unknown): Record<string, unknown> {
+  formatCharacterBasicInfo(actorData: FoundryActorDocumentBase): Record<string, unknown> {
     const actor = asRecord(actorData);
     const system = asRecord(actor?.system);
     const basicInfo: Record<string, unknown> = {};
@@ -558,7 +565,7 @@ export class DSA5Adapter implements SystemAdapter {
     return basicInfo;
   }
 
-  formatCharacterItemForList(itemData: unknown): Record<string, unknown> {
+  formatCharacterItemForList(itemData: FoundryItemDocumentBase): Record<string, unknown> {
     const item = asRecord(itemData);
     const system = asRecord(item?.system);
 
@@ -574,7 +581,8 @@ export class DSA5Adapter implements SystemAdapter {
     }
 
     const level =
-      toNumber(getNestedValue(system, ['level', 'value'])) ?? toNumber(getNestedValue(system, ['level']));
+      toNumber(getNestedValue(system, ['level', 'value'])) ??
+      toNumber(getNestedValue(system, ['level']));
     if (level !== undefined) {
       formatted.level = level;
     }
@@ -587,7 +595,7 @@ export class DSA5Adapter implements SystemAdapter {
     return formatted;
   }
 
-  formatCharacterItemForDetails(itemData: unknown): Record<string, unknown> {
+  formatCharacterItemForDetails(itemData: FoundryItemDocumentBase): Record<string, unknown> {
     const item = asRecord(itemData);
     const system = asRecord(item?.system);
     const formatted = this.formatCharacterItemForList(itemData);
@@ -618,7 +626,7 @@ export class DSA5Adapter implements SystemAdapter {
     return formatted;
   }
 
-  formatCharacterActionForList(actionData: unknown): Record<string, unknown> {
+  formatCharacterActionForList(actionData: SystemCharacterAction): Record<string, unknown> {
     const action = asRecord(actionData);
     const formatted: Record<string, unknown> = {
       name: toStringValue(action?.name) ?? 'Unknown Action',
@@ -646,7 +654,7 @@ export class DSA5Adapter implements SystemAdapter {
     return formatted;
   }
 
-  formatSpellcastingEntryForList(entryData: unknown): Record<string, unknown> {
+  formatSpellcastingEntryForList(entryData: SystemSpellcastingEntry): Record<string, unknown> {
     const entry = asRecord(entryData);
     const formatted: Record<string, unknown> = {
       name: toStringValue(entry?.name) ?? 'Unknown Entry',

@@ -43,7 +43,9 @@ export async function detectGameSystem(
   }
 
   try {
-    const worldInfo = await foundryClient.query<FoundryWorldInfo>('foundry-mcp-bridge.getWorldInfo');
+    const worldInfo = await foundryClient.query<FoundryWorldInfo>(
+      'foundry-mcp-bridge.getWorldInfo'
+    );
     const worldInfoRecord = asRecord(worldInfo);
     const systemValue = worldInfoRecord?.system;
     const systemId = typeof systemValue === 'string' ? systemValue.toLowerCase() : '';

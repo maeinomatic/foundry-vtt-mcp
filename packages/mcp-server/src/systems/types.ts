@@ -55,6 +55,41 @@ export interface SystemCreatureIndex {
   systemData: UnknownRecord; // System-specific fields (D&D 5e CR, PF2e level, etc.)
 }
 
+export interface SystemCharacterAction extends UnknownRecord {
+  name: string;
+  type?: string;
+  itemId?: string;
+  traits?: string[];
+  variants?: unknown[];
+  ready?: boolean;
+  description?: string;
+  actions?: number;
+}
+
+export interface SystemSpellData extends UnknownRecord {
+  id: string;
+  name: string;
+  level?: number;
+  prepared?: boolean;
+  expended?: boolean;
+  traits?: string[];
+  actionCost?: number | string;
+  range?: string;
+  target?: string;
+  area?: string;
+}
+
+export interface SystemSpellcastingEntry extends UnknownRecord {
+  name: string;
+  type?: string;
+  tradition?: string;
+  ability?: string;
+  dc?: number;
+  attack?: number;
+  slots?: UnknownRecord;
+  spells?: SystemSpellData[];
+}
+
 /**
  * System Adapter Interface
  *
@@ -171,12 +206,12 @@ export interface SystemAdapter {
   /**
    * Format a character action for compact list responses.
    */
-  formatCharacterActionForList(action: unknown): Record<string, unknown>;
+  formatCharacterActionForList(action: SystemCharacterAction): Record<string, unknown>;
 
   /**
    * Format a spellcasting entry for compact list responses.
    */
-  formatSpellcastingEntryForList(entry: unknown): Record<string, unknown>;
+  formatSpellcastingEntryForList(entry: SystemSpellcastingEntry): Record<string, unknown>;
 }
 
 /**

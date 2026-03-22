@@ -2,11 +2,12 @@ import { RTCPeerConnection, RTCSessionDescription } from 'werift';
 import { Logger } from './logger.js';
 import type { Config } from './config.js';
 import { WEBRTC_CONSTANTS } from './config.js';
+import type { FoundryBridgeMessage, UnknownRecord } from './foundry-types.js';
 
 export interface WebRTCPeerOptions {
   config: Config['foundry']['webrtc'];
   logger: Logger;
-  onMessage: (message: unknown) => Promise<void>;
+  onMessage: (message: FoundryBridgeMessage | UnknownRecord) => Promise<void>;
 }
 
 interface DataChannelLike {
@@ -27,11 +28,11 @@ interface ChunkMessage {
   originalId?: string;
 }
 
-const asRecord = (value: unknown): Record<string, unknown> | undefined => {
+const asRecord = (value: unknown): UnknownRecord | undefined => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     return undefined;
   }
-  return value as Record<string, unknown>;
+  return value as UnknownRecord;
 };
 
 const toStringValue = (value: unknown): string | undefined =>
@@ -58,7 +59,7 @@ export class WebRTCPeer {
   private dataChannel: DataChannelLike | null = null;
   private logger: Logger;
   private config: Config['foundry']['webrtc'];
-  private onMessageHandler: (message: unknown) => Promise<void>;
+  private onMessageHandler: (message: FoundryBridgeMessage | UnknownRecord) => Promise<void>;
   private isConnected = false;
   private pendingChunks: Map<
     string,
@@ -213,7 +214,7 @@ export class WebRTCPeer {
           throw new Error('WebRTC data channel message was not a string payload');
         }
 
-        const message = JSON.parse(rawPayload) as unknown;
+        const message = JSON.parse(rawPayload) as FoundryBridgeMessage | UnknownRecord;
         const messageRecord = asRecord(message);
         const messageType = toStringValue(messageRecord?.type);
 
@@ -240,7 +241,7 @@ export class WebRTCPeer {
     };
   }
 
-  sendMessage(message: unknown): void {
+  sendMessage(message: FoundryBridgeMessage | UnknownRecord): void {
     if (!this.dataChannel || !this.isConnected) {
       this.logger.warn('Cannot send message - data channel not open');
       return;
@@ -388,7 +389,7 @@ export class WebRTCPeer {
 
       // Parse and handle the complete message
       try {
-        const completeMessage = JSON.parse(reassembled) as unknown;
+        const completeMessage = JSON.parse(reassembled) as FoundryBridgeMessage | UnknownRecord;
         const completeMessageRecord = asRecord(completeMessage);
         this.logger.debug('Parsed reassembled message successfully', {
           type: toStringValue(completeMessageRecord?.type),

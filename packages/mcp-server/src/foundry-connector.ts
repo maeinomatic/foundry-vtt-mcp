@@ -4,6 +4,14 @@ import type { Duplex } from 'stream';
 import { Logger } from './logger.js';
 import { Config } from './config.js';
 import { WebRTCPeer } from './webrtc-peer.js';
+import type {
+  FoundryBackendComfyUIHandlers,
+  FoundryBridgeMessage,
+  FoundryBridgeQueryRequest,
+  FoundryBridgeResponseEnvelope,
+  FoundryConnectionInfo,
+  UnknownRecord,
+} from './foundry-types.js';
 
 export interface FoundryConnectorOptions {
   config: Config['foundry'];
@@ -16,26 +24,13 @@ interface PendingQuery {
   timeout: NodeJS.Timeout;
 }
 
-interface BackendComfyUIHandlers {
-  handleMessage?: (message: unknown) => Promise<void>;
+function asRecord(value: unknown): UnknownRecord | undefined {
+  return typeof value === 'object' && value !== null ? (value as UnknownRecord) : undefined;
 }
 
-interface MCPMessage {
-  type: string;
-  id?: string;
-  offer?: RTCSessionDescriptionInit;
-  data?: unknown;
-}
-
-function asRecord(value: unknown): Record<string, unknown> | undefined {
-  return typeof value === 'object' && value !== null
-    ? (value as Record<string, unknown>)
-    : undefined;
-}
-
-function asMessage(value: unknown): MCPMessage {
+function asMessage(value: unknown): FoundryBridgeMessage {
   const record = asRecord(value);
-  const message: MCPMessage = {
+  const message: FoundryBridgeMessage = {
     type: typeof record?.type === 'string' ? record.type : 'unknown',
   };
 
@@ -272,7 +267,7 @@ export class FoundryConnector {
         clearTimeout(pending.timeout);
         this.pendingQueries.delete(message.id);
 
-        const responseData = asRecord(message.data);
+        const responseData = asRecord(message.data) as FoundryBridgeResponseEnvelope | undefined;
         const success = responseData?.success === true;
         const responsePayload = responseData?.data;
         const responseError =
@@ -303,7 +298,7 @@ export class FoundryConnector {
     }
 
     const comfyHandlers = asRecord(globalThis as unknown)?.backendComfyUIHandlers as
-      | BackendComfyUIHandlers
+      | FoundryBackendComfyUIHandlers
       | undefined;
     if (comfyHandlers?.handleMessage) {
       this.logger.debug('Routing message to backend ComfyUI handlers', { type: message.type });
@@ -424,7 +419,7 @@ export class FoundryConnector {
     }
   }
 
-  async query(method: string, data?: unknown): Promise<unknown> {
+  async query<TResult = unknown, TData = unknown>(method: string, data?: TData): Promise<TResult> {
     // Check connection based on active connection type
     const isConnected =
       this.activeConnectionType === 'webrtc'
@@ -443,18 +438,27 @@ export class FoundryConnector {
       connectionType: this.activeConnectionType,
     });
 
-    return new Promise((resolve, reject) => {
+    return new Promise<TResult>((resolve, reject) => {
       const timeout = setTimeout(() => {
         this.pendingQueries.delete(queryId);
         reject(new Error(`Query timeout: ${method}`));
       }, 10000); // 10 second timeout
 
-      this.pendingQueries.set(queryId, { resolve, reject, timeout });
+      this.pendingQueries.set(queryId, {
+        resolve: (value: unknown) => resolve(value as TResult),
+        reject,
+        timeout,
+      });
 
-      const message = {
+      const queryData: FoundryBridgeQueryRequest<TData> = {
+        method,
+        ...(data !== undefined ? { data } : {}),
+      };
+
+      const message: FoundryBridgeMessage<FoundryBridgeQueryRequest<TData>> = {
         type: 'mcp-query',
         id: queryId,
-        data: { method, data },
+        data: queryData,
       };
 
       // Use sendToFoundry to support both WebSocket and WebRTC
@@ -462,7 +466,7 @@ export class FoundryConnector {
     });
   }
 
-  sendToFoundry(message: unknown): void {
+  sendToFoundry(message: FoundryBridgeMessage | UnknownRecord): void {
     if (this.activeConnectionType === 'webrtc' && this.webrtcPeer) {
       this.webrtcPeer.sendMessage(message);
     } else if (
@@ -488,13 +492,7 @@ export class FoundryConnector {
     return false;
   }
 
-  getConnectionInfo(): {
-    started: boolean;
-    connected: boolean;
-    connectionType: 'websocket' | 'webrtc' | null;
-    readyState: number | 'CLOSED';
-    config: { port: number; namespace?: string };
-  } {
+  getConnectionInfo(): FoundryConnectionInfo {
     return {
       started: this.isStarted,
       connected: this.isConnected(),
@@ -514,7 +512,7 @@ export class FoundryConnector {
   /**
    * Send a message to the connected Foundry module
    */
-  sendMessage(message: unknown): void {
+  sendMessage(message: FoundryBridgeMessage | UnknownRecord): void {
     if (!this.isConnected()) {
       throw new Error('Not connected to Foundry VTT module');
     }
@@ -534,7 +532,7 @@ export class FoundryConnector {
   /**
    * Broadcast a message to all connected Foundry clients (alias for sendMessage for single connection)
    */
-  broadcastMessage(message: unknown): void {
+  broadcastMessage(message: FoundryBridgeMessage | UnknownRecord): void {
     this.sendMessage(message);
   }
 }

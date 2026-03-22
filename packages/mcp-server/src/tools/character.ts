@@ -10,7 +10,11 @@ import type {
 } from '../foundry-types.js';
 import { Logger } from '../logger.js';
 import { SystemRegistry } from '../systems/system-registry.js';
-import type { SystemAdapter } from '../systems/types.js';
+import type {
+  SystemAdapter,
+  SystemCharacterAction,
+  SystemSpellcastingEntry,
+} from '../systems/types.js';
 import { detectGameSystem, type GameSystem } from '../utils/system-detection.js';
 
 export interface CharacterToolsOptions {
@@ -27,53 +31,18 @@ type CharacterItemSystem = FoundryItemSystemBase;
 
 interface CharacterItem extends FoundryItemDocumentBase<CharacterItemSystem> {}
 
-interface CharacterAction {
-  name: string;
-  type?: string;
-  itemId?: string;
-  traits?: string[];
-  variants?: unknown[];
-  ready?: boolean;
-  description?: string;
-  actions?: number;
-}
-
 interface CharacterEffect extends FoundryActiveEffectDocumentBase {
   description?: string;
   traits?: string[];
   duration?: { type?: string; remaining?: number };
 }
 
-interface SpellData {
-  id: string;
-  name: string;
-  level?: number;
-  prepared?: boolean;
-  expended?: boolean;
-  traits?: string[];
-  actionCost?: number | string;
-  range?: string;
-  target?: string;
-  area?: string;
-}
-
-interface SpellcastingEntry {
-  name: string;
-  type?: string;
-  tradition?: string;
-  ability?: string;
-  dc?: number;
-  attack?: number;
-  slots?: Record<string, unknown>;
-  spells?: SpellData[];
-}
-
 interface CharacterInfoResponseCore
   extends FoundryActorDocumentBase<CharacterSystem, CharacterItemSystem> {
   items?: CharacterItem[];
   effects?: CharacterEffect[];
-  actions?: CharacterAction[];
-  spellcasting?: SpellcastingEntry[];
+  actions?: SystemCharacterAction[];
+  spellcasting?: SystemSpellcastingEntry[];
 }
 
 type CharacterInfoResponse = CharacterInfoResponseCore & {
@@ -87,17 +56,23 @@ type EffectDuration = {
   remaining: number | undefined;
 };
 
-interface UseItemResponse {
+type CharacterEffectSummary = {
+  id: string;
+  name: string;
+  disabled: boolean;
+  duration: EffectDuration | null;
+  hasIcon: boolean;
+};
+
+interface UseItemResponse extends UnknownRecord {
   actorName: string;
   itemName: string;
   targets?: string[];
-  [key: string]: unknown;
 }
 
-interface SearchCharacterItemsResponse {
+interface SearchCharacterItemsResponse extends UnknownRecord {
   characterName: string;
-  matches?: unknown[];
-  [key: string]: unknown;
+  matches?: UnknownRecord[];
 }
 
 export class CharacterTools {
@@ -272,7 +247,7 @@ export class CharacterTools {
     ];
   }
 
-  async handleGetCharacter(args: unknown): Promise<unknown> {
+  async handleGetCharacter(args: unknown): Promise<UnknownRecord> {
     const schema = z.object({
       identifier: z.string().min(1, 'Character identifier cannot be empty'),
     });
@@ -303,7 +278,7 @@ export class CharacterTools {
     }
   }
 
-  async handleGetCharacterEntity(args: unknown): Promise<unknown> {
+  async handleGetCharacterEntity(args: unknown): Promise<UnknownRecord> {
     const schema = z.object({
       characterIdentifier: z.string().min(1, 'Character identifier cannot be empty'),
       entityIdentifier: z.string().min(1, 'Entity identifier cannot be empty'),
@@ -374,7 +349,7 @@ export class CharacterTools {
     }
   }
 
-  async handleListCharacters(args: unknown): Promise<unknown> {
+  async handleListCharacters(args: unknown): Promise<UnknownRecord> {
     const schema = z.object({
       type: z.string().optional(),
     });
@@ -384,9 +359,12 @@ export class CharacterTools {
     this.logger.info('Listing characters', { type });
 
     try {
-      const actors = await this.foundryClient.query<ActorListEntry[]>('foundry-mcp-bridge.listActors', {
-        type,
-      });
+      const actors = await this.foundryClient.query<ActorListEntry[]>(
+        'foundry-mcp-bridge.listActors',
+        {
+          type,
+        }
+      );
 
       this.logger.debug('Successfully retrieved character list', { count: actors.length });
 
@@ -409,7 +387,7 @@ export class CharacterTools {
     }
   }
 
-  async handleUseItem(args: unknown): Promise<unknown> {
+  async handleUseItem(args: unknown): Promise<UseItemResponse> {
     const schema = z.object({
       actorIdentifier: z.string().min(1, 'Actor identifier cannot be empty'),
       itemIdentifier: z.string().min(1, 'Item identifier cannot be empty'),
@@ -458,7 +436,7 @@ export class CharacterTools {
     }
   }
 
-  async handleSearchCharacterItems(args: unknown): Promise<unknown> {
+  async handleSearchCharacterItems(args: unknown): Promise<SearchCharacterItemsResponse> {
     const schema = z.object({
       characterIdentifier: z.string().min(1, 'Character identifier cannot be empty'),
       query: z.string().optional(),
@@ -503,18 +481,20 @@ export class CharacterTools {
     }
   }
 
-  private async formatCharacterResponse(characterData: CharacterInfoResponse): Promise<unknown> {
+  private async formatCharacterResponse(
+    characterData: CharacterInfoResponse
+  ): Promise<UnknownRecord> {
     const response: {
       id: string;
       name: string;
       type: string;
-      basicInfo: unknown;
-      stats: unknown;
-      items: unknown[];
-      effects: unknown[];
+      basicInfo: UnknownRecord;
+      stats: UnknownRecord;
+      items: UnknownRecord[];
+      effects: CharacterEffectSummary[];
       hasImage: boolean;
-      actions?: unknown[];
-      spellcasting?: unknown[];
+      actions?: UnknownRecord[];
+      spellcasting?: UnknownRecord[];
     } = {
       id: characterData.id,
       name: characterData.name,
@@ -541,16 +521,18 @@ export class CharacterTools {
     return response;
   }
 
-  private async formatSpellcasting(spellcastingEntries: SpellcastingEntry[]): Promise<unknown[]> {
-    return this.withSystemAdapter<unknown[]>(
+  private async formatSpellcasting(
+    spellcastingEntries: SystemSpellcastingEntry[]
+  ): Promise<UnknownRecord[]> {
+    return this.withSystemAdapter<UnknownRecord[]>(
       'spellcasting formatting',
-      (adapter: SystemAdapter): unknown[] =>
+      (adapter: SystemAdapter): UnknownRecord[] =>
         spellcastingEntries.map(entry => adapter.formatSpellcastingEntryForList(entry)),
       () => spellcastingEntries.map(entry => this.formatSpellcastingLegacy(entry))
     );
   }
 
-  private formatSpellcastingLegacy(entry: SpellcastingEntry): Record<string, unknown> {
+  private formatSpellcastingLegacy(entry: SystemSpellcastingEntry): Record<string, unknown> {
     const formatted: Record<string, unknown> = {
       name: entry.name,
       type: entry.type,
@@ -618,16 +600,16 @@ export class CharacterTools {
     return formatted;
   }
 
-  private async formatActions(actions: CharacterAction[]): Promise<unknown[]> {
-    return this.withSystemAdapter<unknown[]>(
+  private async formatActions(actions: SystemCharacterAction[]): Promise<UnknownRecord[]> {
+    return this.withSystemAdapter<UnknownRecord[]>(
       'action formatting',
-      (adapter: SystemAdapter): unknown[] =>
+      (adapter: SystemAdapter): UnknownRecord[] =>
         actions.map(action => adapter.formatCharacterActionForList(action)),
       () => actions.map(action => this.formatActionLegacy(action))
     );
   }
 
-  private formatActionLegacy(action: CharacterAction): Record<string, unknown> {
+  private formatActionLegacy(action: SystemCharacterAction): Record<string, unknown> {
     const formatted: Record<string, unknown> = {
       name: action.name,
       type: action.type,
@@ -648,15 +630,15 @@ export class CharacterTools {
     return formatted;
   }
 
-  private async extractBasicInfo(characterData: CharacterInfoResponse): Promise<unknown> {
-    return this.withSystemAdapter<unknown>(
+  private async extractBasicInfo(characterData: CharacterInfoResponse): Promise<UnknownRecord> {
+    return this.withSystemAdapter<UnknownRecord>(
       'character basic info extraction',
-      (adapter: SystemAdapter): unknown => adapter.formatCharacterBasicInfo(characterData),
+      (adapter: SystemAdapter): UnknownRecord => adapter.formatCharacterBasicInfo(characterData),
       () => this.extractBasicInfoLegacy(characterData)
     );
   }
 
-  private extractBasicInfoLegacy(characterData: CharacterInfoResponse): unknown {
+  private extractBasicInfoLegacy(characterData: CharacterInfoResponse): UnknownRecord {
     const system = characterData.system ?? {};
     const basicInfo: Record<string, unknown> = {};
 
@@ -689,18 +671,18 @@ export class CharacterTools {
     return basicInfo;
   }
 
-  private async extractStats(characterData: CharacterInfoResponse): Promise<unknown> {
-    return this.withSystemAdapter<unknown>(
+  private async extractStats(characterData: CharacterInfoResponse): Promise<UnknownRecord> {
+    return this.withSystemAdapter<UnknownRecord>(
       'character stats extraction',
-      (adapter: SystemAdapter): unknown => adapter.extractCharacterStats(characterData),
+      (adapter: SystemAdapter): UnknownRecord => adapter.extractCharacterStats(characterData),
       () => this.extractStatsLegacy(characterData)
     );
   }
 
-  private async formatItems(items: CharacterItem[]): Promise<unknown[]> {
-    return this.withSystemAdapter<unknown[]>(
+  private async formatItems(items: CharacterItem[]): Promise<UnknownRecord[]> {
+    return this.withSystemAdapter<UnknownRecord[]>(
       'item formatting',
-      (adapter: SystemAdapter): unknown[] =>
+      (adapter: SystemAdapter): UnknownRecord[] =>
         items.map(item => adapter.formatCharacterItemForList(item)),
       () => items.map(item => this.formatCharacterItemLegacy(item))
     );
@@ -750,13 +732,7 @@ export class CharacterTools {
     };
   }
 
-  private formatEffects(effects: CharacterEffect[]): Array<{
-    id: string;
-    name: string;
-    disabled: boolean;
-    duration: EffectDuration | null;
-    hasIcon: boolean;
-  }> {
+  private formatEffects(effects: CharacterEffect[]): CharacterEffectSummary[] {
     return effects.map(effect => ({
       id: effect.id,
       name: effect.name,

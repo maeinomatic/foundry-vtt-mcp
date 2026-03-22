@@ -39,7 +39,7 @@ interface CompendiumEntitySystem extends FoundryActorSystemBase {
   properties?: unknown;
   stealth?: unknown;
   rarity?: unknown;
-  price?: FoundryPriceData | unknown;
+  price?: FoundryPriceData;
   weight?: unknown;
   quantity?: number;
   abilities?: Record<string, { value?: number }>;
@@ -519,8 +519,6 @@ export class CompendiumTools {
 
     try {
       const gameSystem = await this.getGameSystem();
-      const adapter = this.getSystemAdapter(gameSystem);
-
       // Use the proper document retrieval method that already exists in actor creation
       const item = await this.foundryClient.query<CompendiumEntity | null>(
         'foundry-mcp-bridge.getCompendiumDocumentFull',

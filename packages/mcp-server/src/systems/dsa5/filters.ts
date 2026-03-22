@@ -48,41 +48,43 @@ export type ExperienceLevel = (typeof ExperienceLevels)[number];
 /**
  * DSA5 filter schema
  */
-export const DSA5FiltersSchema = z.object({
-  // Level filter (1-7) - replaces D&D5e's Challenge Rating
-  level: z
-    .union([
-      z.number().min(1).max(7),
-      z.object({
-        min: z.number().min(1).max(7).optional(),
-        max: z.number().min(1).max(7).optional(),
-      }),
-    ])
-    .optional(),
+export const DSA5FiltersSchema = z
+  .object({
+    // Level filter (1-7) - replaces D&D5e's Challenge Rating
+    level: z
+      .union([
+        z.number().min(1).max(7),
+        z.object({
+          min: z.number().min(1).max(7).optional(),
+          max: z.number().min(1).max(7).optional(),
+        }),
+      ])
+      .optional(),
 
-  // Species filter (Spezies/Rasse)
-  species: z.enum(DSA5Species).optional(),
+    // Species filter (Spezies/Rasse)
+    species: z.enum(DSA5Species).optional(),
 
-  // Culture filter (optional, string because there are many cultures)
-  culture: z.string().optional(),
+    // Culture filter (optional, string because there are many cultures)
+    culture: z.string().optional(),
 
-  // Size filter
-  size: z.enum(CreatureSizes).optional(),
+    // Size filter
+    size: z.enum(CreatureSizes).optional(),
 
-  // Has spells (Zauber)
-  hasSpells: z.boolean().optional(),
+    // Has spells (Zauber)
+    hasSpells: z.boolean().optional(),
 
-  // Experience points range (AP) - detail filter
-  experiencePoints: z
-    .union([
-      z.number(),
-      z.object({
-        min: z.number().optional(),
-        max: z.number().optional(),
-      }),
-    ])
-    .optional(),
-}).strict();
+    // Experience points range (AP) - detail filter
+    experiencePoints: z
+      .union([
+        z.number(),
+        z.object({
+          min: z.number().optional(),
+          max: z.number().optional(),
+        }),
+      ])
+      .optional(),
+  })
+  .strict();
 
 export type DSA5Filters = z.infer<typeof DSA5FiltersSchema>;
 
