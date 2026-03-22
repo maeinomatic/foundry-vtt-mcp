@@ -2,6 +2,14 @@ import { MODULE_ID } from './constants.js';
 import { FoundryDataAccess } from './data-access.js';
 import { ComfyUIManager } from './comfyui-manager.js';
 import { notifyGM } from './gm-notifications.js';
+import type {
+  FoundryActorCreationResult,
+  FoundryCharacterInfo,
+  FoundryCompendiumEntryFull,
+  FoundryJournalEntryResponse,
+  FoundryJournalSummary,
+  FoundryWorldDetails,
+} from '@foundry-mcp/shared';
 
 type QueryErrorResult = { error: string; success: false; status?: string };
 
@@ -258,7 +266,7 @@ export class QueryHandlers {
   private async handleGetCharacterInfo(data: {
     characterName?: string;
     characterId?: string;
-  }): Promise<unknown> {
+  }): Promise<FoundryCharacterInfo | QueryErrorResult> {
     try {
       // SECURITY: Silent GM validation
       const gmCheck = this.validateGMAccess();
@@ -426,7 +434,7 @@ export class QueryHandlers {
   /**
    * Handle get world info request
    */
-  private async handleGetWorldInfo(): Promise<unknown> {
+  private async handleGetWorldInfo(): Promise<FoundryWorldDetails | QueryErrorResult> {
     try {
       // SECURITY: Silent GM validation
       const gmCheck = this.validateGMAccess();
@@ -492,7 +500,7 @@ export class QueryHandlers {
           coordinates?: { x: number; y: number }[];
         }
       | undefined;
-  }): Promise<unknown> {
+  }): Promise<FoundryActorCreationResult | QueryErrorResult> {
     try {
       // SECURITY: Silent GM validation
       const gmCheck = this.validateGMAccess();
@@ -539,7 +547,7 @@ export class QueryHandlers {
   private async handleGetCompendiumDocumentFull(data: {
     packId: string;
     documentId: string;
-  }): Promise<unknown> {
+  }): Promise<FoundryCompendiumEntryFull | QueryErrorResult> {
     try {
       // SECURITY: Silent GM validation
       const gmCheck = this.validateGMAccess();
@@ -628,7 +636,9 @@ export class QueryHandlers {
   /**
    * Handle journal entry creation
    */
-  async handleCreateJournalEntry(data: CreateJournalEntryRequest): Promise<unknown> {
+  async handleCreateJournalEntry(
+    data: CreateJournalEntryRequest
+  ): Promise<FoundryJournalEntryResponse | QueryErrorResult> {
     try {
       // SECURITY: Silent GM validation
       const gmCheck = this.validateGMAccess();
@@ -657,7 +667,7 @@ export class QueryHandlers {
   /**
    * Handle list journals request
    */
-  async handleListJournals(): Promise<unknown> {
+  async handleListJournals(): Promise<FoundryJournalSummary[] | QueryErrorResult> {
     try {
       // SECURITY: Silent GM validation
       const gmCheck = this.validateGMAccess();
@@ -677,7 +687,9 @@ export class QueryHandlers {
   /**
    * Handle get journal content request
    */
-  async handleGetJournalContent(data: { journalId: string }): Promise<unknown> {
+  async handleGetJournalContent(data: {
+    journalId: string;
+  }): Promise<FoundryJournalEntryResponse | QueryErrorResult> {
     try {
       // SECURITY: Silent GM validation
       const gmCheck = this.validateGMAccess();
@@ -691,7 +703,12 @@ export class QueryHandlers {
         throw new Error('journalId is required');
       }
 
-      return await this.dataAccess.getJournalContent(data.journalId);
+      const journalContent = await this.dataAccess.getJournalContent(data.journalId);
+      if (!journalContent) {
+        return { error: 'Journal entry not found', success: false };
+      }
+
+      return journalContent;
     } catch (error) {
       throw new Error(
         `Failed to get journal content: ${error instanceof Error ? error.message : 'Unknown error'}`

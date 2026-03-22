@@ -1,66 +1,33 @@
 import { MODULE_ID, ERROR_MESSAGES, TOKEN_DISPOSITIONS } from './constants.js';
 import { permissionManager } from './permissions.js';
 import { transactionManager } from './transaction-manager.js';
-// Local type definitions to avoid shared package import issues
-interface CharacterInfo {
-  id: string;
-  name: string;
-  type: string;
-  img?: string;
-  system: Record<string, unknown>;
-  items: CharacterItem[];
-  effects: CharacterEffect[];
-  actions?: unknown[]; // PF2e actions (strikes, spells, etc.)
-  itemVariants?: unknown[]; // Item rule element variants (ChoiceSet, etc.)
-  itemToggles?: unknown[]; // Item rule element toggles (RollOption, ToggleProperty, equipped)
-  spellcasting?: SpellcastingEntry[]; // PF2e/D&D 5e spellcasting entries
-}
+import type {
+  FoundryActorCreationResult,
+  FoundryActiveEffectDocumentBase,
+  FoundryCharacterAction,
+  FoundryCharacterEffect,
+  FoundryCharacterInfo,
+  FoundryCompendiumEntryFull,
+  FoundryCreatedActorInfo,
+  FoundryItemDocumentBase,
+  FoundryJournalEntryResponse,
+  FoundryJournalSummary,
+  FoundrySpellInfo,
+  FoundrySpellcastingEntry,
+  FoundryWorldDetails,
+} from '@foundry-mcp/shared';
 
-interface SpellcastingEntry {
-  id: string;
-  name: string;
-  tradition?: string | undefined; // arcane, divine, primal, occult (PF2e)
-  type: string; // prepared, spontaneous, innate, focus (PF2e) or class name (5e)
-  ability?: string | undefined; // spellcasting ability (int, wis, cha)
-  dc?: number | undefined;
-  attack?: number | undefined;
-  slots?: Record<string, { value: number; max: number }> | undefined; // spell slots per level/rank
-  spells: SpellInfo[];
-}
+type CharacterInfo = FoundryCharacterInfo<
+  Record<string, unknown>,
+  Record<string, unknown>,
+  Record<string, unknown>
+>;
 
-interface SpellInfo {
-  id: string;
-  name: string;
-  level: number; // spell level/rank
-  prepared?: boolean | undefined; // for prepared casters
-  expended?: boolean | undefined; // has this spell slot been used
-  traits?: string[] | undefined;
-  actionCost?: string | undefined; // 1, 2, 3, reaction, free
-  // Targeting info - helps Claude decide whether to specify targets
-  range?: string | undefined; // "touch", "self", "60 feet", etc.
-  target?: string | undefined; // "1 creature", "self", "area", etc.
-  area?: string | undefined; // "20-foot radius", "30-foot cone", etc. (for template spells)
-}
+type SpellcastingEntry = FoundrySpellcastingEntry;
 
-interface CharacterItem {
-  id: string;
-  name: string;
-  type: string;
-  img?: string;
-  system: Record<string, unknown>;
-}
+type SpellInfo = FoundrySpellInfo;
 
-interface CharacterEffect {
-  id: string;
-  name: string;
-  icon?: string;
-  disabled: boolean;
-  duration?: {
-    type: string;
-    duration?: number;
-    remaining?: number;
-  };
-}
+type CharacterEffect = FoundryCharacterEffect<Record<string, unknown>>;
 
 interface CompendiumSearchResult {
   id: string;
@@ -330,21 +297,7 @@ interface ConditionLike {
   origin?: string;
 }
 
-interface WorldInfo {
-  id: string;
-  title: string;
-  system: string;
-  systemVersion: string;
-  foundryVersion: string;
-  users: WorldUser[];
-}
-
-interface WorldUser {
-  id: string;
-  name: string;
-  active: boolean;
-  isGM: boolean;
-}
+type WorldInfo = FoundryWorldDetails;
 
 // Phase 2: Write Operation Interfaces
 interface ActorCreationRequest {
@@ -355,53 +308,19 @@ interface ActorCreationRequest {
   addToScene?: boolean | undefined;
 }
 
-interface ActorCreationResult {
-  success: boolean;
-  actors: CreatedActorInfo[];
-  errors?: string[] | undefined;
-  tokensPlaced?: number;
-  totalRequested: number;
-  totalCreated: number;
-}
+type ActorCreationResult = FoundryActorCreationResult;
 
-interface CreatedActorInfo {
-  id: string;
-  name: string;
-  originalName: string;
-  type: string;
-  sourcePackId: string;
-  sourcePackLabel: string;
-  img?: string | undefined;
-}
+type CreatedActorInfo = FoundryCreatedActorInfo;
 
-interface CompendiumEntryFull {
-  id: string;
-  name: string;
-  type: string;
-  img?: string | undefined;
-  pack: string;
-  packLabel: string;
-  system: Record<string, unknown>;
-  items?: CompendiumItem[];
-  effects?: CompendiumEffect[];
-  fullData: Record<string, unknown>;
-}
+type CompendiumEntryFull = FoundryCompendiumEntryFull<
+  Record<string, unknown>,
+  Record<string, unknown>,
+  Record<string, unknown>
+>;
 
-interface CompendiumItem {
-  id: string;
-  name: string;
-  type: string;
-  img?: string | undefined;
-  system: Record<string, unknown>;
-}
+type CompendiumItem = FoundryItemDocumentBase<Record<string, unknown>>;
 
-interface CompendiumEffect {
-  id: string;
-  name: string;
-  icon?: string | undefined;
-  disabled: boolean;
-  duration?: Record<string, unknown>;
-}
+type CompendiumEffect = FoundryActiveEffectDocumentBase<Record<string, unknown>>;
 
 interface SceneTokenPlacement {
   actorIds: string[];
@@ -1554,6 +1473,132 @@ export class FoundryDataAccess {
 
   constructor() {}
 
+  private toStringArray(value: unknown): string[] {
+    return Array.isArray(value)
+      ? value.filter((entry): entry is string => typeof entry === 'string')
+      : [];
+  }
+
+  private createCharacterEffect(data: {
+    id: string;
+    name: string;
+    icon?: string;
+    disabled: boolean;
+    duration?: { type: string; duration?: number; remaining?: number };
+  }): CharacterEffect {
+    return {
+      id: data.id,
+      name: data.name,
+      type: 'ActiveEffect',
+      disabled: data.disabled,
+      ...(data.icon ? { icon: data.icon } : {}),
+      ...(data.duration ? { duration: data.duration } : {}),
+    };
+  }
+
+  private createCharacterAction(data: {
+    name: string;
+    type?: string;
+    itemId?: string;
+    variants?: Array<{ label?: string; traits?: unknown[] }>;
+    ready?: boolean;
+  }): FoundryCharacterAction {
+    return {
+      name: data.name,
+      ...(data.type !== undefined ? { type: data.type } : {}),
+      ...(data.itemId ? { itemId: data.itemId } : {}),
+      ...(data.variants ? { variants: data.variants } : {}),
+      ...(data.ready !== undefined ? { ready: data.ready } : {}),
+    };
+  }
+
+  private createSpellInfo(data: {
+    id: string;
+    name: string;
+    level: number;
+    prepared?: boolean;
+    expended?: boolean;
+    traits?: string[];
+    actionCost?: number | string;
+    range?: string;
+    target?: string;
+    area?: string;
+  }): SpellInfo {
+    return {
+      id: data.id,
+      name: data.name,
+      level: data.level,
+      ...(data.prepared !== undefined ? { prepared: data.prepared } : {}),
+      ...(data.expended !== undefined ? { expended: data.expended } : {}),
+      ...(data.traits !== undefined ? { traits: data.traits } : {}),
+      ...(data.actionCost !== undefined ? { actionCost: data.actionCost } : {}),
+      ...(data.range !== undefined ? { range: data.range } : {}),
+      ...(data.target !== undefined ? { target: data.target } : {}),
+      ...(data.area !== undefined ? { area: data.area } : {}),
+    };
+  }
+
+  private createSpellcastingEntry(data: {
+    id: string;
+    name: string;
+    type: string;
+    spells: SpellInfo[];
+    tradition?: string;
+    ability?: string;
+    dc?: number;
+    attack?: number;
+    slots?: Record<string, { value: number; max: number }>;
+  }): SpellcastingEntry {
+    return {
+      id: data.id,
+      name: data.name,
+      type: data.type,
+      spells: data.spells,
+      ...(data.tradition !== undefined ? { tradition: data.tradition } : {}),
+      ...(data.ability !== undefined ? { ability: data.ability } : {}),
+      ...(data.dc !== undefined ? { dc: data.dc } : {}),
+      ...(data.attack !== undefined ? { attack: data.attack } : {}),
+      ...(data.slots !== undefined ? { slots: data.slots } : {}),
+    };
+  }
+
+  private createCreatedActorInfo(data: {
+    id: string;
+    name: string;
+    originalName: string;
+    type: string;
+    sourcePackId: string;
+    sourcePackLabel: string;
+    img?: string;
+  }): CreatedActorInfo {
+    return {
+      id: data.id,
+      name: data.name,
+      originalName: data.originalName,
+      type: data.type,
+      sourcePackId: data.sourcePackId,
+      sourcePackLabel: data.sourcePackLabel,
+      ...(data.img ? { img: data.img } : {}),
+    };
+  }
+
+  private createCompendiumEffect(data: {
+    id: string;
+    name: string;
+    disabled: boolean;
+    duration?: Record<string, unknown>;
+    icon?: string;
+  }): CompendiumEffect {
+    return {
+      id: data.id,
+      name: data.name,
+      type: 'ActiveEffect',
+      disabled: data.disabled,
+      ...(data.duration ? { duration: data.duration } : {}),
+      ...(data.icon ? { icon: data.icon } : {}),
+    };
+  }
+
   /**
    * Force rebuild of enhanced creature index
    */
@@ -1649,7 +1694,7 @@ export class FoundryDataAccess {
           return [];
         }
 
-        return {
+        return this.createCharacterEffect({
           id: typedEffect.id,
           name: typedEffect.name ?? typedEffect.label ?? 'Unknown Effect',
           ...(typedEffect.icon ? { icon: typedEffect.icon } : {}),
@@ -1667,7 +1712,7 @@ export class FoundryDataAccess {
                 },
               }
             : {}),
-        };
+        });
       }),
     };
 
@@ -1678,33 +1723,41 @@ export class FoundryDataAccess {
 
     // Include actions (PF2e strikes, spells, etc.)
     if (actorAny.system?.actions) {
-      characterData.actions = actorAny.system.actions
-        .filter(action => action && typeof action === 'object')
-        .map(action => {
-          const typedAction = action as {
-            label?: string;
-            name?: string;
-            type?: string;
-            item?: { id?: string };
-            variants?: Array<{ label?: string; traits?: unknown[] }>;
-            ready?: boolean;
-          };
+      characterData.actions = actorAny.system.actions.flatMap(action => {
+        if (!action || typeof action !== 'object') {
+          return [];
+        }
 
-          return {
-            name: typedAction.label ?? typedAction.name,
-            type: typedAction.type,
+        const typedAction = action as {
+          label?: string;
+          name?: string;
+          type?: string;
+          item?: { id?: string };
+          variants?: Array<{ label?: string; traits?: unknown[] }>;
+          ready?: boolean;
+        };
+        const actionName = typedAction.label ?? typedAction.name;
+        if (!actionName) {
+          return [];
+        }
+
+        return [
+          this.createCharacterAction({
+            name: actionName,
+            ...(typedAction.type !== undefined ? { type: typedAction.type } : {}),
             ...(typedAction.item?.id ? { itemId: typedAction.item.id } : {}),
             ...(typedAction.variants
               ? {
                   variants: typedAction.variants.map(v => ({
-                    label: v.label,
+                    ...(v.label !== undefined ? { label: v.label } : {}),
                     ...(v.traits ? { traits: v.traits } : {}),
                   })),
                 }
               : {}),
             ...(typedAction.ready !== undefined ? { ready: typedAction.ready } : {}),
-          };
-        });
+          }),
+        ];
+      });
     }
 
     // Include item variants and toggles
@@ -2239,18 +2292,21 @@ export class FoundryDataAccess {
         for (const spell of associatedSpells) {
           const spellSystem = spell.system as any;
           const targeting = this.extractPF2eSpellTargeting(spellSystem);
-          entrySpells.push({
-            id: spell.id || '',
-            name: spell.name || '',
-            level: spellSystem?.level?.value ?? spellSystem?.level ?? spellSystem?.rank ?? 0,
-            prepared: spellSystem?.location?.prepared ?? true,
-            expended: spellSystem?.location?.expended ?? false,
-            traits: spellSystem?.traits?.value || [],
-            actionCost: this.formatPF2eActionCost(spellSystem?.time?.value),
-            range: targeting.range,
-            target: targeting.target,
-            area: targeting.area,
-          });
+          const actionCost = this.formatPF2eActionCost(spellSystem?.time?.value);
+          entrySpells.push(
+            this.createSpellInfo({
+              id: spell.id || '',
+              name: spell.name || '',
+              level: spellSystem?.level?.value ?? spellSystem?.level ?? spellSystem?.rank ?? 0,
+              prepared: spellSystem?.location?.prepared ?? true,
+              expended: spellSystem?.location?.expended ?? false,
+              traits: this.toStringArray(spellSystem?.traits?.value),
+              ...(actionCost !== undefined ? { actionCost } : {}),
+              ...(targeting.range !== undefined ? { range: targeting.range } : {}),
+              ...(targeting.target !== undefined ? { target: targeting.target } : {}),
+              ...(targeting.area !== undefined ? { area: targeting.area } : {}),
+            })
+          );
         }
 
         // Also check for spells in the entry's spell collection
@@ -2266,36 +2322,46 @@ export class FoundryDataAccess {
                 if (spellItem) {
                   const spellSystem = spellItem.system as any;
                   const targeting = this.extractPF2eSpellTargeting(spellSystem);
-                  entrySpells.push({
-                    id: spellItem.id || '',
-                    name: spellItem.name || '',
-                    level:
-                      parseInt(levelKey.replace('spell', '')) || spellSystem?.level?.value || 0,
-                    prepared: spellRef.prepared ?? true,
-                    expended: spellRef.expended ?? false,
-                    traits: spellSystem?.traits?.value || [],
-                    actionCost: this.formatPF2eActionCost(spellSystem?.time?.value),
-                    range: targeting.range,
-                    target: targeting.target,
-                    area: targeting.area,
-                  });
+                  const actionCost = this.formatPF2eActionCost(spellSystem?.time?.value);
+                  entrySpells.push(
+                    this.createSpellInfo({
+                      id: spellItem.id || '',
+                      name: spellItem.name || '',
+                      level:
+                        parseInt(levelKey.replace('spell', '')) || spellSystem?.level?.value || 0,
+                      prepared: spellRef.prepared ?? true,
+                      expended: spellRef.expended ?? false,
+                      traits: this.toStringArray(spellSystem?.traits?.value),
+                      ...(actionCost !== undefined ? { actionCost } : {}),
+                      ...(targeting.range !== undefined ? { range: targeting.range } : {}),
+                      ...(targeting.target !== undefined ? { target: targeting.target } : {}),
+                      ...(targeting.area !== undefined ? { area: targeting.area } : {}),
+                    })
+                  );
                 }
               }
             }
           }
         }
 
-        entries.push({
-          id: entry.id || '',
-          name: entry.name || 'Spellcasting',
-          tradition: entryData?.tradition?.value || entryData?.tradition || undefined,
-          type: entryData?.prepared?.value || entryData?.prepared || 'prepared',
-          ability: entryData?.ability?.value || entryData?.ability || undefined,
-          dc: entryData?.spelldc?.dc || entryData?.dc?.value || undefined,
-          attack: entryData?.spelldc?.value || entryData?.attack?.value || undefined,
-          slots: this.extractPF2eSpellSlots(entryData),
-          spells: entrySpells.sort((a, b) => a.level - b.level || a.name.localeCompare(b.name)),
-        });
+        const tradition = entryData?.tradition?.value || entryData?.tradition;
+        const ability = entryData?.ability?.value || entryData?.ability;
+        const dc = entryData?.spelldc?.dc || entryData?.dc?.value;
+        const attack = entryData?.spelldc?.value || entryData?.attack?.value;
+        const slots = this.extractPF2eSpellSlots(entryData);
+        entries.push(
+          this.createSpellcastingEntry({
+            id: entry.id || '',
+            name: entry.name || 'Spellcasting',
+            type: entryData?.prepared?.value || entryData?.prepared || 'prepared',
+            ...(tradition !== undefined ? { tradition } : {}),
+            ...(ability !== undefined ? { ability } : {}),
+            ...(dc !== undefined ? { dc } : {}),
+            ...(attack !== undefined ? { attack } : {}),
+            ...(slots !== undefined ? { slots } : {}),
+            spells: entrySpells.sort((a, b) => a.level - b.level || a.name.localeCompare(b.name)),
+          })
+        );
       }
 
       // Also capture focus spells and innate spells that might not be in entries
@@ -2307,25 +2373,28 @@ export class FoundryDataAccess {
       });
 
       if (focusSpells.length > 0 && !entries.some(e => e.type === 'focus')) {
-        entries.push({
-          id: 'focus-spells',
-          name: 'Focus Spells',
-          type: 'focus',
-          spells: focusSpells.map((spell: any) => {
-            const spellSystem = spell.system;
-            const targeting = this.extractPF2eSpellTargeting(spellSystem);
-            return {
-              id: spell.id || '',
-              name: spell.name || '',
-              level: spellSystem?.level?.value || 0,
-              traits: spellSystem?.traits?.value || [],
-              actionCost: this.formatPF2eActionCost(spellSystem?.time?.value),
-              range: targeting.range,
-              target: targeting.target,
-              area: targeting.area,
-            };
-          }),
-        });
+        entries.push(
+          this.createSpellcastingEntry({
+            id: 'focus-spells',
+            name: 'Focus Spells',
+            type: 'focus',
+            spells: focusSpells.map((spell: any) => {
+              const spellSystem = spell.system;
+              const targeting = this.extractPF2eSpellTargeting(spellSystem);
+              const actionCost = this.formatPF2eActionCost(spellSystem?.time?.value);
+              return this.createSpellInfo({
+                id: spell.id || '',
+                name: spell.name || '',
+                level: spellSystem?.level?.value || 0,
+                traits: this.toStringArray(spellSystem?.traits?.value),
+                ...(actionCost !== undefined ? { actionCost } : {}),
+                ...(targeting.range !== undefined ? { range: targeting.range } : {}),
+                ...(targeting.target !== undefined ? { target: targeting.target } : {}),
+                ...(targeting.area !== undefined ? { area: targeting.area } : {}),
+              });
+            }),
+          })
+        );
       }
     } else if (systemId === 'dnd5e') {
       // D&D 5e: Extract from classes with spellcasting
@@ -2344,17 +2413,19 @@ export class FoundryDataAccess {
         }
 
         const targeting = this.extractDnD5eSpellTargeting(spellSystem);
-        spellsByClass[sourceClass].push({
-          id: spell.id || '',
-          name: spell.name || '',
-          level: spellSystem?.level || 0,
-          prepared: spellSystem?.preparation?.prepared ?? true,
-          traits: [], // D&D 5e doesn't use traits the same way
-          actionCost: spellSystem?.activation?.type || undefined,
-          range: targeting.range,
-          target: targeting.target,
-          area: targeting.area,
-        });
+        spellsByClass[sourceClass].push(
+          this.createSpellInfo({
+            id: spell.id || '',
+            name: spell.name || '',
+            level: spellSystem?.level || 0,
+            prepared: spellSystem?.preparation?.prepared ?? true,
+            traits: [],
+            ...(spellSystem?.activation?.type ? { actionCost: spellSystem.activation.type } : {}),
+            ...(targeting.range !== undefined ? { range: targeting.range } : {}),
+            ...(targeting.target !== undefined ? { target: targeting.target } : {}),
+            ...(targeting.area !== undefined ? { area: targeting.area } : {}),
+          })
+        );
       }
 
       // Create entries for each spellcasting class
@@ -2367,15 +2438,20 @@ export class FoundryDataAccess {
           const className = classItem.name || 'Unknown';
           const classSpells =
             spellsByClass[classItem.id || ''] || spellsByClass[className.toLowerCase()] || [];
+          const slots = this.extractDnD5eSpellSlots(spellSlots);
 
-          entries.push({
-            id: classItem.id || '',
-            name: `${className} Spellcasting`,
-            type: classSystem?.spellcasting?.type || 'prepared',
-            ability: classSystem?.spellcasting?.ability || undefined,
-            slots: this.extractDnD5eSpellSlots(spellSlots),
-            spells: classSpells.sort((a, b) => a.level - b.level || a.name.localeCompare(b.name)),
-          });
+          entries.push(
+            this.createSpellcastingEntry({
+              id: classItem.id || '',
+              name: `${className} Spellcasting`,
+              type: classSystem?.spellcasting?.type || 'prepared',
+              ...(classSystem?.spellcasting?.ability
+                ? { ability: classSystem.spellcasting.ability }
+                : {}),
+              ...(slots !== undefined ? { slots } : {}),
+              spells: classSpells.sort((a, b) => a.level - b.level || a.name.localeCompare(b.name)),
+            })
+          );
         }
       }
 
@@ -2385,25 +2461,30 @@ export class FoundryDataAccess {
         for (const spell of spellItems) {
           const spellSystem = spell.system as any;
           const targeting = this.extractDnD5eSpellTargeting(spellSystem);
-          allSpells.push({
-            id: spell.id || '',
-            name: spell.name || '',
-            level: spellSystem?.level || 0,
-            prepared: spellSystem?.preparation?.prepared ?? true,
-            actionCost: spellSystem?.activation?.type || undefined,
-            range: targeting.range,
-            target: targeting.target,
-            area: targeting.area,
-          });
+          allSpells.push(
+            this.createSpellInfo({
+              id: spell.id || '',
+              name: spell.name || '',
+              level: spellSystem?.level || 0,
+              prepared: spellSystem?.preparation?.prepared ?? true,
+              ...(spellSystem?.activation?.type ? { actionCost: spellSystem.activation.type } : {}),
+              ...(targeting.range !== undefined ? { range: targeting.range } : {}),
+              ...(targeting.target !== undefined ? { target: targeting.target } : {}),
+              ...(targeting.area !== undefined ? { area: targeting.area } : {}),
+            })
+          );
         }
 
-        entries.push({
-          id: 'spellcasting',
-          name: 'Spellcasting',
-          type: 'prepared',
-          slots: this.extractDnD5eSpellSlots(spellSlots),
-          spells: allSpells.sort((a, b) => a.level - b.level || a.name.localeCompare(b.name)),
-        });
+        const slots = this.extractDnD5eSpellSlots(spellSlots);
+        entries.push(
+          this.createSpellcastingEntry({
+            id: 'spellcasting',
+            name: 'Spellcasting',
+            type: 'prepared',
+            ...(slots !== undefined ? { slots } : {}),
+            spells: allSpells.sort((a, b) => a.level - b.level || a.name.localeCompare(b.name)),
+          })
+        );
       }
     } else if (systemId === 'dsa5') {
       // DSA5: Extract Zauber (spells), Liturgien (liturgies), Zeremonien (ceremonies), Rituale (rituals)
@@ -2417,87 +2498,103 @@ export class FoundryDataAccess {
 
       // Zauber (Arcane spells using AsP)
       if (astralSpells.length > 0) {
-        entries.push({
-          id: 'zauber',
-          name: 'Zauber (Spells)',
-          type: 'arcane',
-          slots: asp
-            ? {
-                asp: { value: asp.value ?? 0, max: asp.max ?? 0 },
-              }
-            : undefined,
-          spells: astralSpells
-            .map((spell: any) => {
-              const spellSystem = spell.system;
-              const targeting = this.extractDSA5SpellTargeting(spellSystem);
-              return {
-                id: spell.id || '',
-                name: spell.name || '',
-                level: spellSystem?.level?.value ?? spellSystem?.level ?? 0,
-                traits: spellSystem?.effect?.attributes || [],
-                actionCost: spellSystem?.castingTime?.value || undefined,
-                range: targeting.range,
-                target: targeting.target,
-                area: targeting.area,
-              };
-            })
-            .sort((a, b) => a.level - b.level || a.name.localeCompare(b.name)),
-        });
+        entries.push(
+          this.createSpellcastingEntry({
+            id: 'zauber',
+            name: 'Zauber (Spells)',
+            type: 'arcane',
+            ...(asp
+              ? {
+                  slots: {
+                    asp: { value: asp.value ?? 0, max: asp.max ?? 0 },
+                  },
+                }
+              : {}),
+            spells: astralSpells
+              .map((spell: any) => {
+                const spellSystem = spell.system;
+                const targeting = this.extractDSA5SpellTargeting(spellSystem);
+                return this.createSpellInfo({
+                  id: spell.id || '',
+                  name: spell.name || '',
+                  level: spellSystem?.level?.value ?? spellSystem?.level ?? 0,
+                  traits: this.toStringArray(spellSystem?.effect?.attributes),
+                  ...(spellSystem?.castingTime?.value
+                    ? { actionCost: spellSystem.castingTime.value }
+                    : {}),
+                  ...(targeting.range !== undefined ? { range: targeting.range } : {}),
+                  ...(targeting.target !== undefined ? { target: targeting.target } : {}),
+                  ...(targeting.area !== undefined ? { area: targeting.area } : {}),
+                });
+              })
+              .sort((a, b) => a.level - b.level || a.name.localeCompare(b.name)),
+          })
+        );
       }
 
       // Liturgien & Zeremonien (Divine spells using KaP)
       if (karmaSpells.length > 0) {
-        entries.push({
-          id: 'liturgien',
-          name: 'Liturgien & Zeremonien (Liturgies)',
-          type: 'divine',
-          slots: kap
-            ? {
-                kap: { value: kap.value ?? 0, max: kap.max ?? 0 },
-              }
-            : undefined,
-          spells: karmaSpells
-            .map((spell: any) => {
-              const spellSystem = spell.system;
-              const targeting = this.extractDSA5SpellTargeting(spellSystem);
-              return {
-                id: spell.id || '',
-                name: spell.name || '',
-                level: spellSystem?.level?.value ?? spellSystem?.level ?? 0,
-                traits: spellSystem?.effect?.attributes || [],
-                actionCost: spellSystem?.castingTime?.value || undefined,
-                range: targeting.range,
-                target: targeting.target,
-                area: targeting.area,
-              };
-            })
-            .sort((a, b) => a.level - b.level || a.name.localeCompare(b.name)),
-        });
+        entries.push(
+          this.createSpellcastingEntry({
+            id: 'liturgien',
+            name: 'Liturgien & Zeremonien (Liturgies)',
+            type: 'divine',
+            ...(kap
+              ? {
+                  slots: {
+                    kap: { value: kap.value ?? 0, max: kap.max ?? 0 },
+                  },
+                }
+              : {}),
+            spells: karmaSpells
+              .map((spell: any) => {
+                const spellSystem = spell.system;
+                const targeting = this.extractDSA5SpellTargeting(spellSystem);
+                return this.createSpellInfo({
+                  id: spell.id || '',
+                  name: spell.name || '',
+                  level: spellSystem?.level?.value ?? spellSystem?.level ?? 0,
+                  traits: this.toStringArray(spellSystem?.effect?.attributes),
+                  ...(spellSystem?.castingTime?.value
+                    ? { actionCost: spellSystem.castingTime.value }
+                    : {}),
+                  ...(targeting.range !== undefined ? { range: targeting.range } : {}),
+                  ...(targeting.target !== undefined ? { target: targeting.target } : {}),
+                  ...(targeting.area !== undefined ? { area: targeting.area } : {}),
+                });
+              })
+              .sort((a, b) => a.level - b.level || a.name.localeCompare(b.name)),
+          })
+        );
       }
 
       // Rituale (Rituals - can use either AsP or KaP depending on tradition)
       if (rituals.length > 0) {
-        entries.push({
-          id: 'rituale',
-          name: 'Rituale (Rituals)',
-          type: 'ritual',
-          spells: rituals
-            .map((spell: any) => {
-              const spellSystem = spell.system;
-              const targeting = this.extractDSA5SpellTargeting(spellSystem);
-              return {
-                id: spell.id || '',
-                name: spell.name || '',
-                level: spellSystem?.level?.value ?? spellSystem?.level ?? 0,
-                traits: spellSystem?.effect?.attributes || [],
-                actionCost: spellSystem?.castingTime?.value || undefined,
-                range: targeting.range,
-                target: targeting.target,
-                area: targeting.area,
-              };
-            })
-            .sort((a, b) => a.level - b.level || a.name.localeCompare(b.name)),
-        });
+        entries.push(
+          this.createSpellcastingEntry({
+            id: 'rituale',
+            name: 'Rituale (Rituals)',
+            type: 'ritual',
+            spells: rituals
+              .map((spell: any) => {
+                const spellSystem = spell.system;
+                const targeting = this.extractDSA5SpellTargeting(spellSystem);
+                return this.createSpellInfo({
+                  id: spell.id || '',
+                  name: spell.name || '',
+                  level: spellSystem?.level?.value ?? spellSystem?.level ?? 0,
+                  traits: this.toStringArray(spellSystem?.effect?.attributes),
+                  ...(spellSystem?.castingTime?.value
+                    ? { actionCost: spellSystem.castingTime.value }
+                    : {}),
+                  ...(targeting.range !== undefined ? { range: targeting.range } : {}),
+                  ...(targeting.target !== undefined ? { target: targeting.target } : {}),
+                  ...(targeting.area !== undefined ? { area: targeting.area } : {}),
+                });
+              })
+              .sort((a, b) => a.level - b.level || a.name.localeCompare(b.name)),
+          })
+        );
       }
     }
 
@@ -4051,7 +4148,7 @@ export class FoundryDataAccess {
     name: string;
     content: string;
     folderName?: string;
-  }): Promise<{ id: string; name: string }> {
+  }): Promise<FoundryJournalEntryResponse> {
     this.validateFoundryState();
 
     // Use permission system for journal creation
@@ -4114,7 +4211,7 @@ export class FoundryDataAccess {
   /**
    * List all journal entries
    */
-  listJournals(): Promise<Array<{ id: string; name: string; type: string }>> {
+  listJournals(): Promise<FoundryJournalSummary[]> {
     this.validateFoundryState();
 
     const journalsSource: unknown = game.journal;
@@ -4140,7 +4237,7 @@ export class FoundryDataAccess {
   /**
    * Get journal entry content
    */
-  getJournalContent(journalId: string): Promise<{ content: string } | null> {
+  getJournalContent(journalId: string): Promise<FoundryJournalEntryResponse | null> {
     this.validateFoundryState();
 
     const journalCollection = game.journal as { get: (id: string) => unknown } | null | undefined;
@@ -4319,18 +4416,19 @@ export class FoundryDataAccess {
             transactionManager.createActorCreationAction(actorId)
           );
 
-          createdActors.push({
-            id: actorId,
-            name: newActor.name ?? customName,
-            originalName: sourceDoc.name,
-            type: newActor.type ?? 'unknown',
-            sourcePackId: compendiumEntry.pack,
-            sourcePackLabel: compendiumEntry.packLabel,
-            img:
-              typeof (newActor as { img?: unknown }).img === 'string'
-                ? (newActor as { img: string }).img
-                : undefined,
-          });
+          createdActors.push(
+            this.createCreatedActorInfo({
+              id: actorId,
+              name: newActor.name ?? customName,
+              originalName: sourceDoc.name,
+              type: newActor.type ?? 'unknown',
+              sourcePackId: compendiumEntry.pack,
+              sourcePackLabel: compendiumEntry.packLabel,
+              ...(typeof (newActor as { img?: unknown }).img === 'string'
+                ? { img: (newActor as { img: string }).img }
+                : {}),
+            })
+          );
         } catch (error) {
           errors.push(
             `Failed to create actor ${i + 1}: ${error instanceof Error ? error.message : 'Unknown error'}`
@@ -4548,14 +4646,16 @@ export class FoundryDataAccess {
             throw new Error(`Failed to create actor "${customName}"`);
           }
 
-          createdActors.push({
-            id: newActor.id ?? '',
-            name: newActor.name ?? customName,
-            originalName: sourceActorName,
-            type: sourceDocument.type ?? 'unknown',
-            sourcePackId: packId,
-            sourcePackLabel: typedPack.metadata?.label ?? '',
-          });
+          createdActors.push(
+            this.createCreatedActorInfo({
+              id: newActor.id ?? '',
+              name: newActor.name ?? customName,
+              originalName: sourceActorName,
+              type: sourceDocument.type ?? 'unknown',
+              sourcePackId: packId,
+              sourcePackLabel: typedPack.metadata?.label ?? '',
+            })
+          );
         } catch (error) {
           const errorMsg = `Failed to create actor ${i + 1}: ${error instanceof Error ? error.message : 'Unknown error'}`;
           errors.push(errorMsg);
@@ -4587,7 +4687,7 @@ export class FoundryDataAccess {
         totalRequested: finalQuantity,
         actors: createdActors,
         tokensPlaced,
-        errors: errors.length > 0 ? errors : undefined,
+        ...(errors.length > 0 ? { errors } : {}),
       };
 
       this.auditLog('createActorFromCompendiumEntry', request, 'success');
@@ -4699,20 +4799,15 @@ export class FoundryDataAccess {
           Boolean(effect && typeof effect === 'object')
         )
         .map(effect => {
-          const mappedEffect: CompendiumEffect = {
+          return this.createCompendiumEffect({
             id: effect.id ?? '',
             name: effect.name ?? effect.label ?? 'Unknown Effect',
             disabled: effect.disabled ?? false,
             duration: this.sanitizeData(
               effect.duration && typeof effect.duration === 'object' ? effect.duration : {}
             ) as Record<string, unknown>,
-          };
-
-          if (effect.icon) {
-            mappedEffect.icon = effect.icon;
-          }
-
-          return mappedEffect;
+            ...(effect.icon ? { icon: effect.icon } : {}),
+          });
         });
       fullEntry.effects = effects;
     }
