@@ -1,85 +1,13 @@
-export interface ItemUseActorLike {
-  id?: string;
-  name?: string;
-}
+import { getItemUseSystemHandler } from './item-use-system-handlers/item-use-handler-registry.js';
+import {
+  createItemChatMessage,
+  runItemAction,
+  type ItemUseActorLike,
+  type ItemUseOptions,
+  type UsableItemLike,
+} from './item-use-system-handlers/item-use-system-shared.js';
 
-export interface UsableItemLike {
-  id?: string;
-  name?: string;
-  type?: string;
-  use?: (options: Record<string, unknown>) => Promise<unknown>;
-  toChat?: () => Promise<unknown>;
-  toMessage?: (messageData?: unknown, options?: Record<string, unknown>) => Promise<unknown>;
-  roll?: () => Promise<unknown>;
-  postItem?: () => Promise<unknown>;
-  setupEffect?: () => Promise<unknown>;
-}
-
-export interface ItemUseOptions {
-  consume?: boolean | undefined;
-  configureDialog?: boolean | undefined;
-  skipDialog?: boolean | undefined;
-  spellLevel?: number | undefined;
-  versatile?: boolean | undefined;
-}
-
-interface ChatMessageApiLike {
-  getSpeaker: (data: { actor?: unknown }) => unknown;
-  create: (data: Record<string, unknown>) => unknown;
-}
-
-function getChatMessageApi(): ChatMessageApiLike | null {
-  const chatMessageApi = ChatMessage as unknown;
-  return chatMessageApi &&
-    typeof chatMessageApi === 'object' &&
-    typeof (chatMessageApi as Partial<ChatMessageApiLike>).getSpeaker === 'function' &&
-    typeof (chatMessageApi as Partial<ChatMessageApiLike>).create === 'function'
-    ? (chatMessageApi as ChatMessageApiLike)
-    : null;
-}
-
-function runItemAction(promise: Promise<unknown>, itemName: string): void {
-  void promise.catch((error: Error) => {
-    console.error(`[foundry-mcp-bridge] Error using item ${itemName}:`, error);
-  });
-}
-
-function createItemChatMessage(actor: ItemUseActorLike, item: UsableItemLike): void {
-  const chatMessageApi = getChatMessageApi();
-  if (!chatMessageApi) {
-    return;
-  }
-
-  const chatData: Record<string, unknown> = {
-    user: (game as { user?: { id?: string } }).user?.id,
-    speaker: chatMessageApi.getSpeaker({ actor }),
-    content: `<h3>${item.name ?? 'Unknown Item'}</h3><p>${actor.name ?? 'Unknown'} uses ${item.name ?? 'Unknown Item'}.</p>`,
-  };
-
-  chatMessageApi.create(chatData);
-}
-
-function handleDnd5eUse(item: UsableItemLike, options: ItemUseOptions): boolean {
-  if (typeof item.use !== 'function') {
-    return false;
-  }
-
-  const useOptions: Record<string, unknown> = {
-    createMessage: true,
-    consumeResource: options.consume ?? true,
-    consumeSpellSlot: options.consume ?? true,
-    consumeUsage: options.consume ?? true,
-    configureDialog: true,
-  };
-
-  if (options.spellLevel !== undefined) {
-    useOptions.slotLevel = options.spellLevel;
-    useOptions.level = options.spellLevel;
-  }
-
-  runItemAction(item.use(useOptions), item.name ?? 'Unknown Item');
-  return true;
-}
+export type { ItemUseActorLike, ItemUseOptions, UsableItemLike };
 
 function handleMessagingUse(item: UsableItemLike): boolean {
   if (typeof item.toChat !== 'function') {
@@ -104,36 +32,6 @@ function handleRollUse(item: UsableItemLike): boolean {
   return true;
 }
 
-function handleDsa5Use(actor: ItemUseActorLike, item: UsableItemLike): boolean {
-  const isSpellLike =
-    item.type === 'spell' ||
-    item.type === 'liturgy' ||
-    item.type === 'ceremony' ||
-    item.type === 'ritual';
-
-  if (isSpellLike) {
-    if (typeof item.postItem === 'function') {
-      runItemAction(item.postItem(), item.name ?? 'Unknown Item');
-      return true;
-    }
-
-    if (typeof item.setupEffect === 'function') {
-      runItemAction(item.setupEffect(), item.name ?? 'Unknown Item');
-      return true;
-    }
-
-    createItemChatMessage(actor, item);
-    return true;
-  }
-
-  if (typeof item.postItem === 'function') {
-    runItemAction(item.postItem(), item.name ?? 'Unknown Item');
-    return true;
-  }
-
-  return false;
-}
-
 export function executeItemUse(params: {
   actor: ItemUseActorLike;
   item: UsableItemLike;
@@ -141,8 +39,9 @@ export function executeItemUse(params: {
   options: ItemUseOptions;
 }): void {
   const { actor, item, systemId, options } = params;
+  const systemHandler = getItemUseSystemHandler(systemId);
 
-  if (systemId === 'dnd5e' && handleDnd5eUse(item, options)) {
+  if (systemHandler?.execute({ actor, item, options })) {
     return;
   }
 
@@ -161,10 +60,6 @@ export function executeItemUse(params: {
   }
 
   if (handleMessagingUse(item) || handleRollUse(item)) {
-    return;
-  }
-
-  if (systemId === 'dsa5' && handleDsa5Use(actor, item)) {
     return;
   }
 

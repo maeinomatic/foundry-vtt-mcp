@@ -1,8 +1,7 @@
 import {
-  buildDnD5eCreatureIndex,
-  buildPF2eCreatureIndex,
   type CompendiumPackLike as BuilderCompendiumPackLike,
   type EnhancedCreatureIndex,
+  getCreatureIndexBuilder,
   type PackFingerprint,
   type PF2eCreatureIndex,
 } from './creature-index-builders.js';
@@ -670,16 +669,12 @@ class PersistentCreatureIndex {
     try {
       const actorPacks = this.getActorPacks();
       const startTime = Date.now();
-      const buildResult =
-        gameSystem === 'pf2e'
-          ? await buildPF2eCreatureIndex(this.moduleId, actorPacks, pack =>
-              this.generatePackFingerprint(pack)
-            )
-          : gameSystem === 'dnd5e'
-            ? await buildDnD5eCreatureIndex(this.moduleId, actorPacks, pack =>
-                this.generatePackFingerprint(pack)
-              )
-            : null;
+      const buildCreatureIndex = getCreatureIndexBuilder(gameSystem);
+      const buildResult = buildCreatureIndex
+        ? await buildCreatureIndex(this.moduleId, actorPacks, pack =>
+            this.generatePackFingerprint(pack)
+          )
+        : null;
 
       if (!buildResult) {
         throw new Error(

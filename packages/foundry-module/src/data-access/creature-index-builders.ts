@@ -83,6 +83,12 @@ export interface CreatureIndexBuildResult {
   systemId: 'dnd5e' | 'pf2e';
 }
 
+export type CreatureIndexBuilder = (
+  moduleId: string,
+  packs: CompendiumPackLike[],
+  createFingerprint: (pack: CompendiumPackLike) => PackFingerprint
+) => Promise<CreatureIndexBuildResult>;
+
 function asNotification(value: unknown): NotificationLike | null {
   if (!value || typeof value !== 'object') {
     return null;
@@ -116,6 +122,15 @@ function getPathValue(source: unknown, path: string[]): unknown {
   }
 
   return current;
+}
+
+export function getCreatureIndexBuilder(systemId: string): CreatureIndexBuilder | null {
+  const builders: Record<string, CreatureIndexBuilder> = {
+    dnd5e: buildDnD5eCreatureIndex,
+    pf2e: buildPF2eCreatureIndex,
+  };
+
+  return builders[systemId] ?? null;
 }
 
 function firstDefined(values: unknown[], fallback: unknown): unknown {

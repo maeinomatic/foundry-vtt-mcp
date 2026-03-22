@@ -6,6 +6,10 @@ import {
   type ItemUseOptions,
   type UsableItemLike,
 } from './item-use-handlers.js';
+import {
+  buildConditionEffectData,
+  type SceneConditionLike as ConditionLike,
+} from './scene-system-helpers/condition-effects.js';
 
 interface SceneListItem {
   id?: string;
@@ -95,19 +99,6 @@ interface ActiveEffectLike {
   duration?: unknown;
   changes?: unknown;
   statuses?: { has: (statusId: string) => boolean };
-}
-
-interface ConditionLike {
-  id?: string;
-  name?: string;
-  label?: string;
-  icon?: string;
-  img?: string;
-  description?: string;
-  flags?: Record<string, unknown>;
-  changes?: unknown[];
-  duration?: Record<string, unknown>;
-  origin?: string;
 }
 
 interface UserTargetingLike {
@@ -805,25 +796,10 @@ export class FoundrySceneInteractionAccess {
       }
 
       if (data.active) {
-        const effectData: Record<string, unknown> = {
-          name: condition.name ?? condition.label ?? condition.id,
-          icon: condition.icon ?? condition.img,
-        };
-
-        if (condition.id) {
-          effectData.statuses = [condition.id];
-        }
-
-        const gameSystem = game.system as unknown as { id?: string };
-        if (gameSystem.id === 'dsa5') {
-          Object.assign(effectData, {
-            flags: condition.flags ?? {},
-            changes: condition.changes ?? [],
-            duration: condition.duration ?? {},
-            origin: condition.origin,
-          });
-        }
-
+        const effectData = buildConditionEffectData({
+          condition,
+          systemId: (game.system as { id?: string }).id ?? '',
+        });
         await actor.createEmbeddedDocuments?.('ActiveEffect', [effectData]);
       } else {
         const effects = getActiveEffectArray(actor.effects);
