@@ -109,6 +109,14 @@ type AdvancementChoiceSchemaInput =
       type: 'item-grant';
       itemUuids?: string[] | undefined;
       ability?: string | undefined;
+    }
+  | {
+      type: 'trait';
+      selected: string[];
+    }
+  | {
+      type: 'size';
+      size: string;
     };
 
 type AdvancementSelectionInput = {
@@ -154,6 +162,14 @@ function createAdvancementChoiceSchema(): z.ZodType<AdvancementChoiceSchemaInput
       itemUuids: z.array(z.string().min(1, 'itemUuids entries cannot be empty')).optional(),
       ability: z.string().min(1).optional(),
     }),
+    z.object({
+      type: z.literal('trait'),
+      selected: z.array(z.string().min(1, 'selected entries cannot be empty')).min(1),
+    }),
+    z.object({
+      type: z.literal('size'),
+      size: z.string().min(1, 'size cannot be empty'),
+    }),
   ]);
 }
 
@@ -172,6 +188,20 @@ function normalizeAdvancementChoice(choice: AdvancementChoiceSchemaInput): Advan
       type: 'item-grant',
       ...(choice.itemUuids !== undefined ? { itemUuids: choice.itemUuids } : {}),
       ...(choice.ability !== undefined ? { ability: choice.ability } : {}),
+    };
+  }
+
+  if (choice.type === 'trait') {
+    return {
+      type: 'trait',
+      selected: choice.selected,
+    };
+  }
+
+  if (choice.type === 'size') {
+    return {
+      type: 'size',
+      size: choice.size,
     };
   }
 
@@ -356,13 +386,226 @@ export class CharacterTools {
       {
         name: 'preview-character-progression',
         description:
-          'Preview a progression update before applying it. For DnD5e this returns pending advancement steps and required choices when the class level change is managed by the system workflow.',
+          'Preview a progression update before applying it. For DnD5e this returns pending advancement steps, source items, and required choices when the class level change is managed by the system workflow.',
         inputSchema: {
           type: 'object',
           properties: {
             characterIdentifier: {
               type: 'string',
               description: 'Character name or ID to preview',
+            },
+            targetLevel: {
+              type: 'number',
+              description: 'Target level when the active system supports direct level updates',
+            },
+            classIdentifier: {
+              type: 'string',
+              description:
+                'DnD5e only: class item name or ID. Required for multiclass characters and recommended for explicit class targeting.',
+            },
+            experiencePoints: {
+              type: 'number',
+              description: 'Direct experience/AP total for systems that use it',
+            },
+            experienceSpent: {
+              type: 'number',
+              description: 'Optional spent experience/AP value for systems that track it',
+            },
+          },
+          required: ['characterIdentifier'],
+        },
+      },
+      {
+        name: 'get-character-advancement-options',
+        description:
+          'Get concrete options for a specific pending advancement step. For DnD5e this can return ASI/feat candidates, subclass options, item-choice pools, item-grant defaults, hit point mode choices, trait options, or size choices when the active step exposes them.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            characterIdentifier: {
+              type: 'string',
+              description: 'Character name or ID to inspect',
+            },
+            targetLevel: {
+              type: 'number',
+              description: 'The level-up target used for the preview context',
+            },
+            stepId: {
+              type: 'string',
+              description:
+                'The pending advancement step ID returned by preview-character-progression',
+            },
+            classIdentifier: {
+              type: 'string',
+              description: 'DnD5e only: class item name or ID for multiclass targeting',
+            },
+            query: {
+              type: 'string',
+              description: 'Optional text filter for large option sets such as feats or subclasses',
+            },
+            limit: {
+              type: 'number',
+              description: 'Optional maximum number of options to return',
+            },
+          },
+          required: ['characterIdentifier', 'targetLevel', 'stepId'],
+        },
+      },
+      {
+        name: 'apply-character-advancement-choice',
+        description:
+          'Apply a specific character advancement choice. For DnD5e this supports ability-score improvements, feat selections, subclass choices, hit point mode, item-choice/item-grant steps, supported trait selections, and supported size selections.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            characterIdentifier: {
+              type: 'string',
+              description: 'Character name or ID to update',
+            },
+            targetLevel: {
+              type: 'number',
+              description: 'The level-up target used for the preview context',
+            },
+            stepId: {
+              type: 'string',
+              description:
+                'The pending advancement step ID returned by preview-character-progression',
+            },
+            classIdentifier: {
+              type: 'string',
+              description: 'DnD5e only: class item name or ID for multiclass targeting',
+            },
+            choice: {
+              oneOf: [
+                {
+                  type: 'object',
+                  properties: {
+                    type: { const: 'ability-score-improvement' },
+                    mode: { const: 'asi' },
+                    assignments: {
+                      type: 'object',
+                      additionalProperties: { type: 'number' },
+                      description:
+                        'Ability score increases keyed by ability slug such as str or int',
+                    },
+                  },
+                  required: ['type', 'mode', 'assignments'],
+                },
+                {
+                  type: 'object',
+                  properties: {
+                    type: { const: 'ability-score-improvement' },
+                    mode: { const: 'feat' },
+                    featUuid: {
+                      type: 'string',
+                      description: 'Compendium UUID of the selected feat',
+                    },
+                  },
+                  required: ['type', 'mode', 'featUuid'],
+                },
+                {
+                  type: 'object',
+                  properties: {
+                    type: { const: 'subclass' },
+                    subclassUuid: {
+                      type: 'string',
+                      description: 'Compendium UUID of the selected subclass',
+                    },
+                  },
+                  required: ['type', 'subclassUuid'],
+                },
+                {
+                  type: 'object',
+                  properties: {
+                    type: { const: 'hit-points' },
+                    mode: {
+                      enum: ['average', 'roll'],
+                      description:
+                        'Use the class average or roll the class hit die in the DnD5e advancement workflow',
+                    },
+                  },
+                  required: ['type', 'mode'],
+                },
+                {
+                  type: 'object',
+                  properties: {
+                    type: { const: 'item-choice' },
+                    itemUuids: {
+                      type: 'array',
+                      items: { type: 'string' },
+                      description: 'Compendium UUIDs of the selected items',
+                    },
+                    replaceItemId: {
+                      type: 'string',
+                      description: 'Optional existing actor item ID to replace',
+                    },
+                    ability: {
+                      type: 'string',
+                      description:
+                        'Optional spellcasting ability override when supported by the step',
+                    },
+                  },
+                  required: ['type', 'itemUuids'],
+                },
+                {
+                  type: 'object',
+                  properties: {
+                    type: { const: 'item-grant' },
+                    itemUuids: {
+                      type: 'array',
+                      items: { type: 'string' },
+                      description:
+                        'Optional explicit grant item UUIDs when the step allows selecting from multiple grants',
+                    },
+                    ability: {
+                      type: 'string',
+                      description:
+                        'Optional spellcasting ability override when supported by the granted item step',
+                    },
+                  },
+                  required: ['type'],
+                },
+                {
+                  type: 'object',
+                  properties: {
+                    type: { const: 'trait' },
+                    selected: {
+                      type: 'array',
+                      items: { type: 'string' },
+                      description:
+                        'Selected trait option identifiers returned by get-character-advancement-options',
+                    },
+                  },
+                  required: ['type', 'selected'],
+                },
+                {
+                  type: 'object',
+                  properties: {
+                    type: { const: 'size' },
+                    size: {
+                      type: 'string',
+                      description:
+                        'Selected size option identifier returned by get-character-advancement-options',
+                    },
+                  },
+                  required: ['type', 'size'],
+                },
+              ],
+            },
+          },
+          required: ['characterIdentifier', 'targetLevel', 'stepId', 'choice'],
+        },
+      },
+      {
+        name: 'update-character-progression',
+        description:
+          'Update character progression using system-aware adapter logic. Supports PF2e level updates, DSA5 AP/Erfahrungsgrad updates, and DnD5e class-level updates through owned class items, including explicit advancementSelections and safe automatic follow-up steps where supported.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            characterIdentifier: {
+              type: 'string',
+              description: 'Character name or ID to update',
             },
             targetLevel: {
               type: 'number',
@@ -469,181 +712,32 @@ export class CharacterTools {
                         },
                         required: ['type'],
                       },
+                      {
+                        type: 'object',
+                        properties: {
+                          type: { const: 'trait' },
+                          selected: {
+                            type: 'array',
+                            items: { type: 'string' },
+                          },
+                        },
+                        required: ['type', 'selected'],
+                      },
+                      {
+                        type: 'object',
+                        properties: {
+                          type: { const: 'size' },
+                          size: {
+                            type: 'string',
+                          },
+                        },
+                        required: ['type', 'size'],
+                      },
                     ],
                   },
                 },
                 required: ['choice'],
               },
-            },
-          },
-          required: ['characterIdentifier'],
-        },
-      },
-      {
-        name: 'get-character-advancement-options',
-        description:
-          'Get concrete options for a specific pending advancement step. For DnD5e this can return ASI/feat candidates, subclass options, item-choice pools, or hit point mode choices.',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            characterIdentifier: {
-              type: 'string',
-              description: 'Character name or ID to inspect',
-            },
-            targetLevel: {
-              type: 'number',
-              description: 'The level-up target used for the preview context',
-            },
-            stepId: {
-              type: 'string',
-              description:
-                'The pending advancement step ID returned by preview-character-progression',
-            },
-            classIdentifier: {
-              type: 'string',
-              description: 'DnD5e only: class item name or ID for multiclass targeting',
-            },
-            query: {
-              type: 'string',
-              description: 'Optional text filter for large option sets such as feats or subclasses',
-            },
-            limit: {
-              type: 'number',
-              description: 'Optional maximum number of options to return',
-            },
-          },
-          required: ['characterIdentifier', 'targetLevel', 'stepId'],
-        },
-      },
-      {
-        name: 'apply-character-advancement-choice',
-        description:
-          'Apply a specific character advancement choice. Currently this supports DnD5e ability-score-improvement steps, including direct ASI point allocation or feat selection by compendium UUID.',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            characterIdentifier: {
-              type: 'string',
-              description: 'Character name or ID to update',
-            },
-            targetLevel: {
-              type: 'number',
-              description: 'The level-up target used for the preview context',
-            },
-            stepId: {
-              type: 'string',
-              description:
-                'The pending advancement step ID returned by preview-character-progression',
-            },
-            classIdentifier: {
-              type: 'string',
-              description: 'DnD5e only: class item name or ID for multiclass targeting',
-            },
-            choice: {
-              oneOf: [
-                {
-                  type: 'object',
-                  properties: {
-                    type: { const: 'ability-score-improvement' },
-                    mode: { const: 'asi' },
-                    assignments: {
-                      type: 'object',
-                      additionalProperties: { type: 'number' },
-                      description:
-                        'Ability score increases keyed by ability slug such as str or int',
-                    },
-                  },
-                  required: ['type', 'mode', 'assignments'],
-                },
-                {
-                  type: 'object',
-                  properties: {
-                    type: { const: 'ability-score-improvement' },
-                    mode: { const: 'feat' },
-                    featUuid: {
-                      type: 'string',
-                      description: 'Compendium UUID of the selected feat',
-                    },
-                  },
-                  required: ['type', 'mode', 'featUuid'],
-                },
-                {
-                  type: 'object',
-                  properties: {
-                    type: { const: 'subclass' },
-                    subclassUuid: {
-                      type: 'string',
-                      description: 'Compendium UUID of the selected subclass',
-                    },
-                  },
-                  required: ['type', 'subclassUuid'],
-                },
-                {
-                  type: 'object',
-                  properties: {
-                    type: { const: 'hit-points' },
-                    mode: {
-                      enum: ['average', 'roll'],
-                      description:
-                        'Use the class average or roll the class hit die in the DnD5e advancement workflow',
-                    },
-                  },
-                  required: ['type', 'mode'],
-                },
-                {
-                  type: 'object',
-                  properties: {
-                    type: { const: 'item-choice' },
-                    itemUuids: {
-                      type: 'array',
-                      items: { type: 'string' },
-                      description: 'Compendium UUIDs of the selected items',
-                    },
-                    replaceItemId: {
-                      type: 'string',
-                      description: 'Optional existing actor item ID to replace',
-                    },
-                    ability: {
-                      type: 'string',
-                      description:
-                        'Optional spellcasting ability override when supported by the step',
-                    },
-                  },
-                  required: ['type', 'itemUuids'],
-                },
-              ],
-            },
-          },
-          required: ['characterIdentifier', 'targetLevel', 'stepId', 'choice'],
-        },
-      },
-      {
-        name: 'update-character-progression',
-        description:
-          'Update character progression using system-aware adapter logic. Supports PF2e level updates, DSA5 AP/Erfahrungsgrad updates, and DnD5e class-level updates through owned class items.',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            characterIdentifier: {
-              type: 'string',
-              description: 'Character name or ID to update',
-            },
-            targetLevel: {
-              type: 'number',
-              description: 'Target level when the active system supports direct level updates',
-            },
-            classIdentifier: {
-              type: 'string',
-              description:
-                'DnD5e only: class item name or ID. Required for multiclass characters and recommended for explicit class targeting.',
-            },
-            experiencePoints: {
-              type: 'number',
-              description: 'Direct experience/AP total for systems that use it',
-            },
-            experienceSpent: {
-              type: 'number',
-              description: 'Optional spent experience/AP value for systems that track it',
             },
           },
           required: ['characterIdentifier'],
@@ -1238,6 +1332,18 @@ export class CharacterTools {
         ...(choiceDetails?.abilityOptions?.length === 1
           ? { ability: choiceDetails.abilityOptions[0] }
           : {}),
+      };
+    }
+
+    if (lowerType === 'size') {
+      const sizeOption = choiceDetails?.options?.[0];
+      if (!sizeOption) {
+        return null;
+      }
+
+      return {
+        type: 'size',
+        size: sizeOption.id,
       };
     }
 

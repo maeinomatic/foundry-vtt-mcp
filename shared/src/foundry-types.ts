@@ -353,6 +353,14 @@ export interface FoundryApplyCharacterAdvancementChoiceRequest {
         type: 'item-grant';
         itemUuids?: string[];
         ability?: string;
+      }
+    | {
+        type: 'trait';
+        selected: string[];
+      }
+    | {
+        type: 'size';
+        size: string;
       };
 }
 

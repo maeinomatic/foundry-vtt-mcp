@@ -30,7 +30,13 @@ For DnD5e gameplay, the current toolset is strong for:
 - creating actors from existing compendium entries
 - using existing items/spells
 
-For DnD5e character progression and inventory management, key write capabilities are still missing.
+For DnD5e character progression, the current toolset now also supports:
+
+- previewing class level-up steps
+- listing concrete advancement options for pending steps
+- applying advancement choices for ASI/feat, subclass, hit points, item choice, item grant, and trait selections
+- finalizing class level updates after required advancement steps are complete
+- auto-applying deterministic item-grant follow-up steps
 
 ## DnD5e Missing Endpoint Tracker
 
@@ -82,25 +88,20 @@ This section tracks capabilities needed for practical DnD5e character management
 
 ### Priority A: DnD5e Leveling and Advancement
 
-1. `dnd5e-level-up-character`
-
-- Purpose: Increase total level and orchestrate advancement workflow.
-- Why needed: Current tools do not support character leveling.
-
-2. `dnd5e-add-class-levels`
+1. `dnd5e-add-class-levels`
 
 - Purpose: Add levels to existing class or add a new class for multiclass.
-- Why needed: Multiclass support requires class-item manipulation.
+- Why needed: Current progression tools can level an existing class item, but adding a new class for multiclass still needs a dedicated workflow.
 
-3. `dnd5e-apply-advancement`
-
-- Purpose: Apply class/race/feat advancement choices (ASI/feat, subclass, options).
-- Why needed: Foundry dnd5e progression depends on advancement steps, not only numeric level changes.
-
-4. `dnd5e-set-proficiencies`
+2. `dnd5e-set-proficiencies`
 
 - Purpose: Manage weapon/armor/tool/language/saving throw proficiencies.
-- Why needed: Required for class gains, feats, and multiclass transitions.
+- Why needed: Trait advancements now cover supported DnD5e progression steps, but direct proficiency editing outside advancement is still missing.
+
+3. `dnd5e-handle-scale-advancement`
+
+- Purpose: Complete support for DnD5e advancement types that expose level-scaled values.
+- Why needed: Scale Value is part of the official advancement model and should be surfaced or finalized consistently.
 
 ### Priority B: DnD5e Spell Management
 
@@ -143,6 +144,7 @@ This section tracks capabilities needed for practical DnD5e character management
 2. `preview-dnd5e-level-up`
 
 - Purpose: Dry-run before mutations; returns diff of proposed changes.
+- Current state: Covered by `preview-character-progression`; keep this as a conceptual requirement rather than a missing tool name.
 
 3. `apply-character-patch-transaction`
 

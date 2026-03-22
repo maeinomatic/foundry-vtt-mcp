@@ -160,6 +160,15 @@ function requiresChoices(
     return true;
   }
 
+  if (lowerType === 'size') {
+    const options = getSizeConfiguredOptions(advancement);
+    return options.length !== 1;
+  }
+
+  if (lowerType === 'scalevalue') {
+    return false;
+  }
+
   const configuration = asRecord(advancement.configuration);
   return Boolean(
     advancement.pool ||
@@ -202,6 +211,18 @@ function buildHints(type: string, optional: boolean): string[] {
 
   if (lowerType === 'trait') {
     hints.push('This advancement requires choosing from one or more trait options.');
+  }
+
+  if (lowerType === 'size') {
+    hints.push(
+      'This advancement sets or confirms the character size for the DnD5e progression flow.'
+    );
+  }
+
+  if (lowerType === 'scalevalue') {
+    hints.push(
+      'This advancement updates a level-scaled value and is usually derived from the item configuration.'
+    );
   }
 
   if (optional) {
@@ -442,6 +463,199 @@ function toStringArray(value: unknown): string[] | undefined {
     : undefined;
 }
 
+function humanizeConfiguredOptionId(id: string): string {
+  const normalized = id
+    .replace(/[._-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!normalized) {
+    return id;
+  }
+
+  return normalized
+    .split(' ')
+    .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+}
+
+function recordToConfiguredEntries(record: Record<string, unknown>): unknown[] {
+  return Object.entries(record).map(([key, value]) => {
+    const valueRecord = asRecord(value);
+    if (valueRecord) {
+      return { id: key, ...valueRecord };
+    }
+
+    if (typeof value === 'string') {
+      return {
+        id: key,
+        name: value,
+        label: value,
+      };
+    }
+
+    return { id: key, value };
+  });
+}
+
+function toConfiguredChoiceOptions(
+  value: unknown,
+  fallbackType: string
+): FoundryAdvancementOption[] {
+  const rawEntries = Array.isArray(value)
+    ? value
+    : value && typeof value === 'object'
+      ? recordToConfiguredEntries(value as Record<string, unknown>)
+      : [];
+
+  const options = rawEntries.flatMap(entry => {
+    if (typeof entry === 'string') {
+      return [
+        {
+          id: entry,
+          name: humanizeConfiguredOptionId(entry),
+          type: fallbackType,
+          source: 'configured' as const,
+        } satisfies FoundryAdvancementOption,
+      ];
+    }
+
+    const record = asRecord(entry);
+    if (!record) {
+      return [];
+    }
+
+    const id =
+      toStringValue(record.id) ??
+      toStringValue(record.key) ??
+      toStringValue(record.value) ??
+      toStringValue(record.slug) ??
+      toStringValue(record.name) ??
+      toStringValue(record.label);
+    const name =
+      toStringValue(record.label) ??
+      toStringValue(record.title) ??
+      toStringValue(record.name) ??
+      (id ? humanizeConfiguredOptionId(id) : undefined);
+    const type = toStringValue(record.type) ?? fallbackType;
+    const hint = toStringValue(record.hint) ?? toStringValue(record.description);
+
+    if (!id || !name) {
+      return [];
+    }
+
+    return [
+      {
+        id,
+        name,
+        type,
+        source: 'configured' as const,
+        ...(hint ? { hint } : {}),
+      } satisfies FoundryAdvancementOption,
+    ];
+  });
+
+  return dedupeOptions(options);
+}
+
+function looksLikeLevelChoiceRecord(record: Record<string, unknown>): boolean {
+  return Object.values(record).some(entry => {
+    const entryRecord = asRecord(entry);
+    return Boolean(
+      entryRecord &&
+        (entryRecord.count !== undefined ||
+          entryRecord.replacement !== undefined ||
+          entryRecord.pool !== undefined ||
+          entryRecord.options !== undefined ||
+          entryRecord.choices !== undefined)
+    );
+  });
+}
+
+function getTraitConfiguredOptions(
+  advancement: Record<string, unknown>
+): FoundryAdvancementOption[] {
+  const configuration = asRecord(advancement.configuration) ?? {};
+  const level = getAdvancementLevel(advancement);
+  const choicesByLevel = asRecord(configuration.choices);
+  const levelChoice =
+    choicesByLevel && level !== undefined ? asRecord(choicesByLevel[String(level)]) : undefined;
+  const directChoiceEntries =
+    choicesByLevel && !looksLikeLevelChoiceRecord(choicesByLevel) ? choicesByLevel : undefined;
+
+  const optionSets = [
+    toConfiguredChoiceOptions(levelChoice?.pool, 'trait'),
+    toConfiguredChoiceOptions(levelChoice?.options, 'trait'),
+    toConfiguredChoiceOptions(levelChoice?.choices, 'trait'),
+    toConfiguredChoiceOptions(configuration.pool, 'trait'),
+    toConfiguredChoiceOptions(configuration.options, 'trait'),
+    toConfiguredChoiceOptions(directChoiceEntries, 'trait'),
+    toConfiguredChoiceOptions(configuration.grants, 'trait'),
+  ];
+
+  return dedupeOptions(optionSets.flat());
+}
+
+function getTraitChoiceCount(advancement: Record<string, unknown>): number | undefined {
+  const level = getAdvancementLevel(advancement);
+  const configuration = asRecord(advancement.configuration) ?? {};
+
+  return (
+    (level !== undefined ? getLevelChoiceCount(advancement, level) : undefined) ??
+    toNumber(configuration.count) ??
+    toNumber(configuration.choose)
+  );
+}
+
+function getSizeConfiguredOptions(
+  advancement: Record<string, unknown>
+): FoundryAdvancementOption[] {
+  const configuration = asRecord(advancement.configuration) ?? {};
+  const level = getAdvancementLevel(advancement);
+  const choicesByLevel = asRecord(configuration.choices);
+  const levelChoice =
+    choicesByLevel && level !== undefined ? asRecord(choicesByLevel[String(level)]) : undefined;
+  const directChoiceEntries =
+    choicesByLevel && !looksLikeLevelChoiceRecord(choicesByLevel) ? choicesByLevel : undefined;
+
+  const optionSets = [
+    toConfiguredChoiceOptions(levelChoice?.sizes, 'size'),
+    toConfiguredChoiceOptions(levelChoice?.options, 'size'),
+    toConfiguredChoiceOptions(levelChoice?.choices, 'size'),
+    toConfiguredChoiceOptions(configuration.sizes, 'size'),
+    toConfiguredChoiceOptions(configuration.options, 'size'),
+    toConfiguredChoiceOptions(directChoiceEntries, 'size'),
+    toConfiguredChoiceOptions(configuration.size, 'size'),
+  ];
+
+  return dedupeOptions(optionSets.flat());
+}
+
+function buildTraitAdvancementValueUpdate(params: {
+  sourceItem: ActorProgressionItemLike;
+  descriptor: AdvancementDescriptor;
+  selected: string[];
+}): Record<string, unknown>[] {
+  return buildSourceItemAdvancementValueUpdate({
+    sourceItem: params.sourceItem,
+    descriptor: params.descriptor,
+    value: Object.fromEntries(params.selected.map(entry => [entry, entry])),
+  });
+}
+
+function buildSizeAdvancementValueUpdate(params: {
+  sourceItem: ActorProgressionItemLike;
+  descriptor: AdvancementDescriptor;
+  size: string;
+}): Record<string, unknown>[] {
+  return buildSourceItemAdvancementValueUpdate({
+    sourceItem: params.sourceItem,
+    descriptor: params.descriptor,
+    value: {
+      size: params.size,
+    },
+  });
+}
+
 function getItemGrantDefinitions(advancement: Record<string, unknown>): ItemGrantDefinition[] {
   const configuration = asRecord(advancement.configuration) ?? {};
   const poolEntries = Array.isArray(configuration.pool)
@@ -491,7 +705,18 @@ function requiresItemGrantChoices(advancement: Record<string, unknown>): boolean
 }
 
 function isAutoApplySafeAdvancement(type: string, advancement: Record<string, unknown>): boolean {
-  return type.toLowerCase() === 'itemgrant' && !requiresItemGrantChoices(advancement);
+  const lowerType = type.toLowerCase();
+  if (lowerType === 'itemgrant') {
+    return !requiresItemGrantChoices(advancement);
+  }
+
+  if (lowerType === 'size') {
+    return (
+      !isOptionalAdvancement(advancement) && getSizeConfiguredOptions(advancement).length === 1
+    );
+  }
+
+  return false;
 }
 
 async function getAsiChoiceDetails(
@@ -601,6 +826,27 @@ async function getChoiceDetails(
     };
   }
 
+  if (lowerType === 'trait') {
+    const options = getTraitConfiguredOptions(advancement);
+    const chooseCount = getTraitChoiceCount(advancement);
+
+    return {
+      kind: 'trait',
+      optionQuerySupported: options.length > 0,
+      ...(chooseCount !== undefined ? { chooseCount } : {}),
+      ...(options.length > 0 ? { options } : {}),
+    };
+  }
+
+  if (lowerType === 'size') {
+    const options = getSizeConfiguredOptions(advancement);
+    return {
+      kind: 'size',
+      optionQuerySupported: options.length > 0,
+      ...(options.length > 0 ? { options } : {}),
+    };
+  }
+
   if (lowerType === 'subclass') {
     return {
       kind: 'subclass',
@@ -654,6 +900,11 @@ async function buildAdvancementDescriptors(params: {
         level > targetLevel ||
         isAdvancementCompletedForLevel(advancement, type, level)
       ) {
+        continue;
+      }
+
+      const lowerType = type.toLowerCase();
+      if (lowerType === 'scalevalue' && !isOptionalAdvancement(advancement)) {
         continue;
       }
 
@@ -1972,6 +2223,203 @@ async function applyItemGrantChoice(params: {
   };
 }
 
+function resolveSizeSelection(params: {
+  descriptor: AdvancementDescriptor;
+  request: FoundryApplyCharacterAdvancementChoiceRequest;
+}): string {
+  const { descriptor, request } = params;
+  if (request.choice.type !== 'size') {
+    throw new Error(`Unsupported DnD5e size choice type: ${request.choice.type}`);
+  }
+
+  const selected = request.choice.size.trim();
+  if (!selected) {
+    throw new Error('Size advancement requires a non-empty size selection.');
+  }
+
+  const configuredOptions = getSizeConfiguredOptions(descriptor.advancement);
+  if (configuredOptions.length > 0) {
+    const allowedIds = new Set(configuredOptions.map(option => option.id));
+    if (!allowedIds.has(selected)) {
+      throw new Error(`Size option "${selected}" is not valid for this advancement step.`);
+    }
+  }
+
+  return selected;
+}
+
+async function applySizeChoice(params: {
+  actor: ActorProgressionActorLike;
+  classItem: ActorProgressionItemLike;
+  descriptor: AdvancementDescriptor;
+  request: FoundryApplyCharacterAdvancementChoiceRequest;
+}): Promise<FoundryApplyCharacterAdvancementChoiceResponse> {
+  const { actor, classItem, descriptor, request } = params;
+  const sourceItemId = descriptor.sourceItem.id;
+
+  if (typeof actor.update !== 'function' || typeof actor.updateEmbeddedDocuments !== 'function') {
+    throw new Error(
+      `Actor "${actor.name ?? request.actorIdentifier}" does not support the updates required for size advancement.`
+    );
+  }
+
+  if (!sourceItemId) {
+    throw new Error(
+      `Advancement step "${descriptor.step.id}" is not attached to a stable owned item.`
+    );
+  }
+
+  const selectedSize = resolveSizeSelection({ descriptor, request });
+  const actorSystem = asRecord(actor.system);
+  const actorTraits = asRecord(actorSystem?.traits);
+  const previousSize = toStringValue(actorTraits?.size) ?? toStringValue(actorSystem?.size);
+  const actorUpdates = {
+    'system.traits.size': selectedSize,
+  };
+  const actorRollback =
+    previousSize !== undefined
+      ? { 'system.traits.size': previousSize }
+      : { 'system.traits.size': null };
+
+  const sourceItemUpdates = buildSizeAdvancementValueUpdate({
+    sourceItem: descriptor.sourceItem,
+    descriptor,
+    size: selectedSize,
+  });
+  const warnings: string[] = [];
+
+  await actor.update(actorUpdates);
+  try {
+    await actor.updateEmbeddedDocuments('Item', [
+      {
+        _id: sourceItemId,
+        'system.advancement': sourceItemUpdates,
+      },
+    ]);
+  } catch (error) {
+    try {
+      await actor.update(actorRollback);
+    } catch (rollbackError) {
+      warnings.push(
+        `Actor rollback failed after the size advancement update error: ${
+          rollbackError instanceof Error ? rollbackError.message : 'Unknown rollback error'
+        }`
+      );
+    }
+
+    throw error instanceof Error && warnings.length > 0
+      ? new Error(`${error.message} ${warnings.join(' ')}`)
+      : error;
+  }
+
+  return {
+    success: true,
+    system: 'dnd5e',
+    actorId: actor.id ?? '',
+    actorName: actor.name ?? request.actorIdentifier,
+    actorType: actor.type ?? 'unknown',
+    targetLevel: request.targetLevel,
+    stepId: descriptor.step.id,
+    stepType: descriptor.step.type,
+    stepTitle: descriptor.step.title,
+    choice: {
+      type: 'size',
+      size: selectedSize,
+    },
+    ...(classItem.id ? { classId: classItem.id } : {}),
+    ...(classItem.name ? { className: classItem.name } : {}),
+    ...(warnings.length > 0 ? { warnings } : {}),
+  };
+}
+
+function resolveTraitSelection(params: {
+  descriptor: AdvancementDescriptor;
+  request: FoundryApplyCharacterAdvancementChoiceRequest;
+}): string[] {
+  const { descriptor, request } = params;
+  if (request.choice.type !== 'trait') {
+    throw new Error(`Unsupported DnD5e trait choice type: ${request.choice.type}`);
+  }
+
+  const selected = Array.from(new Set(request.choice.selected));
+  if (selected.length === 0) {
+    throw new Error('Trait advancement requires at least one selected option.');
+  }
+
+  const configuredOptions = getTraitConfiguredOptions(descriptor.advancement);
+  if (configuredOptions.length > 0) {
+    const allowedIds = new Set(configuredOptions.map(option => option.id));
+    for (const entry of selected) {
+      if (!allowedIds.has(entry)) {
+        throw new Error(`Trait option "${entry}" is not valid for this advancement step.`);
+      }
+    }
+  }
+
+  const chooseCount = getTraitChoiceCount(descriptor.advancement);
+  if (chooseCount !== undefined && selected.length !== chooseCount) {
+    throw new Error(
+      `This trait advancement requires exactly ${chooseCount} selection(s), but ${selected.length} were provided.`
+    );
+  }
+
+  return selected;
+}
+
+async function applyTraitChoice(params: {
+  actor: ActorProgressionActorLike;
+  classItem: ActorProgressionItemLike;
+  descriptor: AdvancementDescriptor;
+  request: FoundryApplyCharacterAdvancementChoiceRequest;
+}): Promise<FoundryApplyCharacterAdvancementChoiceResponse> {
+  const { actor, classItem, descriptor, request } = params;
+  const sourceItemId = descriptor.sourceItem.id;
+
+  if (typeof actor.updateEmbeddedDocuments !== 'function') {
+    throw new Error(
+      `Actor "${actor.name ?? request.actorIdentifier}" does not support updateEmbeddedDocuments().`
+    );
+  }
+
+  if (!sourceItemId) {
+    throw new Error(
+      `Advancement step "${descriptor.step.id}" is not attached to a stable owned item.`
+    );
+  }
+
+  const selected = resolveTraitSelection({ descriptor, request });
+  const sourceItemUpdates = buildTraitAdvancementValueUpdate({
+    sourceItem: descriptor.sourceItem,
+    descriptor,
+    selected,
+  });
+
+  await actor.updateEmbeddedDocuments('Item', [
+    {
+      _id: sourceItemId,
+      'system.advancement': sourceItemUpdates,
+    },
+  ]);
+
+  return {
+    success: true,
+    system: 'dnd5e',
+    actorId: actor.id ?? '',
+    actorName: actor.name ?? request.actorIdentifier,
+    actorType: actor.type ?? 'unknown',
+    targetLevel: request.targetLevel,
+    stepId: descriptor.step.id,
+    stepType: descriptor.step.type,
+    stepTitle: descriptor.step.title,
+    choice: {
+      type: 'trait',
+      selected,
+    },
+    ...(classItem.id ? { classId: classItem.id } : {}),
+    ...(classItem.name ? { className: classItem.name } : {}),
+  };
+}
+
 export const dnd5eActorProgressionStrategy: ActorProgressionStrategy = {
   systemId: 'dnd5e',
   async previewCharacterProgression({
@@ -2129,6 +2577,24 @@ export const dnd5eActorProgressionStrategy: ActorProgressionStrategy = {
 
     if (lowerType === 'itemgrant') {
       return applyItemGrantChoice({
+        actor,
+        classItem,
+        descriptor,
+        request,
+      });
+    }
+
+    if (lowerType === 'size') {
+      return applySizeChoice({
+        actor,
+        classItem,
+        descriptor,
+        request,
+      });
+    }
+
+    if (lowerType === 'trait') {
+      return applyTraitChoice({
         actor,
         classItem,
         descriptor,

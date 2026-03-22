@@ -686,6 +686,166 @@ describe('CharacterTools', () => {
     });
   });
 
+  it('applies a DnD5e trait choice through the shared progression bridge', async () => {
+    const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
+      if (method === 'foundry-mcp-bridge.applyCharacterAdvancementChoice') {
+        expect(data).toEqual({
+          actorIdentifier: 'Laeral',
+          classIdentifier: 'Wizard',
+          targetLevel: 8,
+          stepId: 'trait-step',
+          choice: {
+            type: 'trait',
+            selected: ['arc', 'his'],
+          },
+        });
+        return Promise.resolve({
+          success: true,
+          system: 'dnd5e',
+          actorId: 'actor-3',
+          actorName: 'Laeral',
+          actorType: 'character',
+          targetLevel: 8,
+          stepId: 'trait-step',
+          stepType: 'Trait',
+          stepTitle: 'Bonus Proficiencies',
+          classId: 'class-wizard',
+          className: 'Wizard',
+          choice: {
+            type: 'trait',
+            selected: ['arc', 'his'],
+          },
+        });
+      }
+
+      if (method === 'foundry-mcp-bridge.previewCharacterProgression') {
+        return Promise.resolve({
+          system: 'dnd5e',
+          actorId: 'actor-3',
+          actorName: 'Laeral',
+          actorType: 'character',
+          classId: 'class-wizard',
+          className: 'Wizard',
+          currentLevel: 7,
+          targetLevel: 8,
+          safeToApplyDirectly: true,
+          pendingSteps: [],
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected query: ${method}`));
+    });
+
+    const tools = new CharacterTools({
+      foundryClient: { query } as unknown as FoundryClient,
+      logger: createLoggerStub(),
+    });
+
+    const result = (await tools.handleApplyCharacterAdvancementChoice({
+      characterIdentifier: 'Laeral',
+      classIdentifier: 'Wizard',
+      targetLevel: 8,
+      stepId: 'trait-step',
+      choice: {
+        type: 'trait',
+        selected: ['arc', 'his'],
+      },
+    })) as Record<string, unknown>;
+
+    expect(result).toMatchObject({
+      success: true,
+      safeToApplyDirectly: true,
+      step: {
+        id: 'trait-step',
+        type: 'Trait',
+      },
+      choice: {
+        type: 'trait',
+        selected: ['arc', 'his'],
+      },
+    });
+  });
+
+  it('applies a DnD5e size choice through the shared progression bridge', async () => {
+    const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
+      if (method === 'foundry-mcp-bridge.applyCharacterAdvancementChoice') {
+        expect(data).toEqual({
+          actorIdentifier: 'Laeral',
+          classIdentifier: 'Wizard',
+          targetLevel: 8,
+          stepId: 'size-step',
+          choice: {
+            type: 'size',
+            size: 'med',
+          },
+        });
+        return Promise.resolve({
+          success: true,
+          system: 'dnd5e',
+          actorId: 'actor-3',
+          actorName: 'Laeral',
+          actorType: 'character',
+          targetLevel: 8,
+          stepId: 'size-step',
+          stepType: 'Size',
+          stepTitle: 'Size',
+          classId: 'class-wizard',
+          className: 'Wizard',
+          choice: {
+            type: 'size',
+            size: 'med',
+          },
+        });
+      }
+
+      if (method === 'foundry-mcp-bridge.previewCharacterProgression') {
+        return Promise.resolve({
+          system: 'dnd5e',
+          actorId: 'actor-3',
+          actorName: 'Laeral',
+          actorType: 'character',
+          classId: 'class-wizard',
+          className: 'Wizard',
+          currentLevel: 7,
+          targetLevel: 8,
+          safeToApplyDirectly: true,
+          pendingSteps: [],
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected query: ${method}`));
+    });
+
+    const tools = new CharacterTools({
+      foundryClient: { query } as unknown as FoundryClient,
+      logger: createLoggerStub(),
+    });
+
+    const result = (await tools.handleApplyCharacterAdvancementChoice({
+      characterIdentifier: 'Laeral',
+      classIdentifier: 'Wizard',
+      targetLevel: 8,
+      stepId: 'size-step',
+      choice: {
+        type: 'size',
+        size: 'med',
+      },
+    })) as Record<string, unknown>;
+
+    expect(result).toMatchObject({
+      success: true,
+      safeToApplyDirectly: true,
+      step: {
+        id: 'size-step',
+        type: 'Size',
+      },
+      choice: {
+        type: 'size',
+        size: 'med',
+      },
+    });
+  });
+
   it('applies a DnD5e hit-point choice through the shared progression bridge', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
       if (method === 'foundry-mcp-bridge.applyCharacterAdvancementChoice') {
@@ -1678,6 +1838,187 @@ describe('CharacterTools', () => {
             itemUuids: ['Compendium.dnd5e.classfeatures.Item.evocation-savant'],
           },
           createdItemIds: ['item-feature-3'],
+        },
+      ],
+      updatedFields: ['system.levels'],
+    });
+  });
+
+  it('auto-runs safe DnD5e size steps before finalizing the class level update', async () => {
+    const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
+      if (method === 'foundry-mcp-bridge.getCharacterInfo') {
+        return Promise.resolve({
+          id: 'actor-8',
+          name: 'Laeral',
+          type: 'character',
+          system: {},
+          items: [
+            {
+              id: 'class-wizard',
+              name: 'Wizard',
+              type: 'class',
+              system: {
+                levels: 7,
+                advancement: [{ type: 'Size', level: 8 }],
+              },
+            },
+          ],
+          effects: [],
+        });
+      }
+
+      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+        return Promise.resolve({ system: 'dnd5e' });
+      }
+
+      if (method === 'foundry-mcp-bridge.previewCharacterProgression') {
+        const previewCallCount = query.mock.calls.filter(
+          ([calledMethod]) => calledMethod === 'foundry-mcp-bridge.previewCharacterProgression'
+        ).length;
+
+        if (previewCallCount <= 1) {
+          expect(data).toEqual({
+            actorIdentifier: 'Laeral',
+            classIdentifier: 'Wizard',
+            targetLevel: 8,
+          });
+
+          return Promise.resolve({
+            system: 'dnd5e',
+            actorId: 'actor-8',
+            actorName: 'Laeral',
+            actorType: 'character',
+            classId: 'class-wizard',
+            className: 'Wizard',
+            currentLevel: 7,
+            targetLevel: 8,
+            safeToApplyDirectly: false,
+            pendingSteps: [
+              {
+                id: 'size-step',
+                level: 8,
+                type: 'Size',
+                title: 'Size',
+                required: true,
+                choicesRequired: false,
+                autoApplySafe: true,
+                choiceDetails: {
+                  kind: 'size',
+                  optionQuerySupported: true,
+                  options: [
+                    {
+                      id: 'med',
+                      name: 'Medium',
+                      type: 'size',
+                      source: 'configured',
+                    },
+                  ],
+                },
+              },
+            ],
+          });
+        }
+
+        return Promise.resolve({
+          system: 'dnd5e',
+          actorId: 'actor-8',
+          actorName: 'Laeral',
+          actorType: 'character',
+          classId: 'class-wizard',
+          className: 'Wizard',
+          currentLevel: 7,
+          targetLevel: 8,
+          safeToApplyDirectly: true,
+          pendingSteps: [],
+        });
+      }
+
+      if (method === 'foundry-mcp-bridge.applyCharacterAdvancementChoice') {
+        expect(data).toEqual({
+          actorIdentifier: 'Laeral',
+          classIdentifier: 'Wizard',
+          targetLevel: 8,
+          stepId: 'size-step',
+          choice: {
+            type: 'size',
+            size: 'med',
+          },
+        });
+        return Promise.resolve({
+          success: true,
+          system: 'dnd5e',
+          actorId: 'actor-8',
+          actorName: 'Laeral',
+          actorType: 'character',
+          targetLevel: 8,
+          stepId: 'size-step',
+          stepType: 'Size',
+          stepTitle: 'Size',
+          classId: 'class-wizard',
+          className: 'Wizard',
+          choice: {
+            type: 'size',
+            size: 'med',
+          },
+        });
+      }
+
+      if (method === 'foundry-mcp-bridge.updateActorEmbeddedItem') {
+        expect(data).toEqual({
+          actorIdentifier: 'Laeral',
+          itemIdentifier: 'class-wizard',
+          itemType: 'class',
+          updates: {
+            'system.levels': 8,
+          },
+          reason: 'character progression update',
+        });
+        return Promise.resolve({
+          success: true,
+          actorId: 'actor-8',
+          actorName: 'Laeral',
+          itemId: 'class-wizard',
+          itemName: 'Wizard',
+          itemType: 'class',
+          appliedUpdates: {
+            'system.levels': 8,
+          },
+          updatedFields: ['system.levels'],
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected query: ${method}`));
+    });
+
+    const registry = new SystemRegistry();
+    registry.register(new DnD5eAdapter());
+
+    const tools = new CharacterTools({
+      foundryClient: { query } as unknown as FoundryClient,
+      logger: createLoggerStub(),
+      systemRegistry: registry,
+    });
+
+    const result = (await tools.handleUpdateCharacterProgression({
+      characterIdentifier: 'Laeral',
+      classIdentifier: 'Wizard',
+      targetLevel: 8,
+    })) as Record<string, unknown>;
+
+    expect(result).toMatchObject({
+      success: true,
+      character: {
+        id: 'actor-8',
+        name: 'Laeral',
+      },
+      autoAppliedAdvancements: [
+        {
+          stepId: 'size-step',
+          stepType: 'Size',
+          choice: {
+            type: 'size',
+            size: 'med',
+          },
         },
       ],
       updatedFields: ['system.levels'],
