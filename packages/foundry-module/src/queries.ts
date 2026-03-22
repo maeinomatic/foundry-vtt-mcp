@@ -271,7 +271,7 @@ export class QueryHandlers {
       // SECURITY: Silent GM validation
       const gmCheck = this.validateGMAccess();
       if (!gmCheck.allowed) {
-        return { error: 'Access denied', success: false };
+        return Promise.resolve({ error: 'Access denied', success: false });
       }
 
       this.dataAccess.validateFoundryState();
@@ -281,7 +281,8 @@ export class QueryHandlers {
         throw new Error('characterName or characterId is required');
       }
 
-      return await this.dataAccess.getCharacterInfo(identifier);
+      const characterInfo = await this.dataAccess.getCharacterInfo(identifier);
+      return characterInfo;
     } catch (error) {
       throw new Error(
         `Failed to get character info: ${error instanceof Error ? error.message : 'Unknown error'}`
@@ -297,7 +298,7 @@ export class QueryHandlers {
       // SECURITY: Silent GM validation
       const gmCheck = this.validateGMAccess();
       if (!gmCheck.allowed) {
-        return { error: 'Access denied', success: false };
+        return Promise.resolve({ error: 'Access denied', success: false });
       }
 
       this.dataAccess.validateFoundryState();
@@ -336,7 +337,7 @@ export class QueryHandlers {
       // SECURITY: Silent GM validation
       const gmCheck = this.validateGMAccess();
       if (!gmCheck.allowed) {
-        return { error: 'Access denied', success: false };
+        return Promise.resolve({ error: 'Access denied', success: false });
       }
 
       this.dataAccess.validateFoundryState();
@@ -373,7 +374,7 @@ export class QueryHandlers {
       // SECURITY: Silent GM validation
       const gmCheck = this.validateGMAccess();
       if (!gmCheck.allowed) {
-        return { error: 'Access denied', success: false };
+        return Promise.resolve({ error: 'Access denied', success: false });
       }
 
       this.dataAccess.validateFoundryState();
@@ -399,7 +400,7 @@ export class QueryHandlers {
       // SECURITY: Silent GM validation
       const gmCheck = this.validateGMAccess();
       if (!gmCheck.allowed) {
-        return { error: 'Access denied', success: false };
+        return Promise.resolve({ error: 'Access denied', success: false });
       }
 
       this.dataAccess.validateFoundryState();
@@ -419,7 +420,7 @@ export class QueryHandlers {
       // SECURITY: Silent GM validation
       const gmCheck = this.validateGMAccess();
       if (!gmCheck.allowed) {
-        return { error: 'Access denied', success: false };
+        return Promise.resolve({ error: 'Access denied', success: false });
       }
 
       this.dataAccess.validateFoundryState();
@@ -1434,12 +1435,12 @@ export class QueryHandlers {
   /**
    * Handle get token details request
    */
-  private async handleGetTokenDetails(data: { tokenId: string }): Promise<unknown> {
+  private handleGetTokenDetails(data: { tokenId: string }): Promise<unknown> {
     try {
       // SECURITY: Silent GM validation
       const gmCheck = this.validateGMAccess();
       if (!gmCheck.allowed) {
-        return { error: 'Access denied', success: false };
+        return Promise.resolve({ error: 'Access denied', success: false });
       }
 
       this.dataAccess.validateFoundryState();
@@ -1448,8 +1449,8 @@ export class QueryHandlers {
         throw new Error('tokenId is required');
       }
 
-      const tokenDetails = (await this.dataAccess.getTokenDetails(data)) as unknown;
-      return tokenDetails;
+      const tokenDetails = this.dataAccess.getTokenDetails(data) as unknown;
+      return Promise.resolve(tokenDetails);
     } catch (error) {
       throw new Error(
         `Failed to get token details: ${error instanceof Error ? error.message : 'Unknown error'}`
@@ -1496,18 +1497,18 @@ export class QueryHandlers {
   /**
    * Handle get available conditions request
    */
-  private async handleGetAvailableConditions(): Promise<unknown> {
+  private handleGetAvailableConditions(): Promise<unknown> {
     try {
       // SECURITY: Silent GM validation
       const gmCheck = this.validateGMAccess();
       if (!gmCheck.allowed) {
-        return { error: 'Access denied', success: false };
+        return Promise.resolve({ error: 'Access denied', success: false });
       }
 
       this.dataAccess.validateFoundryState();
 
-      const conditions = (await this.dataAccess.getAvailableConditions()) as unknown;
-      return conditions;
+      const conditions = this.dataAccess.getAvailableConditions() as unknown;
+      return Promise.resolve(conditions);
     } catch (error) {
       throw new Error(
         `Failed to get available conditions: ${error instanceof Error ? error.message : 'Unknown error'}`
