@@ -1166,4 +1166,521 @@ describe('CharacterTools', () => {
       updatedFields: ['system.levels'],
     });
   });
+
+  it('uses explicit advancement selections during update-character-progression before finalizing', async () => {
+    const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
+      if (method === 'foundry-mcp-bridge.getCharacterInfo') {
+        return Promise.resolve({
+          id: 'actor-6',
+          name: 'Laeral',
+          type: 'character',
+          system: {},
+          items: [
+            {
+              id: 'class-wizard',
+              name: 'Wizard',
+              type: 'class',
+              system: {
+                levels: 1,
+                advancement: [
+                  { type: 'Subclass', level: 2 },
+                  { type: 'HitPoints', level: 2 },
+                ],
+              },
+            },
+          ],
+          effects: [],
+        });
+      }
+
+      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+        return Promise.resolve({ system: 'dnd5e' });
+      }
+
+      if (method === 'foundry-mcp-bridge.previewCharacterProgression') {
+        const previewCallCount = query.mock.calls.filter(
+          ([calledMethod]) => calledMethod === 'foundry-mcp-bridge.previewCharacterProgression'
+        ).length;
+
+        if (previewCallCount <= 1) {
+          return Promise.resolve({
+            system: 'dnd5e',
+            actorId: 'actor-6',
+            actorName: 'Laeral',
+            actorType: 'character',
+            classId: 'class-wizard',
+            className: 'Wizard',
+            currentLevel: 1,
+            targetLevel: 2,
+            safeToApplyDirectly: false,
+            pendingSteps: [
+              {
+                id: 'subclass-step',
+                level: 2,
+                type: 'Subclass',
+                title: 'Arcane Tradition',
+                required: true,
+                choicesRequired: true,
+                autoApplySafe: false,
+              },
+              {
+                id: 'hp-step',
+                level: 2,
+                type: 'HitPoints',
+                title: 'Hit Points',
+                required: true,
+                choicesRequired: true,
+                autoApplySafe: false,
+              },
+            ],
+          });
+        }
+
+        if (previewCallCount === 2) {
+          return Promise.resolve({
+            system: 'dnd5e',
+            actorId: 'actor-6',
+            actorName: 'Laeral',
+            actorType: 'character',
+            classId: 'class-wizard',
+            className: 'Wizard',
+            currentLevel: 1,
+            targetLevel: 2,
+            safeToApplyDirectly: false,
+            pendingSteps: [
+              {
+                id: 'hp-step',
+                level: 2,
+                type: 'HitPoints',
+                title: 'Hit Points',
+                required: true,
+                choicesRequired: true,
+                autoApplySafe: false,
+              },
+            ],
+          });
+        }
+
+        return Promise.resolve({
+          system: 'dnd5e',
+          actorId: 'actor-6',
+          actorName: 'Laeral',
+          actorType: 'character',
+          classId: 'class-wizard',
+          className: 'Wizard',
+          currentLevel: 1,
+          targetLevel: 2,
+          safeToApplyDirectly: true,
+          pendingSteps: [],
+        });
+      }
+
+      if (method === 'foundry-mcp-bridge.applyCharacterAdvancementChoice') {
+        const applyCallCount = query.mock.calls.filter(
+          ([calledMethod]) => calledMethod === 'foundry-mcp-bridge.applyCharacterAdvancementChoice'
+        ).length;
+
+        if (applyCallCount === 1) {
+          expect(data).toEqual({
+            actorIdentifier: 'Laeral',
+            classIdentifier: 'Wizard',
+            targetLevel: 2,
+            stepId: 'subclass-step',
+            choice: {
+              type: 'subclass',
+              subclassUuid: 'Compendium.dnd5e.subclasses.Item.evocation',
+            },
+          });
+          return Promise.resolve({
+            success: true,
+            system: 'dnd5e',
+            actorId: 'actor-6',
+            actorName: 'Laeral',
+            actorType: 'character',
+            targetLevel: 2,
+            stepId: 'subclass-step',
+            stepType: 'Subclass',
+            stepTitle: 'Arcane Tradition',
+            classId: 'class-wizard',
+            className: 'Wizard',
+            choice: {
+              type: 'subclass',
+              subclassUuid: 'Compendium.dnd5e.subclasses.Item.evocation',
+            },
+            createdItemIds: ['item-subclass-2'],
+          });
+        }
+
+        expect(data).toEqual({
+          actorIdentifier: 'Laeral',
+          classIdentifier: 'Wizard',
+          targetLevel: 2,
+          stepId: 'hp-step',
+          choice: {
+            type: 'hit-points',
+            mode: 'average',
+          },
+        });
+        return Promise.resolve({
+          success: true,
+          system: 'dnd5e',
+          actorId: 'actor-6',
+          actorName: 'Laeral',
+          actorType: 'character',
+          targetLevel: 2,
+          stepId: 'hp-step',
+          stepType: 'HitPoints',
+          stepTitle: 'Hit Points',
+          classId: 'class-wizard',
+          className: 'Wizard',
+          choice: {
+            type: 'hit-points',
+            mode: 'average',
+            totalHitPointGain: 6,
+            constitutionModifier: 2,
+          },
+        });
+      }
+
+      if (method === 'foundry-mcp-bridge.updateActorEmbeddedItem') {
+        return Promise.resolve({
+          success: true,
+          actorId: 'actor-6',
+          actorName: 'Laeral',
+          itemId: 'class-wizard',
+          itemName: 'Wizard',
+          itemType: 'class',
+          appliedUpdates: {
+            'system.levels': 2,
+          },
+          updatedFields: ['system.levels'],
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected query: ${method}`));
+    });
+
+    const registry = new SystemRegistry();
+    registry.register(new DnD5eAdapter());
+
+    const tools = new CharacterTools({
+      foundryClient: { query } as unknown as FoundryClient,
+      logger: createLoggerStub(),
+      systemRegistry: registry,
+    });
+
+    const result = (await tools.handleUpdateCharacterProgression({
+      characterIdentifier: 'Laeral',
+      classIdentifier: 'Wizard',
+      targetLevel: 2,
+      advancementSelections: [
+        {
+          stepType: 'Subclass',
+          choice: {
+            type: 'subclass',
+            subclassUuid: 'Compendium.dnd5e.subclasses.Item.evocation',
+          },
+        },
+        {
+          stepType: 'HitPoints',
+          choice: {
+            type: 'hit-points',
+            mode: 'average',
+          },
+        },
+      ],
+    })) as Record<string, unknown>;
+
+    expect(result).toMatchObject({
+      success: true,
+      autoAppliedAdvancements: [
+        {
+          stepId: 'subclass-step',
+          stepType: 'Subclass',
+        },
+        {
+          stepId: 'hp-step',
+          stepType: 'HitPoints',
+        },
+      ],
+      updatedFields: ['system.levels'],
+    });
+  });
+
+  it('fails cleanly when update-character-progression receives a selection that does not exist for the level-up', async () => {
+    const query = vi.fn().mockImplementation((method: string, _data?: unknown) => {
+      if (method === 'foundry-mcp-bridge.getCharacterInfo') {
+        return Promise.resolve({
+          id: 'actor-7',
+          name: 'Laeral',
+          type: 'character',
+          system: {},
+          items: [
+            {
+              id: 'class-wizard',
+              name: 'Wizard',
+              type: 'class',
+              system: {
+                levels: 1,
+                advancement: [{ type: 'Subclass', level: 2 }],
+              },
+            },
+          ],
+          effects: [],
+        });
+      }
+
+      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+        return Promise.resolve({ system: 'dnd5e' });
+      }
+
+      if (method === 'foundry-mcp-bridge.previewCharacterProgression') {
+        return Promise.resolve({
+          system: 'dnd5e',
+          actorId: 'actor-7',
+          actorName: 'Laeral',
+          actorType: 'character',
+          classId: 'class-wizard',
+          className: 'Wizard',
+          currentLevel: 1,
+          targetLevel: 2,
+          safeToApplyDirectly: false,
+          pendingSteps: [
+            {
+              id: 'subclass-step',
+              level: 2,
+              type: 'Subclass',
+              title: 'Arcane Tradition',
+              required: true,
+              choicesRequired: true,
+              autoApplySafe: false,
+            },
+          ],
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected query: ${method}`));
+    });
+
+    const registry = new SystemRegistry();
+    registry.register(new DnD5eAdapter());
+
+    const tools = new CharacterTools({
+      foundryClient: { query } as unknown as FoundryClient,
+      logger: createLoggerStub(),
+      systemRegistry: registry,
+    });
+
+    await expect(
+      tools.handleUpdateCharacterProgression({
+        characterIdentifier: 'Laeral',
+        classIdentifier: 'Wizard',
+        targetLevel: 2,
+        advancementSelections: [
+          {
+            stepType: 'AbilityScoreImprovement',
+            choice: {
+              type: 'ability-score-improvement',
+              mode: 'feat',
+              featUuid: 'Compendium.dnd5e.feats.Item.war-caster',
+            },
+          },
+        ],
+      })
+    ).rejects.toThrow(
+      'The provided advancement selections did not match the actual pending steps for this level-up'
+    );
+  });
+
+  it('auto-runs safe DnD5e item-grant steps before finalizing the class level update', async () => {
+    const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
+      if (method === 'foundry-mcp-bridge.getCharacterInfo') {
+        return Promise.resolve({
+          id: 'actor-5',
+          name: 'Laeral',
+          type: 'character',
+          system: {},
+          items: [
+            {
+              id: 'class-wizard',
+              name: 'Wizard',
+              type: 'class',
+              system: {
+                levels: 7,
+                advancement: [{ type: 'ItemGrant', level: 8 }],
+              },
+            },
+          ],
+          effects: [],
+        });
+      }
+
+      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+        return Promise.resolve({ system: 'dnd5e' });
+      }
+
+      if (method === 'foundry-mcp-bridge.previewCharacterProgression') {
+        expect(data).toEqual({
+          actorIdentifier: 'Laeral',
+          classIdentifier: 'Wizard',
+          targetLevel: 8,
+        });
+
+        const previewCallCount = query.mock.calls.filter(
+          ([calledMethod]) => calledMethod === 'foundry-mcp-bridge.previewCharacterProgression'
+        ).length;
+
+        if (previewCallCount <= 1) {
+          return Promise.resolve({
+            system: 'dnd5e',
+            actorId: 'actor-5',
+            actorName: 'Laeral',
+            actorType: 'character',
+            classId: 'class-wizard',
+            className: 'Wizard',
+            currentLevel: 7,
+            targetLevel: 8,
+            safeToApplyDirectly: false,
+            pendingSteps: [
+              {
+                id: 'class-wizard:ItemGrant:8:0',
+                level: 8,
+                type: 'ItemGrant',
+                title: 'Grant Feature',
+                required: true,
+                choicesRequired: false,
+                autoApplySafe: true,
+                choiceDetails: {
+                  kind: 'grant-items',
+                  defaultSelectedOptionIds: ['evocation-savant'],
+                  options: [
+                    {
+                      id: 'evocation-savant',
+                      name: 'Evocation Savant',
+                      type: 'feat',
+                      source: 'configured',
+                      uuid: 'Compendium.dnd5e.classfeatures.Item.evocation-savant',
+                      selectedByDefault: true,
+                    },
+                  ],
+                },
+              },
+            ],
+          });
+        }
+
+        return Promise.resolve({
+          system: 'dnd5e',
+          actorId: 'actor-5',
+          actorName: 'Laeral',
+          actorType: 'character',
+          classId: 'class-wizard',
+          className: 'Wizard',
+          currentLevel: 7,
+          targetLevel: 8,
+          safeToApplyDirectly: true,
+          pendingSteps: [],
+        });
+      }
+
+      if (method === 'foundry-mcp-bridge.applyCharacterAdvancementChoice') {
+        expect(data).toEqual({
+          actorIdentifier: 'Laeral',
+          classIdentifier: 'Wizard',
+          targetLevel: 8,
+          stepId: 'class-wizard:ItemGrant:8:0',
+          choice: {
+            type: 'item-grant',
+            itemUuids: ['Compendium.dnd5e.classfeatures.Item.evocation-savant'],
+          },
+        });
+        return Promise.resolve({
+          success: true,
+          system: 'dnd5e',
+          actorId: 'actor-5',
+          actorName: 'Laeral',
+          actorType: 'character',
+          targetLevel: 8,
+          stepId: 'class-wizard:ItemGrant:8:0',
+          stepType: 'ItemGrant',
+          stepTitle: 'Grant Feature',
+          classId: 'class-wizard',
+          className: 'Wizard',
+          choice: {
+            type: 'item-grant',
+            itemUuids: ['Compendium.dnd5e.classfeatures.Item.evocation-savant'],
+          },
+          createdItemIds: ['item-feature-3'],
+        });
+      }
+
+      if (method === 'foundry-mcp-bridge.updateActorEmbeddedItem') {
+        expect(data).toEqual({
+          actorIdentifier: 'Laeral',
+          itemIdentifier: 'class-wizard',
+          itemType: 'class',
+          updates: {
+            'system.levels': 8,
+          },
+          reason: 'character progression update',
+        });
+        return Promise.resolve({
+          success: true,
+          actorId: 'actor-5',
+          actorName: 'Laeral',
+          itemId: 'class-wizard',
+          itemName: 'Wizard',
+          itemType: 'class',
+          appliedUpdates: {
+            'system.levels': 8,
+          },
+          updatedFields: ['system.levels'],
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected query: ${method}`));
+    });
+
+    const registry = new SystemRegistry();
+    registry.register(new DnD5eAdapter());
+
+    const tools = new CharacterTools({
+      foundryClient: { query } as unknown as FoundryClient,
+      logger: createLoggerStub(),
+      systemRegistry: registry,
+    });
+
+    const result = (await tools.handleUpdateCharacterProgression({
+      characterIdentifier: 'Laeral',
+      classIdentifier: 'Wizard',
+      targetLevel: 8,
+    })) as Record<string, unknown>;
+
+    expect(result).toMatchObject({
+      success: true,
+      character: {
+        id: 'actor-5',
+        name: 'Laeral',
+      },
+      progression: {
+        classId: 'class-wizard',
+        className: 'Wizard',
+        previousLevel: 7,
+        targetLevel: 8,
+        mode: 'set-class-levels',
+      },
+      autoAppliedAdvancements: [
+        {
+          stepId: 'class-wizard:ItemGrant:8:0',
+          stepType: 'ItemGrant',
+          choice: {
+            type: 'item-grant',
+            itemUuids: ['Compendium.dnd5e.classfeatures.Item.evocation-savant'],
+          },
+          createdItemIds: ['item-feature-3'],
+        },
+      ],
+      updatedFields: ['system.levels'],
+    });
+  });
 });
