@@ -1,6 +1,6 @@
 {
   "name": "@maeinomatic/foundry-mcp-server",
-  "version": "0.6.3",
+  "version": "0.6.4",
   "description": "MCP server for the independently maintained Foundry VTT MCP bridge",
   "type": "module",
   "main": "dist/index.js",
