@@ -104,11 +104,13 @@ export class FoundryClient {
     this.logger = logger.child({ component: 'FoundryClient' });
 
     // Initialize the socket connector
-    this.connector = new FoundryConnector({
+    const connectorOptions = {
       config: this.config,
       logger: this.logger,
-      onConnectionStateChange,
-    });
+      ...(onConnectionStateChange ? { onConnectionStateChange } : {}),
+    };
+
+    this.connector = new FoundryConnector(connectorOptions);
   }
 
   async connect(): Promise<void> {
