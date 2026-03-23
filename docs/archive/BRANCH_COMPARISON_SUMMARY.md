@@ -241,5 +241,6 @@ v0.6.3 - Stable Release with Token Manipulation
 **See Also:**
 
 - `QUICK_START.md` - Executive summary
-- `TOOL_INVENTORY.md` - Complete tool listing
+- `TOOL_INVENTORY_BASELINE_2026-03-23.md` - Archived inventory snapshot
+- `MCP_TOOL_CATALOG.md` - Current live tool catalog
 - `MIGRATION_PLAN.md` - Step-by-step migration guide

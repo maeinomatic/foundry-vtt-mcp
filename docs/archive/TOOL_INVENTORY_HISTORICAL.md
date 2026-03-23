@@ -1,6 +1,8 @@
 # Tool Inventory Historical Notes
 
-This file is the archive landing page for the old branch-comparison material that used to live at the bottom of `docs/process/TOOL_INVENTORY.md`.
+This file is the archive landing page for the older branch-comparison material
+and historical inventory context that used to live inside
+`docs/process/TOOL_INVENTORY.md`.
 
 That older material was useful during the migration period, but it is intentionally no longer kept in the live planning document because it became stale as current runtime capability kept moving forward.
 
@@ -25,7 +27,13 @@ The following historical sections were removed from the live tool inventory and 
 - [IMPLEMENTATION_ORDER.md](./IMPLEMENTATION_ORDER.md)
   Historical sequencing for the earlier migration work.
 
-## How To Read This Alongside The Live Inventory
+## How To Read This Alongside The Live Docs
 
-- Use [TOOL_INVENTORY.md](../process/TOOL_INVENTORY.md) for the current runtime picture and next planned work.
+- Use [MCP_TOOL_CATALOG.md](../process/MCP_TOOL_CATALOG.md) for the current
+  runtime picture.
+- Use [WORKFLOW_ROADMAP.md](../process/WORKFLOW_ROADMAP.md) for the active
+  next-phase plan.
+- Use [TOOL_INVENTORY_BASELINE_2026-03-23.md](./TOOL_INVENTORY_BASELINE_2026-03-23.md)
+  if you need the completed inventory snapshot that existed immediately before
+  the live docs were split.
 - Use the archive files above only when you need historical reasoning about older branch states or migration decisions.

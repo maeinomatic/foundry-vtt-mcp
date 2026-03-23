@@ -275,7 +275,8 @@ Use these only for background context:
 1. `docs/archive/MIGRATION_PLAN.md`
 2. `docs/archive/MISSING_TOOLS.md`
 3. `docs/archive/RISK_ANALYSIS.md`
-4. `TOOL_INVENTORY.md` is not archived and remains active, but includes historical sections.
+4. `docs/archive/TOOL_INVENTORY_BASELINE_2026-03-23.md`
+5. `docs/archive/TOOL_INVENTORY_HISTORICAL.md`
 
 ## Tracking Template
 

@@ -34,7 +34,7 @@ This document provides a comprehensive, step-by-step migration plan for bringing
 ### Documentation Review
 
 - [ ] Read MISSING_TOOLS.md completely
-- [ ] Review TOOL_INVENTORY.md for context
+- [ ] Review TOOL_INVENTORY_BASELINE_2026-03-23.md and MCP_TOOL_CATALOG.md for context
 - [ ] Check DOCUMENTATION_COMPARISON.md for doc updates needed
 - [ ] Review broken branch commit history: `git log claude/update-docs-v0.6.2-01Kba6k5nEDbUNjHDrkhUniB`
 
