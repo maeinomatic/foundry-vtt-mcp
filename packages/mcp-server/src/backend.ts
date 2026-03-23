@@ -1628,6 +1628,31 @@ async function startBackend(): Promise<void> {
 
                     break;
 
+                  case 'update-character':
+                    result = await characterTools.handleUpdateCharacter(args);
+
+                    break;
+
+                  case 'update-character-resources':
+                    result = await characterTools.handleUpdateCharacterResources(args);
+
+                    break;
+
+                  case 'set-character-ability-scores':
+                    result = await characterTools.handleSetCharacterAbilityScores(args);
+
+                    break;
+
+                  case 'set-character-skill-proficiencies':
+                    result = await characterTools.handleSetCharacterSkillProficiencies(args);
+
+                    break;
+
+                  case 'batch-update-character-items':
+                    result = await characterTools.handleBatchUpdateCharacterItems(args);
+
+                    break;
+
                   case 'add-character-item':
                     result = await characterTools.handleAddCharacterItem(args);
 
@@ -1665,6 +1690,11 @@ async function startBackend(): Promise<void> {
 
                   case 'set-dnd5e-spell-slots':
                     result = await characterTools.handleSetDnD5eSpellSlots(args);
+
+                    break;
+
+                  case 'set-dnd5e-proficiencies':
+                    result = await characterTools.handleSetDnD5eProficiencies(args);
 
                     break;
 

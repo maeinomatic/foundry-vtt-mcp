@@ -39,7 +39,12 @@ import type {
 import { Logger } from '../logger.js';
 import { SystemRegistry } from '../systems/system-registry.js';
 import type {
+  CharacterAbilityScoreUpdateRequest,
+  CharacterResourceUpdateRequest,
+  CharacterSkillProficiencyUpdateRequest,
+  CharacterSystemProficiencyUpdateRequest,
   CharacterProgressionUpdateRequest,
+  PreparedCharacterWriteMutation,
   PreparedCharacterProgressionUpdate,
   SystemAdapter,
   SystemCharacterAction,
@@ -290,6 +295,78 @@ export class CharacterTools {
     return onFallback();
   }
 
+  private async getRequiredSystemAdapter(
+    capability: string
+  ): Promise<{ adapter: SystemAdapter; system: GameSystem }> {
+    if (!this.systemRegistry) {
+      throw new Error(
+        `UNSUPPORTED_CAPABILITY: No system adapter registry is available for ${capability}.`
+      );
+    }
+
+    const gameSystem = await this.getGameSystem();
+    const adapter = this.systemRegistry.getAdapter(gameSystem);
+    if (!adapter) {
+      throw new Error(
+        `UNSUPPORTED_CAPABILITY: No system adapter is available for ${capability} in this world.`
+      );
+    }
+
+    return {
+      adapter,
+      system: gameSystem,
+    };
+  }
+
+  private async getCharacterData(identifier: string): Promise<CharacterInfoResponse> {
+    return this.foundryClient.query<CharacterInfoResponse>('foundry-mcp-bridge.getCharacterInfo', {
+      identifier,
+    });
+  }
+
+  private async applyPreparedWriteMutation(params: {
+    actorIdentifier: string;
+    mutation: PreparedCharacterWriteMutation;
+    reason?: string;
+  }): Promise<{
+    actorResult: FoundryUpdateActorResponse | null;
+    itemResult: FoundryBatchUpdateActorEmbeddedItemsResponse | null;
+    warnings: string[];
+  }> {
+    const { actorIdentifier, mutation, reason } = params;
+    const warnings = [...(mutation.warnings ?? [])];
+
+    const actorResult =
+      mutation.actorUpdates && Object.keys(mutation.actorUpdates).length > 0
+        ? await this.foundryClient.query<FoundryUpdateActorResponse>(
+            'foundry-mcp-bridge.updateActor',
+            {
+              identifier: actorIdentifier,
+              updates: mutation.actorUpdates,
+              ...(reason !== undefined ? { reason } : {}),
+            }
+          )
+        : null;
+
+    const itemResult =
+      mutation.embeddedItemUpdates && mutation.embeddedItemUpdates.length > 0
+        ? await this.foundryClient.query<FoundryBatchUpdateActorEmbeddedItemsResponse>(
+            'foundry-mcp-bridge.batchUpdateActorEmbeddedItems',
+            {
+              actorIdentifier,
+              updates: mutation.embeddedItemUpdates,
+              ...(reason !== undefined ? { reason } : {}),
+            }
+          )
+        : null;
+
+    return {
+      actorResult,
+      itemResult,
+      warnings,
+    };
+  }
+
   private toRecord(value: unknown): UnknownRecord | undefined {
     if (!value || typeof value !== 'object' || Array.isArray(value)) {
       return undefined;
@@ -517,6 +594,179 @@ export class CharacterTools {
             },
           },
           required: ['characterIdentifier'],
+        },
+      },
+      {
+        name: 'update-character',
+        description:
+          'Apply a direct audited actor update payload to a character. Use this for stable actor fields like name, biography, notes, profile data, and other public Document.update-compatible changes.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            actorIdentifier: {
+              type: 'string',
+              description: 'Character name or ID to update',
+            },
+            updates: {
+              type: 'object',
+              description: 'Differential actor update payload passed to Document.update',
+            },
+            reason: {
+              type: 'string',
+              description: 'Optional audit reason for the change',
+            },
+          },
+          required: ['actorIdentifier', 'updates'],
+        },
+      },
+      {
+        name: 'update-character-resources',
+        description:
+          'Update common character resources using a safer typed surface. Supports hit points generically, plus DnD5e-specific resources like inspiration, exhaustion, death saves, currency, and class hit dice.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            actorIdentifier: {
+              type: 'string',
+              description: 'Character name or ID',
+            },
+            hitPoints: {
+              type: 'object',
+              properties: {
+                current: { type: 'number' },
+                max: { type: 'number' },
+                temp: { type: 'number' },
+              },
+              description: 'Optional hit point updates',
+            },
+            inspiration: {
+              type: 'boolean',
+              description: 'DnD5e only: whether the actor currently has inspiration',
+            },
+            exhaustion: {
+              type: 'number',
+              description: 'DnD5e only: exhaustion level',
+            },
+            deathSaves: {
+              type: 'object',
+              properties: {
+                success: { type: 'number' },
+                failure: { type: 'number' },
+              },
+              description: 'DnD5e only: death save success and failure counters',
+            },
+            currency: {
+              type: 'object',
+              description:
+                'DnD5e only: currency updates keyed by denomination, for example { gp: 120, sp: 5 }',
+            },
+            hitDice: {
+              type: 'array',
+              description:
+                'DnD5e only: optional per-class hit dice usage updates, keyed by owned class item name or ID',
+              items: {
+                type: 'object',
+                properties: {
+                  classIdentifier: { type: 'string' },
+                  used: { type: 'number' },
+                },
+                required: ['classIdentifier', 'used'],
+              },
+            },
+            reason: {
+              type: 'string',
+              description: 'Optional audit reason for the change',
+            },
+          },
+          required: ['actorIdentifier'],
+        },
+      },
+      {
+        name: 'set-character-ability-scores',
+        description:
+          'Set base character ability scores using system-aware actor paths. Currently supports DnD5e and PF2e directly.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            actorIdentifier: {
+              type: 'string',
+              description: 'Character name or ID',
+            },
+            scores: {
+              type: 'object',
+              description:
+                'Ability score assignments keyed by ability slug, for example { str: 18, dex: 14 }',
+            },
+            reason: {
+              type: 'string',
+              description: 'Optional audit reason for the change',
+            },
+          },
+          required: ['actorIdentifier', 'scores'],
+        },
+      },
+      {
+        name: 'set-character-skill-proficiencies',
+        description:
+          'Set character skill proficiency values using system-aware actor paths. DnD5e uses the standard proficiency multiplier field, while PF2e uses rank values.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            actorIdentifier: {
+              type: 'string',
+              description: 'Character name or ID',
+            },
+            skills: {
+              type: 'array',
+              description:
+                'Skill proficiency updates, for example [{ skill: "acr", proficiency: 1 }] or PF2e ranks [{ skill: "acrobatics", proficiency: 2 }]',
+              items: {
+                type: 'object',
+                properties: {
+                  skill: { type: 'string' },
+                  proficiency: { type: 'number' },
+                },
+                required: ['skill', 'proficiency'],
+              },
+            },
+            reason: {
+              type: 'string',
+              description: 'Optional audit reason for the change',
+            },
+          },
+          required: ['actorIdentifier', 'skills'],
+        },
+      },
+      {
+        name: 'batch-update-character-items',
+        description:
+          'Apply multiple owned item updates to a character in one audited batch. Useful when a rebuild or rest workflow needs to touch several embedded items together.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            actorIdentifier: {
+              type: 'string',
+              description: 'Character name or ID',
+            },
+            updates: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  itemIdentifier: { type: 'string' },
+                  itemType: { type: 'string' },
+                  updates: { type: 'object' },
+                },
+                required: ['itemIdentifier', 'updates'],
+              },
+              description: 'Owned item updates to apply in one batch',
+            },
+            reason: {
+              type: 'string',
+              description: 'Optional audit reason for the change',
+            },
+          },
+          required: ['actorIdentifier', 'updates'],
         },
       },
       {
@@ -778,6 +1028,83 @@ export class CharacterTools {
         },
       },
       {
+        name: 'set-dnd5e-proficiencies',
+        description:
+          'DnD5e only: set actor proficiency collections such as languages, weapon proficiencies, armor proficiencies, tool proficiencies, and saving throw proficiencies.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            actorIdentifier: {
+              type: 'string',
+              description: 'Character name or ID',
+            },
+            languages: {
+              type: 'object',
+              properties: {
+                values: {
+                  type: 'array',
+                  items: { type: 'string' },
+                },
+                custom: {
+                  type: 'string',
+                },
+              },
+              description: 'Replacement language proficiency values and optional custom text',
+            },
+            weaponProficiencies: {
+              type: 'object',
+              properties: {
+                values: {
+                  type: 'array',
+                  items: { type: 'string' },
+                },
+                custom: {
+                  type: 'string',
+                },
+              },
+              description: 'Replacement weapon proficiency values and optional custom text',
+            },
+            armorProficiencies: {
+              type: 'object',
+              properties: {
+                values: {
+                  type: 'array',
+                  items: { type: 'string' },
+                },
+                custom: {
+                  type: 'string',
+                },
+              },
+              description: 'Replacement armor proficiency values and optional custom text',
+            },
+            toolProficiencies: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  tool: { type: 'string' },
+                  proficiency: { type: 'number' },
+                },
+                required: ['tool', 'proficiency'],
+              },
+              description:
+                'Per-tool proficiency updates keyed by DnD5e tool IDs, using proficiency values such as 0, 0.5, 1, or 2',
+            },
+            savingThrowProficiencies: {
+              type: 'array',
+              items: { type: 'string' },
+              description:
+                'Ability slugs with saving throw proficiency, for example ["wis", "cha"]',
+            },
+            reason: {
+              type: 'string',
+              description: 'Optional audit reason for the change',
+            },
+          },
+          required: ['actorIdentifier'],
+        },
+      },
+      {
         name: 'reassign-dnd5e-spell-source-class',
         description:
           'DnD5e only: reassign a spell on a character to a specific spellcasting class for multiclass spellbook organization.',
@@ -807,7 +1134,7 @@ export class CharacterTools {
       {
         name: 'validate-dnd5e-spellbook',
         description:
-          'DnD5e only: inspect a character spellbook for multiclass source-class mismatches and other organizational issues.',
+          'DnD5e only: inspect a character spellbook for source-class mismatches, preparation-mode issues, and other spell state or organizational problems.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -1644,6 +1971,408 @@ export class CharacterTools {
     }
   }
 
+  async handleUpdateCharacter(args: unknown): Promise<UnknownRecord> {
+    const schema = z.object({
+      actorIdentifier: z.string().min(1, 'Actor identifier cannot be empty'),
+      updates: z.record(z.string(), z.unknown()),
+      reason: z.string().min(1).optional(),
+    });
+
+    const parsed = schema.parse(args);
+
+    this.logger.info('Updating character actor document', {
+      actorIdentifier: parsed.actorIdentifier,
+      fieldCount: Object.keys(parsed.updates).length,
+    });
+
+    const result = await this.foundryClient.query<FoundryUpdateActorResponse>(
+      'foundry-mcp-bridge.updateActor',
+      {
+        identifier: parsed.actorIdentifier,
+        updates: parsed.updates,
+        ...(parsed.reason !== undefined ? { reason: parsed.reason } : {}),
+      }
+    );
+
+    return {
+      success: true,
+      actor: {
+        id: result.actorId,
+        name: result.actorName,
+        type: result.actorType,
+      },
+      appliedUpdates: result.appliedUpdates,
+      updatedFields: result.updatedFields,
+    };
+  }
+
+  async handleUpdateCharacterResources(args: unknown): Promise<UnknownRecord> {
+    const schema = z
+      .object({
+        actorIdentifier: z.string().min(1, 'Actor identifier cannot be empty'),
+        hitPoints: z
+          .object({
+            current: z.number().optional(),
+            max: z.number().optional(),
+            temp: z.number().optional(),
+          })
+          .optional(),
+        inspiration: z.boolean().optional(),
+        exhaustion: z.number().int().nonnegative().optional(),
+        deathSaves: z
+          .object({
+            success: z.number().int().nonnegative().optional(),
+            failure: z.number().int().nonnegative().optional(),
+          })
+          .optional(),
+        currency: z.record(z.string(), z.number()).optional(),
+        hitDice: z
+          .array(
+            z.object({
+              classIdentifier: z.string().min(1, 'classIdentifier cannot be empty'),
+              used: z.number().int().nonnegative(),
+            })
+          )
+          .optional(),
+        reason: z.string().min(1).optional(),
+      })
+      .refine(
+        value =>
+          value.hitPoints !== undefined ||
+          value.inspiration !== undefined ||
+          value.exhaustion !== undefined ||
+          value.deathSaves !== undefined ||
+          value.currency !== undefined ||
+          value.hitDice !== undefined,
+        'Provide at least one resource update'
+      );
+
+    const parsed = schema.parse(args);
+    const { adapter } = await this.getRequiredSystemAdapter('resource updates');
+    const characterData = await this.getCharacterData(parsed.actorIdentifier);
+
+    if (!adapter.prepareResourceUpdates) {
+      throw new Error(
+        'UNSUPPORTED_CAPABILITY: The active system adapter does not support typed resource updates.'
+      );
+    }
+
+    const resourceRequest: CharacterResourceUpdateRequest = {};
+    if (parsed.hitPoints !== undefined) {
+      const hitPoints: CharacterResourceUpdateRequest['hitPoints'] = {};
+      if (parsed.hitPoints.current !== undefined) {
+        hitPoints.current = parsed.hitPoints.current;
+      }
+      if (parsed.hitPoints.max !== undefined) {
+        hitPoints.max = parsed.hitPoints.max;
+      }
+      if (parsed.hitPoints.temp !== undefined) {
+        hitPoints.temp = parsed.hitPoints.temp;
+      }
+      resourceRequest.hitPoints = hitPoints;
+    }
+    if (parsed.inspiration !== undefined) {
+      resourceRequest.inspiration = parsed.inspiration;
+    }
+    if (parsed.exhaustion !== undefined) {
+      resourceRequest.exhaustion = parsed.exhaustion;
+    }
+    if (parsed.deathSaves !== undefined) {
+      const deathSaves: NonNullable<CharacterResourceUpdateRequest['deathSaves']> = {};
+      if (parsed.deathSaves.success !== undefined) {
+        deathSaves.success = parsed.deathSaves.success;
+      }
+      if (parsed.deathSaves.failure !== undefined) {
+        deathSaves.failure = parsed.deathSaves.failure;
+      }
+      resourceRequest.deathSaves = deathSaves;
+    }
+    if (parsed.currency !== undefined) {
+      resourceRequest.currency = parsed.currency;
+    }
+    if (parsed.hitDice !== undefined) {
+      resourceRequest.hitDice = parsed.hitDice;
+    }
+
+    const mutation = adapter.prepareResourceUpdates(characterData, resourceRequest);
+
+    const { actorResult, itemResult, warnings } = await this.applyPreparedWriteMutation({
+      actorIdentifier: parsed.actorIdentifier,
+      mutation,
+      ...(parsed.reason !== undefined ? { reason: parsed.reason } : {}),
+    });
+
+    return {
+      success: true,
+      actor: {
+        id: actorResult?.actorId ?? characterData.id,
+        name: actorResult?.actorName ?? characterData.name,
+        type: actorResult?.actorType ?? characterData.type,
+      },
+      ...(mutation.summary ? { resources: mutation.summary } : {}),
+      ...(actorResult ? { updatedFields: actorResult.updatedFields } : {}),
+      ...(itemResult
+        ? {
+            updatedItems: itemResult.updatedItems.map(item => ({
+              id: item.itemId,
+              name: item.itemName,
+              type: item.itemType,
+              updatedFields: item.updatedFields,
+            })),
+          }
+        : {}),
+      ...(warnings.length > 0 ? { warnings } : {}),
+    };
+  }
+
+  async handleSetCharacterAbilityScores(args: unknown): Promise<UnknownRecord> {
+    const schema = z.object({
+      actorIdentifier: z.string().min(1, 'Actor identifier cannot be empty'),
+      scores: z.record(z.string(), z.number().int().nonnegative()),
+      reason: z.string().min(1).optional(),
+    });
+
+    const parsed = schema.parse(args);
+    const { adapter } = await this.getRequiredSystemAdapter('ability score updates');
+    const characterData = await this.getCharacterData(parsed.actorIdentifier);
+
+    if (!adapter.prepareAbilityScoreUpdates) {
+      throw new Error(
+        'UNSUPPORTED_CAPABILITY: The active system adapter does not support direct ability score updates.'
+      );
+    }
+
+    const mutation = adapter.prepareAbilityScoreUpdates(characterData, {
+      scores: parsed.scores,
+    } satisfies CharacterAbilityScoreUpdateRequest);
+
+    const { actorResult, warnings } = await this.applyPreparedWriteMutation({
+      actorIdentifier: parsed.actorIdentifier,
+      mutation,
+      ...(parsed.reason !== undefined ? { reason: parsed.reason } : {}),
+    });
+
+    return {
+      success: true,
+      actor: {
+        id: actorResult?.actorId ?? characterData.id,
+        name: actorResult?.actorName ?? characterData.name,
+        type: actorResult?.actorType ?? characterData.type,
+      },
+      scores: parsed.scores,
+      updatedFields: actorResult?.updatedFields ?? [],
+      ...(warnings.length > 0 ? { warnings } : {}),
+    };
+  }
+
+  async handleSetCharacterSkillProficiencies(args: unknown): Promise<UnknownRecord> {
+    const schema = z.object({
+      actorIdentifier: z.string().min(1, 'Actor identifier cannot be empty'),
+      skills: z
+        .array(
+          z.object({
+            skill: z.string().min(1, 'skill cannot be empty'),
+            proficiency: z.number(),
+          })
+        )
+        .min(1, 'Provide at least one skill proficiency update'),
+      reason: z.string().min(1).optional(),
+    });
+
+    const parsed = schema.parse(args);
+    const { adapter } = await this.getRequiredSystemAdapter('skill proficiency updates');
+    const characterData = await this.getCharacterData(parsed.actorIdentifier);
+
+    if (!adapter.prepareSkillProficiencyUpdates) {
+      throw new Error(
+        'UNSUPPORTED_CAPABILITY: The active system adapter does not support direct skill proficiency updates.'
+      );
+    }
+
+    const mutation = adapter.prepareSkillProficiencyUpdates(characterData, {
+      skills: parsed.skills,
+    } satisfies CharacterSkillProficiencyUpdateRequest);
+
+    const { actorResult, warnings } = await this.applyPreparedWriteMutation({
+      actorIdentifier: parsed.actorIdentifier,
+      mutation,
+      ...(parsed.reason !== undefined ? { reason: parsed.reason } : {}),
+    });
+
+    return {
+      success: true,
+      actor: {
+        id: actorResult?.actorId ?? characterData.id,
+        name: actorResult?.actorName ?? characterData.name,
+        type: actorResult?.actorType ?? characterData.type,
+      },
+      skills: parsed.skills,
+      updatedFields: actorResult?.updatedFields ?? [],
+      ...(warnings.length > 0 ? { warnings } : {}),
+    };
+  }
+
+  async handleBatchUpdateCharacterItems(args: unknown): Promise<UnknownRecord> {
+    const schema = z.object({
+      actorIdentifier: z.string().min(1, 'Actor identifier cannot be empty'),
+      updates: z
+        .array(
+          z.object({
+            itemIdentifier: z.string().min(1, 'itemIdentifier cannot be empty'),
+            itemType: z.string().min(1).optional(),
+            updates: z.record(z.string(), z.unknown()),
+          })
+        )
+        .min(1, 'Provide at least one item update'),
+      reason: z.string().min(1).optional(),
+    });
+
+    const parsed = schema.parse(args);
+
+    const request: FoundryBatchUpdateActorEmbeddedItemsRequest = {
+      actorIdentifier: parsed.actorIdentifier,
+      updates: parsed.updates.map(entry => ({
+        itemIdentifier: entry.itemIdentifier,
+        ...(entry.itemType !== undefined ? { itemType: entry.itemType } : {}),
+        updates: entry.updates,
+      })),
+      ...(parsed.reason !== undefined ? { reason: parsed.reason } : {}),
+    };
+
+    const result = await this.foundryClient.query<FoundryBatchUpdateActorEmbeddedItemsResponse>(
+      'foundry-mcp-bridge.batchUpdateActorEmbeddedItems',
+      request
+    );
+
+    return {
+      success: true,
+      actor: {
+        id: result.actorId,
+        name: result.actorName,
+      },
+      updatedCount: result.updatedItems.length,
+      updatedItems: result.updatedItems.map(item => ({
+        id: item.itemId,
+        name: item.itemName,
+        type: item.itemType,
+        updatedFields: item.updatedFields,
+      })),
+    };
+  }
+
+  async handleSetDnD5eProficiencies(args: unknown): Promise<UnknownRecord> {
+    const schema = z.object({
+      actorIdentifier: z.string().min(1, 'Actor identifier cannot be empty'),
+      languages: z
+        .object({
+          values: z.array(z.string().min(1)).optional(),
+          custom: z.string().optional(),
+        })
+        .optional(),
+      weaponProficiencies: z
+        .object({
+          values: z.array(z.string().min(1)).optional(),
+          custom: z.string().optional(),
+        })
+        .optional(),
+      armorProficiencies: z
+        .object({
+          values: z.array(z.string().min(1)).optional(),
+          custom: z.string().optional(),
+        })
+        .optional(),
+      toolProficiencies: z
+        .array(
+          z.object({
+            tool: z.string().min(1, 'tool cannot be empty'),
+            proficiency: z.number(),
+          })
+        )
+        .optional(),
+      savingThrowProficiencies: z.array(z.string().min(1)).optional(),
+      reason: z.string().min(1).optional(),
+    });
+
+    const parsed = schema.parse(args);
+    const gameSystem = await this.getGameSystem();
+    if (gameSystem !== 'dnd5e') {
+      throw new Error(
+        'UNSUPPORTED_CAPABILITY: set-dnd5e-proficiencies is only available when the active system is dnd5e.'
+      );
+    }
+
+    const { adapter } = await this.getRequiredSystemAdapter('DnD5e proficiency updates');
+    const characterData = await this.getCharacterData(parsed.actorIdentifier);
+
+    if (!adapter.prepareSystemProficiencyUpdates) {
+      throw new Error(
+        'UNSUPPORTED_CAPABILITY: The active system adapter does not support direct proficiency updates.'
+      );
+    }
+
+    const proficiencyRequest: CharacterSystemProficiencyUpdateRequest = {};
+    if (parsed.languages !== undefined) {
+      const languages: NonNullable<CharacterSystemProficiencyUpdateRequest['languages']> = {};
+      if (parsed.languages.values !== undefined) {
+        languages.values = parsed.languages.values;
+      }
+      if (parsed.languages.custom !== undefined) {
+        languages.custom = parsed.languages.custom;
+      }
+      proficiencyRequest.languages = languages;
+    }
+    if (parsed.weaponProficiencies !== undefined) {
+      const weaponProficiencies: NonNullable<
+        CharacterSystemProficiencyUpdateRequest['weaponProficiencies']
+      > = {};
+      if (parsed.weaponProficiencies.values !== undefined) {
+        weaponProficiencies.values = parsed.weaponProficiencies.values;
+      }
+      if (parsed.weaponProficiencies.custom !== undefined) {
+        weaponProficiencies.custom = parsed.weaponProficiencies.custom;
+      }
+      proficiencyRequest.weaponProficiencies = weaponProficiencies;
+    }
+    if (parsed.armorProficiencies !== undefined) {
+      const armorProficiencies: NonNullable<
+        CharacterSystemProficiencyUpdateRequest['armorProficiencies']
+      > = {};
+      if (parsed.armorProficiencies.values !== undefined) {
+        armorProficiencies.values = parsed.armorProficiencies.values;
+      }
+      if (parsed.armorProficiencies.custom !== undefined) {
+        armorProficiencies.custom = parsed.armorProficiencies.custom;
+      }
+      proficiencyRequest.armorProficiencies = armorProficiencies;
+    }
+    if (parsed.toolProficiencies !== undefined) {
+      proficiencyRequest.toolProficiencies = parsed.toolProficiencies;
+    }
+    if (parsed.savingThrowProficiencies !== undefined) {
+      proficiencyRequest.savingThrowProficiencies = parsed.savingThrowProficiencies;
+    }
+
+    const mutation = adapter.prepareSystemProficiencyUpdates(characterData, proficiencyRequest);
+
+    const { actorResult, warnings } = await this.applyPreparedWriteMutation({
+      actorIdentifier: parsed.actorIdentifier,
+      mutation,
+      ...(parsed.reason !== undefined ? { reason: parsed.reason } : {}),
+    });
+
+    return {
+      success: true,
+      actor: {
+        id: actorResult?.actorId ?? characterData.id,
+        name: actorResult?.actorName ?? characterData.name,
+        type: actorResult?.actorType ?? characterData.type,
+      },
+      ...(mutation.summary ? { proficiencies: mutation.summary } : {}),
+      updatedFields: actorResult?.updatedFields ?? [],
+      ...(warnings.length > 0 ? { warnings } : {}),
+    };
+  }
+
   async handleAddCharacterItem(args: unknown): Promise<UnknownRecord> {
     const itemDataSchema = z
       .object({
@@ -2188,85 +2917,23 @@ export class CharacterTools {
     });
 
     const parsed = schema.parse(args);
-    const gameSystem = await this.getGameSystem();
-    if (gameSystem !== 'dnd5e') {
+    const { adapter, system } = await this.getRequiredSystemAdapter('DnD5e spellbook validation');
+    if (system !== 'dnd5e') {
       throw new Error(
         'UNSUPPORTED_CAPABILITY: validate-dnd5e-spellbook is only available when the active system is dnd5e.'
       );
     }
 
-    const characterData = await this.foundryClient.query<CharacterInfoResponse>(
-      'foundry-mcp-bridge.getCharacterInfo',
-      {
-        identifier: parsed.actorIdentifier,
-      }
-    );
-
+    const characterData = await this.getCharacterData(parsed.actorIdentifier);
     const classes = this.getDnD5eSpellcastingClassSummaries(characterData);
-    const classById = new Map(classes.map(item => [item.id, item]));
-    const classByName = new Map(classes.map(item => [item.name.toLowerCase(), item]));
-    const spellItems = (characterData.items ?? []).filter(item => item.type === 'spell');
 
-    const issues: Array<Record<string, unknown>> = [];
-    const sourceClassCounts: Record<string, number> = {};
-    let preparedSpellCount = 0;
-
-    for (const spell of spellItems) {
-      const sourceClass = this.getDnD5eSpellSourceValue(spell);
-      const prepared = this.getDnD5eSpellPreparedValue(spell);
-      if (prepared) {
-        preparedSpellCount += 1;
-      }
-
-      if (sourceClass) {
-        sourceClassCounts[sourceClass] = (sourceClassCounts[sourceClass] ?? 0) + 1;
-      }
-
-      if (!sourceClass) {
-        if (classes.length > 1) {
-          issues.push({
-            severity: 'warning',
-            code: 'missing-source-class',
-            spellId: spell.id,
-            spellName: spell.name,
-            message: 'This spell has no assigned source class on a multiclass spellcaster.',
-          });
-        }
-        continue;
-      }
-
-      const matchedClass = classById.get(sourceClass) ?? classByName.get(sourceClass.toLowerCase());
-      if (!matchedClass) {
-        issues.push({
-          severity: 'warning',
-          code: 'unknown-source-class',
-          spellId: spell.id,
-          spellName: spell.name,
-          sourceClass,
-          message: `This spell references an unknown source class "${sourceClass}".`,
-        });
-      }
-    }
-
-    if (spellItems.length > 0 && classes.length === 0) {
-      issues.push({
-        severity: 'warning',
-        code: 'no-spellcasting-class',
-        message: 'This actor has spells but no spellcasting class items were detected.',
-      });
-    }
-
-    const recommendations: string[] = [];
-    if (classes.length > 1 && issues.some(issue => issue.code === 'missing-source-class')) {
-      recommendations.push(
-        'Use reassign-dnd5e-spell-source-class to assign each multiclass spell to the correct spellcasting class.'
+    if (!adapter.validateSpellbook) {
+      throw new Error(
+        'UNSUPPORTED_CAPABILITY: The active system adapter does not support spellbook validation.'
       );
     }
-    if (issues.some(issue => issue.code === 'unknown-source-class')) {
-      recommendations.push(
-        'Review spells with unknown source classes and reassign them to a current spellcasting class item.'
-      );
-    }
+
+    const validation = adapter.validateSpellbook(characterData);
 
     return {
       success: true,
@@ -2275,17 +2942,10 @@ export class CharacterTools {
         name: characterData.name,
         type: characterData.type,
       },
-      summary: {
-        spellCount: spellItems.length,
-        preparedSpellCount,
-        spellcastingClassCount: classes.length,
-        multiclassSpellcaster: classes.length > 1,
-        issueCount: issues.length,
-        sourceClassCounts,
-      },
+      summary: validation.summary,
       classes,
-      issues,
-      ...(recommendations.length > 0 ? { recommendations } : {}),
+      issues: validation.issues,
+      ...(validation.recommendations ? { recommendations: validation.recommendations } : {}),
     };
   }
 

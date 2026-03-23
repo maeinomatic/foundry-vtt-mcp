@@ -6,6 +6,7 @@
  */
 
 import type {
+  CharacterAbilityScoreUpdateRequest,
   SystemAdapter,
   SystemMetadata,
   SystemCreatureIndex,
@@ -17,8 +18,11 @@ import type {
   SystemCharacterInfo,
   SystemCompendiumCreatureEntity,
   SystemSpellcastingEntry,
+  CharacterResourceUpdateRequest,
   CharacterProgressionUpdateRequest,
+  CharacterSkillProficiencyUpdateRequest,
   PreparedCharacterProgressionUpdate,
+  PreparedCharacterWriteMutation,
 } from '../types.js';
 import { createActorProgressionTarget } from '../types.js';
 import type {
@@ -735,6 +739,95 @@ export class PF2eAdapter implements SystemAdapter {
     }
 
     return formatted;
+  }
+
+  prepareAbilityScoreUpdates(
+    actorData: SystemCharacterInfo,
+    request: CharacterAbilityScoreUpdateRequest
+  ): PreparedCharacterWriteMutation {
+    const actor = actorData as PF2eActorDocument;
+    const availableAbilities = actor.system?.abilities ?? {};
+    const updates: Record<string, number> = {};
+
+    for (const [ability, value] of Object.entries(request.scores)) {
+      if (!(ability in availableAbilities)) {
+        throw new Error(
+          `UNSUPPORTED_CAPABILITY: Ability "${ability}" is not available on this PF2e actor.`
+        );
+      }
+
+      if (!Number.isInteger(value) || value < 0) {
+        throw new Error(`Ability "${ability}" must be set to a non-negative integer.`);
+      }
+
+      updates[`system.abilities.${ability}.value`] = value;
+    }
+
+    return {
+      actorUpdates: updates,
+      summary: {
+        mode: 'set-ability-scores',
+        scores: request.scores,
+      },
+    };
+  }
+
+  prepareSkillProficiencyUpdates(
+    actorData: SystemCharacterInfo,
+    request: CharacterSkillProficiencyUpdateRequest
+  ): PreparedCharacterWriteMutation {
+    const actor = actorData as PF2eActorDocument;
+    const availableSkills = actor.system?.skills ?? {};
+    const updates: Record<string, number> = {};
+
+    for (const entry of request.skills) {
+      if (!(entry.skill in availableSkills)) {
+        throw new Error(
+          `UNSUPPORTED_CAPABILITY: Skill "${entry.skill}" is not available on this PF2e actor.`
+        );
+      }
+
+      if (!Number.isInteger(entry.proficiency) || entry.proficiency < 0 || entry.proficiency > 4) {
+        throw new Error(`PF2e skill rank for "${entry.skill}" must be an integer between 0 and 4.`);
+      }
+
+      updates[`system.skills.${entry.skill}.rank`] = entry.proficiency;
+    }
+
+    return {
+      actorUpdates: updates,
+      summary: {
+        mode: 'set-skill-proficiencies',
+        skills: request.skills,
+      },
+    };
+  }
+
+  prepareResourceUpdates(
+    _actorData: SystemCharacterInfo,
+    request: CharacterResourceUpdateRequest
+  ): PreparedCharacterWriteMutation {
+    const actorUpdates: Record<string, unknown> = {};
+
+    if (request.hitPoints) {
+      if (request.hitPoints.current !== undefined) {
+        actorUpdates['system.attributes.hp.value'] = request.hitPoints.current;
+      }
+      if (request.hitPoints.max !== undefined) {
+        actorUpdates['system.attributes.hp.max'] = request.hitPoints.max;
+      }
+      if (request.hitPoints.temp !== undefined) {
+        actorUpdates['system.attributes.hp.temp'] = request.hitPoints.temp;
+      }
+    }
+
+    return {
+      ...(Object.keys(actorUpdates).length > 0 ? { actorUpdates } : {}),
+      summary: {
+        mode: 'update-resources',
+        ...(request.hitPoints ? { hitPoints: request.hitPoints } : {}),
+      },
+    };
   }
 
   prepareCharacterProgressionUpdate(

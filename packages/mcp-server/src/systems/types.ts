@@ -10,6 +10,7 @@ import type {
   FoundryActorAttributesBase,
   FoundryActorDocumentBase,
   FoundryActorSystemBase,
+  FoundryBatchUpdateActorEmbeddedItemsRequest,
   FoundryCharacterInfo,
   FoundryCompendiumDocumentBase,
   FoundryCompendiumPackSummary,
@@ -95,6 +96,75 @@ export interface PreparedCharacterProgressionUpdate {
   warnings?: string[];
 }
 
+export interface PreparedCharacterWriteMutation {
+  actorUpdates?: UnknownRecord;
+  embeddedItemUpdates?: FoundryBatchUpdateActorEmbeddedItemsRequest['updates'];
+  summary?: Record<string, unknown>;
+  warnings?: string[];
+}
+
+export interface CharacterHitPointUpdateRequest {
+  current?: number;
+  max?: number;
+  temp?: number;
+}
+
+export interface CharacterResourceUpdateRequest {
+  hitPoints?: CharacterHitPointUpdateRequest;
+  inspiration?: boolean;
+  exhaustion?: number;
+  deathSaves?: {
+    success?: number;
+    failure?: number;
+  };
+  currency?: Record<string, number>;
+  hitDice?: Array<{
+    classIdentifier: string;
+    used: number;
+  }>;
+}
+
+export interface CharacterAbilityScoreUpdateRequest {
+  scores: Record<string, number>;
+}
+
+export interface CharacterSkillProficiencyUpdateRequest {
+  skills: Array<{
+    skill: string;
+    proficiency: number;
+  }>;
+}
+
+export interface CharacterProficiencyCollectionUpdate {
+  values?: string[];
+  custom?: string;
+}
+
+export interface CharacterToolProficiencyUpdate {
+  tool: string;
+  proficiency: number;
+}
+
+export interface CharacterSystemProficiencyUpdateRequest {
+  languages?: CharacterProficiencyCollectionUpdate;
+  weaponProficiencies?: CharacterProficiencyCollectionUpdate;
+  armorProficiencies?: CharacterProficiencyCollectionUpdate;
+  toolProficiencies?: CharacterToolProficiencyUpdate[];
+  savingThrowProficiencies?: string[];
+}
+
+export interface SystemSpellbookValidationIssue extends UnknownRecord {
+  severity: 'info' | 'warning' | 'error';
+  code: string;
+  message: string;
+}
+
+export interface SystemSpellbookValidationResult {
+  summary: Record<string, unknown>;
+  issues: SystemSpellbookValidationIssue[];
+  recommendations?: string[];
+}
+
 export type SystemCharacterInfo = FoundryCharacterInfo<
   FoundryActorSystemBase,
   FoundryItemSystemBase,
@@ -108,6 +178,7 @@ export type SystemCompendiumCreatureEntity =
 export interface DnD5eAbilityData extends UnknownRecord {
   value?: number;
   mod?: number;
+  proficient?: number;
 }
 
 export interface DnD5eSkillData extends UnknownRecord {
@@ -405,6 +476,44 @@ export interface SystemAdapter {
     actorData: SystemCharacterInfo,
     request: CharacterProgressionUpdateRequest
   ): PreparedCharacterProgressionUpdate;
+
+  /**
+   * Prepare system-safe actor update payloads for base ability score changes.
+   */
+  prepareAbilityScoreUpdates?(
+    actorData: SystemCharacterInfo,
+    request: CharacterAbilityScoreUpdateRequest
+  ): PreparedCharacterWriteMutation;
+
+  /**
+   * Prepare system-safe actor update payloads for skill proficiency changes.
+   */
+  prepareSkillProficiencyUpdates?(
+    actorData: SystemCharacterInfo,
+    request: CharacterSkillProficiencyUpdateRequest
+  ): PreparedCharacterWriteMutation;
+
+  /**
+   * Prepare system-safe actor and item updates for common resource bookkeeping.
+   */
+  prepareResourceUpdates?(
+    actorData: SystemCharacterInfo,
+    request: CharacterResourceUpdateRequest
+  ): PreparedCharacterWriteMutation;
+
+  /**
+   * Prepare system-safe direct proficiency updates when a system supports them.
+   */
+  prepareSystemProficiencyUpdates?(
+    actorData: SystemCharacterInfo,
+    request: CharacterSystemProficiencyUpdateRequest
+  ): PreparedCharacterWriteMutation;
+
+  /**
+   * Validate spellbook organization and spell-state consistency using
+   * system-specific semantics.
+   */
+  validateSpellbook?(actorData: SystemCharacterInfo): SystemSpellbookValidationResult;
 }
 
 /**

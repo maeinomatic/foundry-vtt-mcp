@@ -17,7 +17,7 @@ This file is the live planning and gap-tracking document for the current repo st
 
 Current code reality in `packages/mcp-server/src/backend.ts`:
 
-- The backend currently registers **41 tools**.
+- The backend currently registers **47 tools**.
 - Token manipulation tools are implemented and routed.
 - DnD5e class progression, multiclass add-class flow, spellbook management, and companion/familiar workflows are implemented.
 
@@ -41,9 +41,15 @@ For DnD5e character progression, the current toolset now supports:
 
 For broader character management, the current toolset now supports:
 
+- direct audited actor updates for stable actor fields
+- typed resource updates for common bookkeeping such as HP and DnD5e hit dice
+- system-aware ability score updates
+- system-aware skill proficiency updates
+- atomic batch embedded-item updates
 - adding owned actor items from source UUIDs or raw item data
 - updating owned actor item fields
 - removing owned actor items
+- DnD5e direct proficiency editing for languages, armor, weapons, tools, and saving throws
 - DnD5e spell learning via spell UUID
 - DnD5e spell prepare and unprepare
 - DnD5e spell removal
@@ -51,7 +57,7 @@ For broader character management, the current toolset now supports:
 - DnD5e spell source-class reassignment for multiclass organization
 - DnD5e bulk spell source-class reassignment
 - DnD5e bulk prepared-spell management for rest-based spell changes
-- DnD5e spellbook validation for missing or unknown source-class assignments
+- DnD5e spellbook validation for source-class, preparation-mode, and class-assignment issues
 - creating or linking persistent character companions and familiars
 - listing linked companions and familiars and whether they are already active on the scene
 - summoning linked companions and familiars onto the active scene
@@ -61,54 +67,28 @@ For broader character management, the current toolset now supports:
 
 This section tracks capabilities needed for practical DnD5e character management.
 
-### Priority A: Core Character Write APIs (system-agnostic)
+### Priority 1: Foundation and High-Leverage Gameplay Writes
 
-1. `update-actor`
+Priority 1 is complete in the current branch.
 
-- Purpose: General actor updates such as name, biography, profile, notes, and stable core system fields.
-- Why needed: Enables character description updates and many basic edits that still require ad hoc actor manipulation today.
+Implemented surfaces:
 
-2. `update-actor-resources`
+- `update-character`
+- `update-character-resources`
+- `set-character-ability-scores`
+- `set-character-skill-proficiencies`
+- `batch-update-character-items`
+- `set-dnd5e-proficiencies`
+- deeper `validate-dnd5e-spellbook`
 
-- Purpose: Safe updates for HP, temp HP, hit dice, exhaustion, death saves, and currency.
-- Why needed: Frequent gameplay bookkeeping with guarded update semantics.
+Implementation notes:
 
-3. `set-actor-ability-scores`
+- The system-specific write mapping for these tools now routes through adapter capabilities instead of growing new core-tool conditionals.
+- DnD5e `Scale Value` remains intentionally informational/system-derived during advancement flows, consistent with the official DnD5e documentation that describes it as a no-choice advancement type.
 
-- Purpose: Update STR/DEX/CON/INT/WIS/CHA base values.
-- Why needed: Character rebuild and correction workflows still need a direct write surface.
+### Priority 2: Lifecycle and Content Management
 
-4. `set-actor-skill-proficiencies`
-
-- Purpose: Set skill proficiency and expertise states.
-- Why needed: Background, class progression, and retraining support.
-
-### Priority A: Actor Item Management (system-agnostic surface)
-
-1. `batch-update-actor-items`
-
-- Purpose: Atomic multi-item update for safe complex changes.
-- Why needed: Level-up and rebuild steps often touch multiple embedded documents.
-
-### Priority A: DnD5e Leveling and Advancement
-
-1. `dnd5e-set-proficiencies`
-
-- Purpose: Manage weapon, armor, tool, language, and saving throw proficiencies.
-- Why needed: Trait advancements now cover supported DnD5e progression steps, but direct proficiency editing outside advancement is still missing.
-
-2. `dnd5e-handle-scale-advancement`
-
-- Purpose: Keep Scale Value surfaced consistently as informational and system-derived during advancement flows.
-- Why needed: Official DnD5e docs indicate Scale Value has no player choice payload, so this is a consistency and documentation concern more than a missing manual write path.
-
-### Priority B: DnD5e Spell Management
-
-1. `dnd5e-spell-validation`
-
-- Purpose: Deeper validation of learned and prepared spell state against class progression and available spellcasting context beyond the current source-class organization checks.
-
-### Priority B: Companion and Familiar Lifecycle
+#### Companion and Familiar Lifecycle
 
 1. `update-character-companion-link`
 
@@ -135,7 +115,7 @@ This section tracks capabilities needed for practical DnD5e character management
 - Purpose: Keep a linked companion or familiar aligned with owner-driven scaling rules, ownership changes, or template refreshes.
 - Why needed: Important for systems or tables where companions level, rescale, or inherit state from the owner over time.
 
-### Priority B: Item Authoring and Homebrew
+#### Item Authoring and Homebrew
 
 1. `create-world-item`
 
@@ -153,7 +133,9 @@ This section tracks capabilities needed for practical DnD5e character management
 
 - Purpose: Promote a world or homebrew item into a compendium.
 
-### Priority C: Validation and Rule Guardrails
+### Priority 3: Validation and Transaction Safety
+
+#### Validation and Rule Guardrails
 
 1. `validate-dnd5e-character-build`
 
@@ -170,18 +152,27 @@ This section tracks capabilities needed for practical DnD5e character management
 
 ## Gap Conclusion (DnD5e)
 
-Not a DnD5e-only problem. The core missing layer is still **actor and embedded-item write operations** in general.
+The repo now has the general actor and embedded-item write layer needed for practical gameplay editing.
 
 DnD5e adds system-specific needs on top:
 
 - advancement and class-level orchestration
-- proficiency and ruleset editing outside advancement
 - higher-level multiclass spellbook validation and automation beyond the current source-class reassignment, bulk preparation, and validation tools
 - richer companion and familiar lifecycle support such as link management, summon customization, deletion and unlink flows, and progression sync
+- broader build validation and transactional safety for larger automated edits
 
-The repo now has the generic actor item CRUD layer plus practical DnD5e spell learning, single and bulk preparation changes, removal, slot updates, single and bulk source-class reassignment, spellbook validation, multiclass add-class flow, and persistent companion and familiar summon-despawn workflows.
+The repo now has:
 
-The next most valuable gaps are `update-actor`, proficiencies, deeper spellbook validation and automation tied to class progression limits, and richer companion and familiar lifecycle tools.
+- generic actor updates
+- typed resource updates
+- ability score and skill proficiency writes
+- batch embedded-item updates
+- DnD5e direct proficiency editing
+- practical DnD5e spell learning, single and bulk preparation changes, removal, slot updates, source-class reassignment, and spellbook validation
+- multiclass add-class flow
+- persistent companion and familiar summon-despawn workflows
+
+The next most valuable gaps are now richer companion and familiar lifecycle tools, item authoring/homebrew, and stronger validation/transaction boundaries.
 
 ## Historical Archive
 

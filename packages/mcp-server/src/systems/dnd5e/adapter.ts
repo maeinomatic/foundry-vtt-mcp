@@ -6,6 +6,8 @@
  */
 
 import type {
+  CharacterAbilityScoreUpdateRequest,
+  CharacterProficiencyCollectionUpdate,
   SystemAdapter,
   SystemMetadata,
   SystemCreatureIndex,
@@ -17,8 +19,13 @@ import type {
   SystemCharacterInfo,
   SystemCompendiumCreatureEntity,
   SystemSpellcastingEntry,
+  CharacterResourceUpdateRequest,
   CharacterProgressionUpdateRequest,
+  CharacterSkillProficiencyUpdateRequest,
+  CharacterSystemProficiencyUpdateRequest,
   PreparedCharacterProgressionUpdate,
+  PreparedCharacterWriteMutation,
+  SystemSpellbookValidationResult,
 } from '../types.js';
 import { createActorProgressionTarget } from '../types.js';
 import type {
@@ -688,6 +695,406 @@ export class DnD5eAdapter implements SystemAdapter {
     }
 
     return formatted;
+  }
+
+  prepareAbilityScoreUpdates(
+    actorData: SystemCharacterInfo,
+    request: CharacterAbilityScoreUpdateRequest
+  ): PreparedCharacterWriteMutation {
+    const actor = actorData as DnD5eActorDocument;
+    const availableAbilities = actor.system?.abilities ?? {};
+    const updates: Record<string, number> = {};
+
+    for (const [ability, value] of Object.entries(request.scores)) {
+      if (!(ability in availableAbilities)) {
+        throw new Error(
+          `UNSUPPORTED_CAPABILITY: Ability "${ability}" is not available on this DnD5e actor.`
+        );
+      }
+
+      if (!Number.isInteger(value) || value < 0) {
+        throw new Error(`Ability "${ability}" must be set to a non-negative integer.`);
+      }
+
+      updates[`system.abilities.${ability}.value`] = value;
+    }
+
+    return {
+      actorUpdates: updates,
+      summary: {
+        mode: 'set-ability-scores',
+        scores: request.scores,
+      },
+    };
+  }
+
+  prepareSkillProficiencyUpdates(
+    actorData: SystemCharacterInfo,
+    request: CharacterSkillProficiencyUpdateRequest
+  ): PreparedCharacterWriteMutation {
+    const actor = actorData as DnD5eActorDocument;
+    const availableSkills = actor.system?.skills ?? {};
+    const updates: Record<string, number> = {};
+
+    for (const entry of request.skills) {
+      if (!(entry.skill in availableSkills)) {
+        throw new Error(
+          `UNSUPPORTED_CAPABILITY: Skill "${entry.skill}" is not available on this DnD5e actor.`
+        );
+      }
+
+      if (![0, 0.5, 1, 2].includes(entry.proficiency)) {
+        throw new Error(
+          `DnD5e skill proficiency for "${entry.skill}" must be one of 0, 0.5, 1, or 2.`
+        );
+      }
+
+      updates[`system.skills.${entry.skill}.value`] = entry.proficiency;
+    }
+
+    return {
+      actorUpdates: updates,
+      summary: {
+        mode: 'set-skill-proficiencies',
+        skills: request.skills,
+      },
+    };
+  }
+
+  prepareResourceUpdates(
+    actorData: SystemCharacterInfo,
+    request: CharacterResourceUpdateRequest
+  ): PreparedCharacterWriteMutation {
+    const actor = actorData as DnD5eActorDocument;
+    const actorUpdates: Record<string, unknown> = {};
+    const embeddedItemUpdates: NonNullable<PreparedCharacterWriteMutation['embeddedItemUpdates']> =
+      [];
+
+    if (request.hitPoints) {
+      if (request.hitPoints.current !== undefined) {
+        actorUpdates['system.attributes.hp.value'] = request.hitPoints.current;
+      }
+      if (request.hitPoints.max !== undefined) {
+        actorUpdates['system.attributes.hp.max'] = request.hitPoints.max;
+      }
+      if (request.hitPoints.temp !== undefined) {
+        actorUpdates['system.attributes.hp.temp'] = request.hitPoints.temp;
+      }
+    }
+
+    if (request.inspiration !== undefined) {
+      actorUpdates['system.attributes.inspiration'] = request.inspiration;
+    }
+
+    if (request.exhaustion !== undefined) {
+      actorUpdates['system.attributes.exhaustion'] = request.exhaustion;
+    }
+
+    if (request.deathSaves?.success !== undefined) {
+      actorUpdates['system.attributes.death.success'] = request.deathSaves.success;
+    }
+
+    if (request.deathSaves?.failure !== undefined) {
+      actorUpdates['system.attributes.death.failure'] = request.deathSaves.failure;
+    }
+
+    if (request.currency) {
+      for (const [denomination, value] of Object.entries(request.currency)) {
+        actorUpdates[`system.currency.${denomination}`] = value;
+      }
+    }
+
+    if (request.hitDice?.length) {
+      const classItems = (actor.items ?? []).filter(
+        (item): item is DnD5eItemDocument =>
+          item.type === 'class' && typeof item.id === 'string' && typeof item.name === 'string'
+      );
+
+      for (const hitDieUpdate of request.hitDice) {
+        const target = hitDieUpdate.classIdentifier.toLowerCase();
+        const classItem = classItems.find(
+          item => item.id.toLowerCase() === target || item.name.toLowerCase() === target
+        );
+
+        if (!classItem?.id) {
+          throw new Error(
+            `No DnD5e class item matching "${hitDieUpdate.classIdentifier}" was found on this actor.`
+          );
+        }
+
+        embeddedItemUpdates.push({
+          itemIdentifier: classItem.id,
+          itemType: 'class',
+          updates: {
+            'system.hd.spent': hitDieUpdate.used,
+          },
+        });
+      }
+    }
+
+    return {
+      ...(Object.keys(actorUpdates).length > 0 ? { actorUpdates } : {}),
+      ...(embeddedItemUpdates.length > 0 ? { embeddedItemUpdates } : {}),
+      summary: {
+        mode: 'update-resources',
+        ...(request.hitPoints ? { hitPoints: request.hitPoints } : {}),
+        ...(request.inspiration !== undefined ? { inspiration: request.inspiration } : {}),
+        ...(request.exhaustion !== undefined ? { exhaustion: request.exhaustion } : {}),
+        ...(request.deathSaves ? { deathSaves: request.deathSaves } : {}),
+        ...(request.currency ? { currency: request.currency } : {}),
+        ...(request.hitDice ? { hitDice: request.hitDice } : {}),
+      },
+    };
+  }
+
+  prepareSystemProficiencyUpdates(
+    actorData: SystemCharacterInfo,
+    request: CharacterSystemProficiencyUpdateRequest
+  ): PreparedCharacterWriteMutation {
+    const actor = actorData as DnD5eActorDocument;
+    const actorUpdates: Record<string, unknown> = {};
+
+    const applyTraitCollection = (
+      field: 'languages' | 'weaponProf' | 'armorProf',
+      update: CharacterProficiencyCollectionUpdate | undefined
+    ): void => {
+      if (!update) {
+        return;
+      }
+
+      if (update.values !== undefined) {
+        actorUpdates[`system.traits.${field}.value`] = update.values;
+      }
+
+      if (update.custom !== undefined) {
+        actorUpdates[`system.traits.${field}.custom`] = update.custom;
+      }
+    };
+
+    applyTraitCollection('languages', request.languages);
+    applyTraitCollection('weaponProf', request.weaponProficiencies);
+    applyTraitCollection('armorProf', request.armorProficiencies);
+
+    if (request.toolProficiencies) {
+      const availableTools = asRecord(actor.system?.tools) ?? {};
+      for (const entry of request.toolProficiencies) {
+        if (!(entry.tool in availableTools)) {
+          throw new Error(
+            `UNSUPPORTED_CAPABILITY: Tool "${entry.tool}" is not available on this DnD5e actor.`
+          );
+        }
+
+        if (![0, 0.5, 1, 2].includes(entry.proficiency)) {
+          throw new Error(
+            `DnD5e tool proficiency for "${entry.tool}" must be one of 0, 0.5, 1, or 2.`
+          );
+        }
+
+        actorUpdates[`system.tools.${entry.tool}.value`] = entry.proficiency;
+      }
+    }
+
+    if (request.savingThrowProficiencies) {
+      const abilityKeys = new Set(Object.keys(actor.system?.abilities ?? {}));
+      const selected = new Set(request.savingThrowProficiencies.map(value => value.toLowerCase()));
+
+      for (const ability of selected) {
+        if (!abilityKeys.has(ability)) {
+          throw new Error(
+            `UNSUPPORTED_CAPABILITY: Ability save "${ability}" is not available on this DnD5e actor.`
+          );
+        }
+      }
+
+      for (const ability of abilityKeys) {
+        actorUpdates[`system.abilities.${ability}.proficient`] = selected.has(ability) ? 1 : 0;
+      }
+    }
+
+    return {
+      actorUpdates,
+      summary: {
+        mode: 'set-dnd5e-proficiencies',
+        ...(request.languages ? { languages: request.languages } : {}),
+        ...(request.weaponProficiencies
+          ? { weaponProficiencies: request.weaponProficiencies }
+          : {}),
+        ...(request.armorProficiencies ? { armorProficiencies: request.armorProficiencies } : {}),
+        ...(request.toolProficiencies ? { toolProficiencies: request.toolProficiencies } : {}),
+        ...(request.savingThrowProficiencies
+          ? { savingThrowProficiencies: request.savingThrowProficiencies }
+          : {}),
+      },
+    };
+  }
+
+  validateSpellbook(actorData: SystemCharacterInfo): SystemSpellbookValidationResult {
+    const actor = actorData as DnD5eActorDocument;
+    const items = actor.items ?? [];
+    const classItems = items.filter(
+      (item): item is DnD5eItemDocument =>
+        item.type === 'class' && typeof item.id === 'string' && typeof item.name === 'string'
+    );
+    const spellcastingClasses = classItems
+      .map(item => {
+        const spellcasting = asRecord(item.system?.spellcasting);
+        const progression = toStringValue(spellcasting?.progression);
+        return {
+          id: item.id,
+          name: item.name,
+          spellcastingType: toStringValue(spellcasting?.type),
+          spellcastingProgression: progression,
+        };
+      })
+      .filter(
+        item =>
+          item.spellcastingProgression !== undefined && item.spellcastingProgression !== 'none'
+      );
+
+    const allClassesById = new Map(classItems.map(item => [item.id, item]));
+    const spellcastingClassById = new Map(spellcastingClasses.map(item => [item.id, item]));
+    const spellcastingClassByName = new Map(
+      spellcastingClasses.map(item => [item.name.toLowerCase(), item])
+    );
+    const issues: SystemSpellbookValidationResult['issues'] = [];
+    const sourceClassCounts: Record<string, number> = {};
+    const preparedSpellCountsByClass: Record<string, number> = {};
+    const preparationModeCounts: Record<string, number> = {};
+
+    let preparedSpellCount = 0;
+    const spellItems = items.filter((item): item is DnD5eItemDocument => item.type === 'spell');
+
+    for (const spell of spellItems) {
+      const spellSystem = asRecord(spell.system);
+      const preparation = asRecord(spellSystem?.preparation);
+      const sourceClass =
+        toStringValue(spellSystem?.spellSource) ?? toStringValue(spellSystem?.sourceClass);
+      const prepared = typeof preparation?.prepared === 'boolean' ? preparation.prepared : true;
+      const preparationMode =
+        toStringValue(preparation?.mode) ??
+        (typeof preparation?.prepared === 'boolean' ? 'prepared' : 'unknown');
+
+      preparationModeCounts[preparationMode] = (preparationModeCounts[preparationMode] ?? 0) + 1;
+
+      if (prepared) {
+        preparedSpellCount += 1;
+      }
+
+      if (sourceClass) {
+        sourceClassCounts[sourceClass] = (sourceClassCounts[sourceClass] ?? 0) + 1;
+        if (prepared) {
+          preparedSpellCountsByClass[sourceClass] =
+            (preparedSpellCountsByClass[sourceClass] ?? 0) + 1;
+        }
+      }
+
+      if (!sourceClass) {
+        if (spellcastingClasses.length > 1 && preparationMode === 'prepared') {
+          issues.push({
+            severity: 'warning',
+            code: 'missing-source-class',
+            spellId: spell.id,
+            spellName: spell.name,
+            message:
+              'This prepared-mode spell has no assigned source class on a multiclass spellcaster.',
+          });
+        }
+        continue;
+      }
+
+      const matchedSpellcastingClass =
+        spellcastingClassById.get(sourceClass) ??
+        spellcastingClassByName.get(sourceClass.toLowerCase());
+
+      if (matchedSpellcastingClass) {
+        if (
+          preparationMode === 'prepared' &&
+          matchedSpellcastingClass.spellcastingType !== undefined &&
+          matchedSpellcastingClass.spellcastingType !== 'prepared'
+        ) {
+          issues.push({
+            severity: 'warning',
+            code: 'preparation-mode-mismatch',
+            spellId: spell.id,
+            spellName: spell.name,
+            sourceClass,
+            spellcastingType: matchedSpellcastingClass.spellcastingType,
+            message: `This spell is marked as a prepared spell, but its source class "${matchedSpellcastingClass.name}" uses spellcasting type "${matchedSpellcastingClass.spellcastingType}".`,
+          });
+        }
+        continue;
+      }
+
+      const matchedNonSpellcastingClass =
+        allClassesById.get(sourceClass) ??
+        classItems.find(item => item.name.toLowerCase() === sourceClass.toLowerCase());
+
+      if (matchedNonSpellcastingClass) {
+        issues.push({
+          severity: 'warning',
+          code: 'non-spellcasting-source-class',
+          spellId: spell.id,
+          spellName: spell.name,
+          sourceClass,
+          message: `This spell references class "${matchedNonSpellcastingClass.name}", which is not currently configured as a spellcasting class item.`,
+        });
+        continue;
+      }
+
+      issues.push({
+        severity: 'warning',
+        code: 'unknown-source-class',
+        spellId: spell.id,
+        spellName: spell.name,
+        sourceClass,
+        message: `This spell references an unknown source class "${sourceClass}".`,
+      });
+    }
+
+    if (spellItems.length > 0 && spellcastingClasses.length === 0) {
+      issues.push({
+        severity: 'warning',
+        code: 'no-spellcasting-class',
+        message: 'This actor has spells but no spellcasting class items were detected.',
+      });
+    }
+
+    const recommendations: string[] = [];
+    if (issues.some(issue => issue.code === 'missing-source-class')) {
+      recommendations.push(
+        'Use reassign-dnd5e-spell-source-class or bulk-reassign-dnd5e-spell-source-class to organize multiclass spell ownership.'
+      );
+    }
+    if (
+      issues.some(
+        issue =>
+          issue.code === 'unknown-source-class' || issue.code === 'non-spellcasting-source-class'
+      )
+    ) {
+      recommendations.push(
+        'Review spell source-class assignments so each owned spell points to a current spellcasting class item.'
+      );
+    }
+    if (issues.some(issue => issue.code === 'preparation-mode-mismatch')) {
+      recommendations.push(
+        'Check whether the spell preparation mode and its assigned source class still match after multiclass or homebrew changes.'
+      );
+    }
+
+    return {
+      summary: {
+        spellCount: spellItems.length,
+        preparedSpellCount,
+        spellcastingClassCount: spellcastingClasses.length,
+        multiclassSpellcaster: spellcastingClasses.length > 1,
+        issueCount: issues.length,
+        sourceClassCounts,
+        preparedSpellCountsByClass,
+        preparationModeCounts,
+      },
+      issues,
+      ...(recommendations.length > 0 ? { recommendations } : {}),
+    };
   }
 
   prepareCharacterProgressionUpdate(

@@ -115,6 +115,584 @@ describe('CharacterTools', () => {
     });
   });
 
+  it('uses the shared update-character bridge request shape', async () => {
+    const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
+      if (method === 'foundry-mcp-bridge.updateActor') {
+        expect(data).toEqual({
+          identifier: 'Aldric',
+          updates: {
+            name: 'Aldric the Bold',
+            'system.details.biography.value': 'Promoted after the siege.',
+          },
+        });
+        return Promise.resolve({
+          success: true,
+          actorId: 'actor-1',
+          actorName: 'Aldric the Bold',
+          actorType: 'character',
+          appliedUpdates: {
+            name: 'Aldric the Bold',
+            'system.details.biography.value': 'Promoted after the siege.',
+          },
+          updatedFields: ['name', 'system.details.biography.value'],
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected query: ${method}`));
+    });
+
+    const tools = new CharacterTools({
+      foundryClient: { query } as unknown as FoundryClient,
+      logger: createLoggerStub(),
+    });
+
+    const result = (await tools.handleUpdateCharacter({
+      actorIdentifier: 'Aldric',
+      updates: {
+        name: 'Aldric the Bold',
+        'system.details.biography.value': 'Promoted after the siege.',
+      },
+    })) as Record<string, unknown>;
+
+    expect(result).toMatchObject({
+      success: true,
+      actor: {
+        id: 'actor-1',
+        name: 'Aldric the Bold',
+        type: 'character',
+      },
+      updatedFields: ['name', 'system.details.biography.value'],
+    });
+  });
+
+  it('routes DnD5e resource updates through shared actor and item update bridges', async () => {
+    const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
+      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+        return Promise.resolve({ system: 'dnd5e' });
+      }
+
+      if (method === 'foundry-mcp-bridge.getCharacterInfo') {
+        expect(data).toEqual({ identifier: 'Laeral' });
+        return Promise.resolve({
+          id: 'actor-3',
+          name: 'Laeral',
+          type: 'character',
+          system: {
+            abilities: {
+              wis: {},
+            },
+          },
+          items: [
+            {
+              id: 'class-wizard',
+              name: 'Wizard',
+              type: 'class',
+              system: {},
+            },
+          ],
+          effects: [],
+        });
+      }
+
+      if (method === 'foundry-mcp-bridge.updateActor') {
+        expect(data).toEqual({
+          identifier: 'Laeral',
+          updates: {
+            'system.attributes.hp.value': 24,
+            'system.attributes.hp.temp': 5,
+            'system.attributes.inspiration': true,
+            'system.attributes.exhaustion': 2,
+            'system.attributes.death.success': 1,
+            'system.currency.gp': 120,
+          },
+        });
+        return Promise.resolve({
+          success: true,
+          actorId: 'actor-3',
+          actorName: 'Laeral',
+          actorType: 'character',
+          appliedUpdates: {
+            'system.attributes.hp.value': 24,
+            'system.attributes.hp.temp': 5,
+            'system.attributes.inspiration': true,
+            'system.attributes.exhaustion': 2,
+            'system.attributes.death.success': 1,
+            'system.currency.gp': 120,
+          },
+          updatedFields: [
+            'system.attributes.hp.value',
+            'system.attributes.hp.temp',
+            'system.attributes.inspiration',
+            'system.attributes.exhaustion',
+            'system.attributes.death.success',
+            'system.currency.gp',
+          ],
+        });
+      }
+
+      if (method === 'foundry-mcp-bridge.batchUpdateActorEmbeddedItems') {
+        expect(data).toEqual({
+          actorIdentifier: 'Laeral',
+          updates: [
+            {
+              itemIdentifier: 'class-wizard',
+              itemType: 'class',
+              updates: {
+                'system.hd.spent': 3,
+              },
+            },
+          ],
+        });
+        return Promise.resolve({
+          success: true,
+          actorId: 'actor-3',
+          actorName: 'Laeral',
+          updatedItems: [
+            {
+              itemId: 'class-wizard',
+              itemName: 'Wizard',
+              itemType: 'class',
+              appliedUpdates: {
+                'system.hd.spent': 3,
+              },
+              updatedFields: ['system.hd.spent'],
+            },
+          ],
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected query: ${method}`));
+    });
+
+    const registry = new SystemRegistry();
+    registry.register(new DnD5eAdapter());
+
+    const tools = new CharacterTools({
+      foundryClient: { query } as unknown as FoundryClient,
+      logger: createLoggerStub(),
+      systemRegistry: registry,
+    });
+
+    const result = (await tools.handleUpdateCharacterResources({
+      actorIdentifier: 'Laeral',
+      hitPoints: {
+        current: 24,
+        temp: 5,
+      },
+      inspiration: true,
+      exhaustion: 2,
+      deathSaves: {
+        success: 1,
+      },
+      currency: {
+        gp: 120,
+      },
+      hitDice: [
+        {
+          classIdentifier: 'Wizard',
+          used: 3,
+        },
+      ],
+    })) as Record<string, unknown>;
+
+    expect(result).toMatchObject({
+      success: true,
+      actor: {
+        id: 'actor-3',
+        name: 'Laeral',
+        type: 'character',
+      },
+      resources: {
+        mode: 'update-resources',
+      },
+      updatedItems: [
+        {
+          id: 'class-wizard',
+          name: 'Wizard',
+          type: 'class',
+          updatedFields: ['system.hd.spent'],
+        },
+      ],
+    });
+    expect(result.updatedFields).toEqual(
+      expect.arrayContaining(['system.attributes.hp.value', 'system.currency.gp'])
+    );
+  });
+
+  it('routes PF2e ability score updates through adapter-prepared actor paths', async () => {
+    const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
+      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+        return Promise.resolve({ system: 'pf2e' });
+      }
+
+      if (method === 'foundry-mcp-bridge.getCharacterInfo') {
+        expect(data).toEqual({ identifier: 'Seoni' });
+        return Promise.resolve({
+          id: 'actor-pf2e-1',
+          name: 'Seoni',
+          type: 'character',
+          system: {
+            abilities: {
+              str: {},
+              dex: {},
+              int: {},
+            },
+          },
+          items: [],
+          effects: [],
+        });
+      }
+
+      if (method === 'foundry-mcp-bridge.updateActor') {
+        expect(data).toEqual({
+          identifier: 'Seoni',
+          updates: {
+            'system.abilities.dex.value': 18,
+            'system.abilities.int.value': 19,
+          },
+        });
+        return Promise.resolve({
+          success: true,
+          actorId: 'actor-pf2e-1',
+          actorName: 'Seoni',
+          actorType: 'character',
+          appliedUpdates: {
+            'system.abilities.dex.value': 18,
+            'system.abilities.int.value': 19,
+          },
+          updatedFields: ['system.abilities.dex.value', 'system.abilities.int.value'],
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected query: ${method}`));
+    });
+
+    const registry = new SystemRegistry();
+    registry.register(new PF2eAdapter());
+
+    const tools = new CharacterTools({
+      foundryClient: { query } as unknown as FoundryClient,
+      logger: createLoggerStub(),
+      systemRegistry: registry,
+    });
+
+    const result = (await tools.handleSetCharacterAbilityScores({
+      actorIdentifier: 'Seoni',
+      scores: {
+        dex: 18,
+        int: 19,
+      },
+    })) as Record<string, unknown>;
+
+    expect(result).toMatchObject({
+      success: true,
+      actor: {
+        id: 'actor-pf2e-1',
+        name: 'Seoni',
+        type: 'character',
+      },
+      scores: {
+        dex: 18,
+        int: 19,
+      },
+      updatedFields: ['system.abilities.dex.value', 'system.abilities.int.value'],
+    });
+  });
+
+  it('routes DnD5e skill proficiency updates through adapter-prepared actor paths', async () => {
+    const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
+      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+        return Promise.resolve({ system: 'dnd5e' });
+      }
+
+      if (method === 'foundry-mcp-bridge.getCharacterInfo') {
+        expect(data).toEqual({ identifier: 'Aldric' });
+        return Promise.resolve({
+          id: 'actor-1',
+          name: 'Aldric',
+          type: 'character',
+          system: {
+            skills: {
+              ath: {},
+              prc: {},
+            },
+          },
+          items: [],
+          effects: [],
+        });
+      }
+
+      if (method === 'foundry-mcp-bridge.updateActor') {
+        expect(data).toEqual({
+          identifier: 'Aldric',
+          updates: {
+            'system.skills.ath.value': 1,
+            'system.skills.prc.value': 2,
+          },
+        });
+        return Promise.resolve({
+          success: true,
+          actorId: 'actor-1',
+          actorName: 'Aldric',
+          actorType: 'character',
+          appliedUpdates: {
+            'system.skills.ath.value': 1,
+            'system.skills.prc.value': 2,
+          },
+          updatedFields: ['system.skills.ath.value', 'system.skills.prc.value'],
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected query: ${method}`));
+    });
+
+    const registry = new SystemRegistry();
+    registry.register(new DnD5eAdapter());
+
+    const tools = new CharacterTools({
+      foundryClient: { query } as unknown as FoundryClient,
+      logger: createLoggerStub(),
+      systemRegistry: registry,
+    });
+
+    const result = (await tools.handleSetCharacterSkillProficiencies({
+      actorIdentifier: 'Aldric',
+      skills: [
+        { skill: 'ath', proficiency: 1 },
+        { skill: 'prc', proficiency: 2 },
+      ],
+    })) as Record<string, unknown>;
+
+    expect(result).toMatchObject({
+      success: true,
+      skills: [
+        { skill: 'ath', proficiency: 1 },
+        { skill: 'prc', proficiency: 2 },
+      ],
+      updatedFields: ['system.skills.ath.value', 'system.skills.prc.value'],
+    });
+  });
+
+  it('uses the shared batch-update-character-items bridge request shape', async () => {
+    const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
+      if (method === 'foundry-mcp-bridge.batchUpdateActorEmbeddedItems') {
+        expect(data).toEqual({
+          actorIdentifier: 'Aldric',
+          updates: [
+            {
+              itemIdentifier: 'Longsword',
+              itemType: 'weapon',
+              updates: {
+                'system.quantity': 3,
+              },
+            },
+            {
+              itemIdentifier: 'Chain Mail',
+              itemType: 'equipment',
+              updates: {
+                'system.equipped': true,
+              },
+            },
+          ],
+        });
+        return Promise.resolve({
+          success: true,
+          actorId: 'actor-1',
+          actorName: 'Aldric',
+          updatedItems: [
+            {
+              itemId: 'item-weapon-1',
+              itemName: 'Longsword',
+              itemType: 'weapon',
+              appliedUpdates: {
+                'system.quantity': 3,
+              },
+              updatedFields: ['system.quantity'],
+            },
+            {
+              itemId: 'item-armor-1',
+              itemName: 'Chain Mail',
+              itemType: 'equipment',
+              appliedUpdates: {
+                'system.equipped': true,
+              },
+              updatedFields: ['system.equipped'],
+            },
+          ],
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected query: ${method}`));
+    });
+
+    const registry = new SystemRegistry();
+    registry.register(new DnD5eAdapter());
+
+    const tools = new CharacterTools({
+      foundryClient: { query } as unknown as FoundryClient,
+      logger: createLoggerStub(),
+      systemRegistry: registry,
+    });
+
+    const result = (await tools.handleBatchUpdateCharacterItems({
+      actorIdentifier: 'Aldric',
+      updates: [
+        {
+          itemIdentifier: 'Longsword',
+          itemType: 'weapon',
+          updates: {
+            'system.quantity': 3,
+          },
+        },
+        {
+          itemIdentifier: 'Chain Mail',
+          itemType: 'equipment',
+          updates: {
+            'system.equipped': true,
+          },
+        },
+      ],
+    })) as Record<string, unknown>;
+
+    expect(result).toMatchObject({
+      success: true,
+      updatedCount: 2,
+      updatedItems: [
+        {
+          id: 'item-weapon-1',
+          name: 'Longsword',
+          type: 'weapon',
+          updatedFields: ['system.quantity'],
+        },
+        {
+          id: 'item-armor-1',
+          name: 'Chain Mail',
+          type: 'equipment',
+          updatedFields: ['system.equipped'],
+        },
+      ],
+    });
+  });
+
+  it('routes DnD5e proficiency updates through adapter-prepared actor paths', async () => {
+    const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
+      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+        return Promise.resolve({ system: 'dnd5e' });
+      }
+
+      if (method === 'foundry-mcp-bridge.getCharacterInfo') {
+        expect(data).toEqual({ identifier: 'Laeral' });
+        return Promise.resolve({
+          id: 'actor-3',
+          name: 'Laeral',
+          type: 'character',
+          system: {
+            abilities: {
+              str: {},
+              dex: {},
+              wis: {},
+            },
+            tools: {
+              herb: {},
+              thief: {},
+            },
+          },
+          items: [],
+          effects: [],
+        });
+      }
+
+      if (method === 'foundry-mcp-bridge.updateActor') {
+        expect(data).toEqual({
+          identifier: 'Laeral',
+          updates: {
+            'system.traits.languages.value': ['common', 'draconic'],
+            'system.traits.languages.custom': 'Abyssal',
+            'system.traits.weaponProf.value': ['simpleM', 'simpleR'],
+            'system.traits.armorProf.value': ['light', 'medium'],
+            'system.tools.herb.value': 1,
+            'system.tools.thief.value': 2,
+            'system.abilities.str.proficient': 0,
+            'system.abilities.dex.proficient': 0,
+            'system.abilities.wis.proficient': 1,
+          },
+        });
+        return Promise.resolve({
+          success: true,
+          actorId: 'actor-3',
+          actorName: 'Laeral',
+          actorType: 'character',
+          appliedUpdates: {
+            'system.traits.languages.value': ['common', 'draconic'],
+            'system.traits.languages.custom': 'Abyssal',
+            'system.traits.weaponProf.value': ['simpleM', 'simpleR'],
+            'system.traits.armorProf.value': ['light', 'medium'],
+            'system.tools.herb.value': 1,
+            'system.tools.thief.value': 2,
+            'system.abilities.str.proficient': 0,
+            'system.abilities.dex.proficient': 0,
+            'system.abilities.wis.proficient': 1,
+          },
+          updatedFields: [
+            'system.traits.languages.value',
+            'system.traits.languages.custom',
+            'system.traits.weaponProf.value',
+            'system.traits.armorProf.value',
+            'system.tools.herb.value',
+            'system.tools.thief.value',
+            'system.abilities.str.proficient',
+            'system.abilities.dex.proficient',
+            'system.abilities.wis.proficient',
+          ],
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected query: ${method}`));
+    });
+
+    const registry = new SystemRegistry();
+    registry.register(new DnD5eAdapter());
+
+    const tools = new CharacterTools({
+      foundryClient: { query } as unknown as FoundryClient,
+      logger: createLoggerStub(),
+      systemRegistry: registry,
+    });
+
+    const result = (await tools.handleSetDnD5eProficiencies({
+      actorIdentifier: 'Laeral',
+      languages: {
+        values: ['common', 'draconic'],
+        custom: 'Abyssal',
+      },
+      weaponProficiencies: {
+        values: ['simpleM', 'simpleR'],
+      },
+      armorProficiencies: {
+        values: ['light', 'medium'],
+      },
+      toolProficiencies: [
+        { tool: 'herb', proficiency: 1 },
+        { tool: 'thief', proficiency: 2 },
+      ],
+      savingThrowProficiencies: ['wis'],
+    })) as Record<string, unknown>;
+
+    expect(result).toMatchObject({
+      success: true,
+      proficiencies: {
+        mode: 'set-dnd5e-proficiencies',
+      },
+    });
+    expect(result.updatedFields).toEqual(
+      expect.arrayContaining([
+        'system.traits.languages.value',
+        'system.tools.thief.value',
+        'system.abilities.wis.proficient',
+      ])
+    );
+  });
+
   it('uses the shared add-character-item bridge request shape', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
       if (method === 'foundry-mcp-bridge.createActorEmbeddedItem') {
@@ -993,9 +1571,13 @@ describe('CharacterTools', () => {
       return Promise.reject(new Error(`Unexpected query: ${method}`));
     });
 
+    const registry = new SystemRegistry();
+    registry.register(new DnD5eAdapter());
+
     const tools = new CharacterTools({
       foundryClient: { query } as unknown as FoundryClient,
       logger: createLoggerStub(),
+      systemRegistry: registry,
     });
 
     const result = (await tools.handleValidateDnD5eSpellbook({
@@ -1010,6 +1592,16 @@ describe('CharacterTools', () => {
         spellcastingClassCount: 2,
         multiclassSpellcaster: true,
         issueCount: 2,
+        sourceClassCounts: {
+          'class-wizard': 1,
+          'lost-class': 1,
+        },
+        preparedSpellCountsByClass: {
+          'class-wizard': 1,
+        },
+        preparationModeCounts: {
+          prepared: 3,
+        },
       },
     });
     expect(result.classes).toEqual([
