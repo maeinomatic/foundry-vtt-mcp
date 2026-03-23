@@ -1,5 +1,5 @@
 {
-  "name": "@foundry-mcp/module",
+  "name": "@maeinomatic/foundry-mcp-module",
   "version": "0.6.3",
   "description": "Foundry VTT module for the independently maintained MCP bridge integration",
   "type": "module",
@@ -11,7 +11,7 @@
     "lint:fix": "eslint src --ext .ts --fix"
   },
   "dependencies": {
-    "@foundry-mcp/shared": "*",
+    "@maeinomatic/foundry-mcp-shared": "*",
     "socket.io-client": "^4.8.3",
     "socket.io-parser": "^4.2.6"
   },

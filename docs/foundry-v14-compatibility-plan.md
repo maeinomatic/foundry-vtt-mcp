@@ -136,7 +136,7 @@ Run these checks in separate worlds and record results.
 
 ```bash
 npm run typecheck
-npm -w @foundry-mcp/server test -- --run
+npm -w @maeinomatic/foundry-mcp-server test -- --run
 npm run build
 npm run test:mcp:schema
 ```

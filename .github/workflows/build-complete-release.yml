@@ -140,14 +140,14 @@ jobs:
           # Create ZIP excluding hidden files and node_modules
           $compress = @{
             Path = Get-ChildItem -Path "." -Exclude ".*", "node_modules"
-            DestinationPath = "..\..\foundry-vtt-mcp.zip"
+            DestinationPath = "..\..\maeinomatic-foundry-mcp.zip"
             CompressionLevel = "Optimal"
           }
           Compress-Archive @compress -Force
 
           # Verify ZIP was created
-          if (Test-Path "..\..\foundry-vtt-mcp.zip") {
-            $size = (Get-Item "..\..\foundry-vtt-mcp.zip").Length / 1KB
+          if (Test-Path "..\..\maeinomatic-foundry-mcp.zip") {
+            $size = (Get-Item "..\..\maeinomatic-foundry-mcp.zip").Length / 1KB
             Write-Host "✓ Foundry module ZIP created ($([math]::Round($size, 1)) KB)"
           } else {
             Write-Host "❌ Foundry module ZIP creation failed"
@@ -167,7 +167,7 @@ jobs:
 
           # Create package.json for standalone
           $standalonePackage = @{
-            name = "foundry-mcp-server"
+            name = "maeinomatic-foundry-mcp-server"
             version = "${{ steps.version.outputs.version }}".TrimStart('v')
             description = "Maeinomatic Foundry VTT MCP Server - Standalone Installation"
             main = "index.js"
@@ -206,14 +206,14 @@ jobs:
           # Create the ZIP
           $compress = @{
             Path = $standalonePath
-            DestinationPath = "foundry-mcp-server-${{ steps.version.outputs.version }}.zip"
+            DestinationPath = "maeinomatic-foundry-mcp-server-${{ steps.version.outputs.version }}.zip"
             CompressionLevel = "Optimal"
           }
           Compress-Archive @compress -Force
 
           # Verify and clean up
-          if (Test-Path "foundry-mcp-server-${{ steps.version.outputs.version }}.zip") {
-            $size = (Get-Item "foundry-mcp-server-${{ steps.version.outputs.version }}.zip").Length / 1KB
+          if (Test-Path "maeinomatic-foundry-mcp-server-${{ steps.version.outputs.version }}.zip") {
+            $size = (Get-Item "maeinomatic-foundry-mcp-server-${{ steps.version.outputs.version }}.zip").Length / 1KB
             Write-Host "✓ Standalone MCP server ZIP created ($([math]::Round($size, 1)) KB)"
           } else {
             Write-Host "❌ Standalone MCP server ZIP creation failed"
@@ -227,9 +227,9 @@ jobs:
         run: |
           cd installer/build
           dir
-          if (Test-Path "FoundryMCPServer-Setup-$env:PACKAGE_VERSION.exe") {
+          if (Test-Path "MaeinomaticFoundryMCPServer-Setup-$env:PACKAGE_VERSION.exe") {
             Write-Host "✓ NSIS installer found"
-            $size = (Get-Item "FoundryMCPServer-Setup-$env:PACKAGE_VERSION.exe").Length / 1MB
+            $size = (Get-Item "MaeinomaticFoundryMCPServer-Setup-$env:PACKAGE_VERSION.exe").Length / 1MB
             Write-Host "📊 Installer size: $([math]::Round($size, 1)) MB"
           } else {
             Write-Host "❌ NSIS installer not found"
@@ -239,8 +239,8 @@ jobs:
       - name: Upload installer as artifact
         uses: actions/upload-artifact@v6
         with:
-          name: foundry-mcp-server-installer-${{ steps.version.outputs.version }}
-          path: installer/build/FoundryMCPServer-Setup-${{ steps.version.outputs.version }}.exe
+          name: maeinomatic-foundry-mcp-server-installer-${{ steps.version.outputs.version }}
+          path: installer/build/MaeinomaticFoundryMCPServer-Setup-${{ steps.version.outputs.version }}.exe
           retention-days: 30
 
   build-mac-pkg:
@@ -351,22 +351,22 @@ jobs:
           # Strip 'v' prefix from version for filename check
           VERSION="${{ steps.version.outputs.version }}"
           VERSION_NO_V="${VERSION#v}"
-          if [ -f "FoundryMCPServer-${VERSION_NO_V}.dmg" ]; then
+          if [ -f "MaeinomaticFoundryMCPServer-${VERSION_NO_V}.dmg" ]; then
             echo "✓ Mac DMG distribution found"
-            SIZE=$(du -h "FoundryMCPServer-${VERSION_NO_V}.dmg" | cut -f1)
+            SIZE=$(du -h "MaeinomaticFoundryMCPServer-${VERSION_NO_V}.dmg" | cut -f1)
             echo "📊 DMG size: $SIZE"
             # Copy with v prefix for artifact upload consistency
-            cp "FoundryMCPServer-${VERSION_NO_V}.dmg" "FoundryMCPServer-${VERSION}.dmg"
+            cp "MaeinomaticFoundryMCPServer-${VERSION_NO_V}.dmg" "MaeinomaticFoundryMCPServer-${VERSION}.dmg"
           else
-            echo "❌ Mac DMG not found (expected: FoundryMCPServer-${VERSION_NO_V}.dmg)"
+            echo "❌ Mac DMG not found (expected: MaeinomaticFoundryMCPServer-${VERSION_NO_V}.dmg)"
             exit 1
           fi
 
       - name: Upload Mac DMG as artifact
         uses: actions/upload-artifact@v6
         with:
-          name: foundry-mcp-server-dmg-${{ steps.version.outputs.version }}
-          path: installer/build/FoundryMCPServer-${{ steps.version.outputs.version }}.dmg
+          name: maeinomatic-foundry-mcp-server-dmg-${{ steps.version.outputs.version }}
+          path: installer/build/MaeinomaticFoundryMCPServer-${{ steps.version.outputs.version }}.dmg
           retention-days: 30
 
   create-release:
@@ -445,7 +445,7 @@ jobs:
           manifest.readme = `${serverUrl}/${repository}/blob/${defaultBranch}/README.md`;
           manifest.license = `${serverUrl}/${repository}/blob/${defaultBranch}/LICENSE`;
           manifest.manifest = `https://raw.githubusercontent.com/${repository}/${defaultBranch}/packages/foundry-module/module.json`;
-          manifest.download = `${serverUrl}/${repository}/releases/latest/download/foundry-vtt-mcp.zip`;
+          manifest.download = `${serverUrl}/${repository}/releases/latest/download/maeinomatic-foundry-mcp.zip`;
 
           fs.writeFileSync(path, `${JSON.stringify(manifest, null, 2)}\n`);
           console.log('Updated packages/foundry-module/module.json metadata for this repository context.');
@@ -484,21 +484,21 @@ jobs:
       - name: Download Windows installer artifact
         uses: actions/download-artifact@v6
         with:
-          name: foundry-mcp-server-installer-${{ steps.version.outputs.version }}
+          name: maeinomatic-foundry-mcp-server-installer-${{ steps.version.outputs.version }}
           path: installer/build/
 
       - name: Download Mac DMG artifact
         uses: actions/download-artifact@v6
         with:
-          name: foundry-mcp-server-dmg-${{ steps.version.outputs.version }}
+          name: maeinomatic-foundry-mcp-server-dmg-${{ steps.version.outputs.version }}
           path: installer/build/
 
       - name: Create Foundry Module ZIP
         run: |
           cd packages/foundry-module
-          zip -r ../../foundry-vtt-mcp.zip . -x ".*" -x "node_modules/*"
+          zip -r ../../maeinomatic-foundry-mcp.zip . -x ".*" -x "node_modules/*"
           cd ../..
-          ls -lh foundry-vtt-mcp.zip
+          ls -lh maeinomatic-foundry-mcp.zip
 
       - name: Create Standalone MCP Server ZIP
         run: |
@@ -510,7 +510,7 @@ jobs:
           # Create package.json
           cat > standalone-mcp-server/package.json << EOF
           {
-            "name": "foundry-mcp-server",
+            "name": "maeinomatic-foundry-mcp-server",
             "version": "$VERSION_NO_V",
             "description": "Maeinomatic Foundry VTT MCP Server - Standalone Installation",
             "main": "index.js",
@@ -544,9 +544,9 @@ jobs:
           Version: ${{ steps.version.outputs.version }}
           EOF
 
-          zip -r foundry-mcp-server-${{ steps.version.outputs.version }}.zip standalone-mcp-server
+          zip -r maeinomatic-foundry-mcp-server-${{ steps.version.outputs.version }}.zip standalone-mcp-server
           rm -rf standalone-mcp-server
-          ls -lh foundry-mcp-server-${{ steps.version.outputs.version }}.zip
+          ls -lh maeinomatic-foundry-mcp-server-${{ steps.version.outputs.version }}.zip
 
       # Publish the GitHub release and attach every generated distribution artifact.
       - name: Create GitHub Release
@@ -563,19 +563,19 @@ jobs:
             ### 📦 Installation Options
 
             **Windows Users:**
-            - Download `FoundryMCPServer-Setup-${{ steps.release_meta.outputs.tag }}.exe`
+            - Download `MaeinomaticFoundryMCPServer-Setup-${{ steps.release_meta.outputs.tag }}.exe`
             - Run installer (no admin rights required)
             - Automatic Claude Desktop configuration
 
             **Mac Users:**
-            - Download `FoundryMCPServer-${{ steps.release_meta.outputs.tag }}.dmg`
+            - Download `MaeinomaticFoundryMCPServer-${{ steps.release_meta.outputs.tag }}.dmg`
             - Open DMG and double-click the PKG installer
             - Choose components: MCP Server (required), Foundry Module, ComfyUI AI Maps
             - Automatic Claude Desktop configuration
             - To uninstall: Double-click `Uninstall.tool` from the DMG
 
             **Manual Installation (All Platforms):**
-            - Download `foundry-mcp-server-${{ steps.release_meta.outputs.tag }}.zip`
+            - Download `maeinomatic-foundry-mcp-server-${{ steps.release_meta.outputs.tag }}.zip`
             - Extract and run with Node.js 18+
             - Manual Claude Desktop configuration required
 
@@ -601,10 +601,10 @@ jobs:
 
             For full documentation, visit: ${{ github.server_url }}/${{ github.repository }}
           files: |
-            installer/build/FoundryMCPServer-Setup-${{ steps.version.outputs.version }}.exe
-            installer/build/FoundryMCPServer-${{ steps.version.outputs.version }}.dmg
-            foundry-vtt-mcp.zip
-            foundry-mcp-server-${{ steps.version.outputs.version }}.zip
+            installer/build/MaeinomaticFoundryMCPServer-Setup-${{ steps.version.outputs.version }}.exe
+            installer/build/MaeinomaticFoundryMCPServer-${{ steps.version.outputs.version }}.dmg
+            maeinomatic-foundry-mcp.zip
+            maeinomatic-foundry-mcp-server-${{ steps.version.outputs.version }}.zip
             packages/foundry-module/module.json
           generate_release_notes: true
           draft: false

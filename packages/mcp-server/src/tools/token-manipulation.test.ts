@@ -32,7 +32,7 @@ describe('TokenManipulationTools', () => {
       animate: true,
     });
 
-    expect(query).toHaveBeenCalledWith('foundry-mcp-bridge.move-token', {
+    expect(query).toHaveBeenCalledWith('maeinomatic-foundry-mcp.move-token', {
       tokenId: 'token-1',
       x: 420,
       y: 840,
@@ -62,7 +62,7 @@ describe('TokenManipulationTools', () => {
       },
     });
 
-    expect(query).toHaveBeenCalledWith('foundry-mcp-bridge.update-token', {
+    expect(query).toHaveBeenCalledWith('maeinomatic-foundry-mcp.update-token', {
       tokenId: 'token-1',
       updates: {
         hidden: true,
@@ -97,7 +97,7 @@ describe('TokenManipulationTools', () => {
       tokenIds: ['token-1', 'token-2'],
     });
 
-    expect(query).toHaveBeenCalledWith('foundry-mcp-bridge.delete-tokens', {
+    expect(query).toHaveBeenCalledWith('maeinomatic-foundry-mcp.delete-tokens', {
       tokenIds: ['token-1', 'token-2'],
     });
     expect(result).toMatchObject({
@@ -140,7 +140,7 @@ describe('TokenManipulationTools', () => {
       tokenId: 'token-1',
     });
 
-    expect(query).toHaveBeenCalledWith('foundry-mcp-bridge.get-token-details', {
+    expect(query).toHaveBeenCalledWith('maeinomatic-foundry-mcp.get-token-details', {
       tokenId: 'token-1',
     });
     expect(result).toMatchObject({
@@ -177,7 +177,7 @@ describe('TokenManipulationTools', () => {
       active: true,
     });
 
-    expect(query).toHaveBeenCalledWith('foundry-mcp-bridge.toggle-token-condition', {
+    expect(query).toHaveBeenCalledWith('maeinomatic-foundry-mcp.toggle-token-condition', {
       tokenId: 'token-1',
       conditionId: 'prone',
       active: true,
@@ -207,7 +207,7 @@ describe('TokenManipulationTools', () => {
 
     const result = await tools.handleGetAvailableConditions({});
 
-    expect(query).toHaveBeenCalledWith('foundry-mcp-bridge.get-available-conditions', {});
+    expect(query).toHaveBeenCalledWith('maeinomatic-foundry-mcp.get-available-conditions', {});
     expect(result).toMatchObject({
       success: true,
       gameSystem: 'dnd5e',

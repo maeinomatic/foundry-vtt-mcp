@@ -85,7 +85,7 @@ Tracking issue:
 5. Update `docs/process/FOUNDRY_OFFICIAL_REFERENCE.md` when official guidance or source links change.
 6. Run regression checks and record results:
    - `npm run typecheck`
-   - `npm -w @foundry-mcp/server test -- --run`
+   - `npm -w @maeinomatic/foundry-mcp-server test -- --run`
    - `npm run build`
    - `npm run test:mcp:schema`
 
@@ -116,12 +116,12 @@ Tracking issue:
    - combined filters
    - experience points filtering
    - helper validators
-3. Ensure `npm -w @foundry-mcp/server test -- --run` passes.
+3. Ensure `npm -w @maeinomatic/foundry-mcp-server test -- --run` passes.
 
 ### Commands
 
 ```bash
-npm -w @foundry-mcp/server test -- --run
+npm -w @maeinomatic/foundry-mcp-server test -- --run
 npm run typecheck
 npm run build
 ```
@@ -144,7 +144,7 @@ npm run build
 1. Add/update workflow to run:
    - `npm ci`
    - `npm run typecheck`
-   - `npm -w @foundry-mcp/server test -- --run`
+   - `npm -w @maeinomatic/foundry-mcp-server test -- --run`
    - `npm run build`
 2. Add security step:
    - `npm audit --workspaces --audit-level=high`
@@ -193,7 +193,7 @@ Only patch/minor updates first. No major upgrades in this phase.
 npm outdated --workspaces
 npm install
 npm run typecheck
-npm -w @foundry-mcp/server test -- --run
+npm -w @maeinomatic/foundry-mcp-server test -- --run
 npm run build
 npm run test:mcp:schema
 ```
@@ -283,7 +283,7 @@ Use these only for background context:
 Use this checklist in PR descriptions:
 
 - [ ] Typecheck passes (`npm run typecheck`)
-- [ ] Tests pass (`npm -w @foundry-mcp/server test -- --run`)
+- [ ] Tests pass (`npm -w @maeinomatic/foundry-mcp-server test -- --run`)
 - [ ] Build passes (`npm run build`)
 - [ ] Schema smoke test passes (`npm run test:mcp:schema`)
 - [ ] Audit reviewed (`npm audit --workspaces`)

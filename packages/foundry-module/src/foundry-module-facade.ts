@@ -97,7 +97,7 @@ import type {
   FoundryUpdateWorldItemRequest,
   FoundryUpdateWorldItemResponse,
   UnknownRecord,
-} from '@foundry-mcp/shared';
+} from '@maeinomatic/foundry-mcp-shared';
 
 type CharacterInfo = FoundryCharacterInfo<UnknownRecord, UnknownRecord, UnknownRecord>;
 

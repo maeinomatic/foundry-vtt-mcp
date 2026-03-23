@@ -419,7 +419,7 @@ export class SocketBridge {
         this.handleProgressUpdate(message.data);
       }
     } catch (error) {
-      console.error(`[foundry-mcp-bridge] ERROR in handleMessage:`, error);
+      console.error(`[maeinomatic-foundry-mcp] ERROR in handleMessage:`, error);
       this.log(`Error handling message: ${this.errorMessage(error)}`);
     }
   }
@@ -459,7 +459,7 @@ export class SocketBridge {
 
       this.log(`Progress: ${message}`);
     } catch (error) {
-      console.error(`[foundry-mcp-bridge] Error handling progress update:`, error);
+      console.error(`[maeinomatic-foundry-mcp] Error handling progress update:`, error);
     }
   }
 

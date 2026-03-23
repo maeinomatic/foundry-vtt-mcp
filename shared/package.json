@@ -1,5 +1,5 @@
 {
-  "name": "@foundry-mcp/shared",
+  "name": "@maeinomatic/foundry-mcp-shared",
   "version": "0.6.3",
   "description": "Shared TypeScript types and constants for the independently maintained Foundry MCP integration",
   "type": "module",

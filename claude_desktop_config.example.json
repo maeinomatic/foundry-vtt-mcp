@@ -1,13 +1,13 @@
 {
   "mcpServers": {
-    "foundry-mcp": {
+    "maeinomatic-foundry-mcp": {
       "command": "node",
       "args": ["D:/Projects/FVTTMCP/packages/mcp-server/dist/index.js"],
       "env": {
         "LOG_LEVEL": "info",
         "FOUNDRY_HOST": "localhost",
         "FOUNDRY_PORT": "31415",
-        "FOUNDRY_NAMESPACE": "/foundry-mcp"
+        "FOUNDRY_NAMESPACE": "/maeinomatic-foundry-mcp"
       }
     }
   }

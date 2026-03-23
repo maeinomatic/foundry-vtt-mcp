@@ -556,7 +556,7 @@ export class FoundryRollRequestService {
         }
 
         if (game.socket) {
-          game.socket.emit('module.foundry-mcp-bridge', {
+          game.socket.emit('module.maeinomatic-foundry-mcp', {
             type: 'requestMessageUpdate',
             buttonId,
             userId,

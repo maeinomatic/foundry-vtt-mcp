@@ -31,7 +31,7 @@ export async function getOrCreateFolder(
     const description =
       type === 'Actor'
         ? folderName === 'Foundry MCP Creatures'
-          ? 'Creatures and monsters created via Foundry MCP Bridge'
+          ? 'Creatures and monsters created via Maeinomatic Foundry MCP Bridge'
           : `NPCs and creatures related to: ${folderName}`
         : `Quest and content for: ${folderName}`;
 
@@ -43,7 +43,7 @@ export async function getOrCreateFolder(
       sort: 0,
       parent: null,
       flags: {
-        'foundry-mcp-bridge': {
+        'maeinomatic-foundry-mcp': {
           mcpGenerated: true,
           createdAt: new Date().toISOString(),
           questContext: type === 'JournalEntry' ? folderName : undefined,

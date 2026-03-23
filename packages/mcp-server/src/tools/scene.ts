@@ -122,7 +122,7 @@ export class SceneTools {
 
     try {
       const sceneData = await this.foundryClient.query<ActiveSceneData>(
-        'foundry-mcp-bridge.getActiveScene'
+        'maeinomatic-foundry-mcp.getActiveScene'
       );
 
       this.logger.debug('Successfully retrieved scene data', {
@@ -145,7 +145,7 @@ export class SceneTools {
 
     try {
       const worldData = await this.foundryClient.query<WorldInfoData>(
-        'foundry-mcp-bridge.getWorldInfo'
+        'maeinomatic-foundry-mcp.getWorldInfo'
       );
 
       this.logger.debug('Successfully retrieved world data', {

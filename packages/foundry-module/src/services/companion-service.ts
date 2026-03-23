@@ -25,7 +25,7 @@ import type {
   FoundryUnlinkCharacterCompanionResponse,
   FoundryUpdateCharacterCompanionLinkRequest,
   FoundryUpdateCharacterCompanionLinkResponse,
-} from '@foundry-mcp/shared';
+} from '@maeinomatic/foundry-mcp-shared';
 import type {
   CompendiumEntryActorCreationRequest,
   TokenPlacementResult,

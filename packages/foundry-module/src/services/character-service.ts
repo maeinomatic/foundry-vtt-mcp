@@ -7,7 +7,7 @@ import type {
   FoundrySearchCharacterItemsRequest,
   FoundrySearchCharacterItemsResponse,
   UnknownRecord,
-} from '@foundry-mcp/shared';
+} from '@maeinomatic/foundry-mcp-shared';
 import { getCharacterSystemStrategy } from './character-system-strategies/character-system-strategy-registry.js';
 import {
   getActorItems,

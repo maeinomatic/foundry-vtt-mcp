@@ -17,8 +17,8 @@
     "rootDir": "./src",
     "composite": true,
     "paths": {
-      "@foundry-mcp/shared": ["../../shared/src/index.ts"],
-      "@foundry-mcp/shared/*": ["../../shared/src/*"]
+      "@maeinomatic/foundry-mcp-shared": ["../../shared/src/index.ts"],
+      "@maeinomatic/foundry-mcp-shared/*": ["../../shared/src/*"]
     }
   },
   "include": ["src/**/*"],

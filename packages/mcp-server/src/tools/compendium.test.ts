@@ -27,7 +27,7 @@ describe('CompendiumTools', () => {
   it('returns an explicit unsupported-capability error when no adapter is registered', async () => {
     const foundryClient = {
       query: vi.fn().mockImplementation((method: string) => {
-        if (method === 'foundry-mcp-bridge.getWorldInfo') {
+        if (method === 'maeinomatic-foundry-mcp.getWorldInfo') {
           return Promise.resolve({ system: 'coc7' });
         }
 
@@ -49,7 +49,7 @@ describe('CompendiumTools', () => {
   it('validates criteria against the active system adapter schema', async () => {
     const foundryClient = {
       query: vi.fn().mockImplementation((method: string) => {
-        if (method === 'foundry-mcp-bridge.getWorldInfo') {
+        if (method === 'maeinomatic-foundry-mcp.getWorldInfo') {
           return Promise.resolve({ system: 'dnd5e' });
         }
 
@@ -74,11 +74,11 @@ describe('CompendiumTools', () => {
   it('uses the active adapter to shape compact and full creature compendium responses', async () => {
     const foundryClient = {
       query: vi.fn().mockImplementation((method: string) => {
-        if (method === 'foundry-mcp-bridge.getWorldInfo') {
+        if (method === 'maeinomatic-foundry-mcp.getWorldInfo') {
           return Promise.resolve({ system: 'dnd5e' });
         }
 
-        if (method === 'foundry-mcp-bridge.getCompendiumDocumentFull') {
+        if (method === 'maeinomatic-foundry-mcp.getCompendiumDocumentFull') {
           return Promise.resolve({
             id: 'adult-black-dragon',
             name: 'Adult Black Dragon',
@@ -158,11 +158,11 @@ describe('CompendiumTools', () => {
   it('requires a registered adapter for creature compendium detail formatting', async () => {
     const foundryClient = {
       query: vi.fn().mockImplementation((method: string) => {
-        if (method === 'foundry-mcp-bridge.getWorldInfo') {
+        if (method === 'maeinomatic-foundry-mcp.getWorldInfo') {
           return Promise.resolve({ system: 'coc7' });
         }
 
-        if (method === 'foundry-mcp-bridge.getCompendiumDocumentFull') {
+        if (method === 'maeinomatic-foundry-mcp.getCompendiumDocumentFull') {
           return Promise.resolve({
             id: 'deep-one',
             name: 'Deep One',
@@ -194,11 +194,11 @@ describe('CompendiumTools', () => {
 
   it('uses the shared compendium-search bridge request shape and formats lightweight results', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
-      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+      if (method === 'maeinomatic-foundry-mcp.getWorldInfo') {
         return Promise.resolve({ system: 'dnd5e' });
       }
 
-      if (method === 'foundry-mcp-bridge.searchCompendium') {
+      if (method === 'maeinomatic-foundry-mcp.searchCompendium') {
         expect(data).toEqual({
           query: 'dragon',
           packType: 'Actor',
@@ -249,7 +249,7 @@ describe('CompendiumTools', () => {
       packType: 'Actor',
     })) as Record<string, unknown>;
 
-    expect(query).toHaveBeenCalledWith('foundry-mcp-bridge.searchCompendium', {
+    expect(query).toHaveBeenCalledWith('maeinomatic-foundry-mcp.searchCompendium', {
       query: 'dragon',
       packType: 'Actor',
       filters: undefined,
@@ -264,11 +264,11 @@ describe('CompendiumTools', () => {
 
   it('uses the shared creature-search envelope and surfaces search summary data', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
-      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+      if (method === 'maeinomatic-foundry-mcp.getWorldInfo') {
         return Promise.resolve({ system: 'dnd5e' });
       }
 
-      if (method === 'foundry-mcp-bridge.listCreaturesByCriteria') {
+      if (method === 'maeinomatic-foundry-mcp.listCreaturesByCriteria') {
         expect(data).toEqual({
           challengeRating: 3,
           limit: 100,
@@ -335,7 +335,7 @@ describe('CompendiumTools', () => {
       challengeRating: 3,
     })) as Record<string, unknown>;
 
-    expect(query).toHaveBeenCalledWith('foundry-mcp-bridge.listCreaturesByCriteria', {
+    expect(query).toHaveBeenCalledWith('maeinomatic-foundry-mcp.listCreaturesByCriteria', {
       challengeRating: 3,
       limit: 100,
     });
@@ -354,7 +354,7 @@ describe('CompendiumTools', () => {
 
   it('uses the shared create-world-item bridge request shape', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
-      if (method === 'foundry-mcp-bridge.createWorldItem') {
+      if (method === 'maeinomatic-foundry-mcp.createWorldItem') {
         expect(data).toEqual({
           itemData: {
             name: 'Storm Sigil',
@@ -411,7 +411,7 @@ describe('CompendiumTools', () => {
 
   it('uses the shared update-world-item bridge request shape', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
-      if (method === 'foundry-mcp-bridge.updateWorldItem') {
+      if (method === 'maeinomatic-foundry-mcp.updateWorldItem') {
         expect(data).toEqual({
           itemIdentifier: 'Storm Sigil',
           updates: {
@@ -459,7 +459,7 @@ describe('CompendiumTools', () => {
 
   it('uses the shared create-compendium-item bridge request shape', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
-      if (method === 'foundry-mcp-bridge.createCompendiumItem') {
+      if (method === 'maeinomatic-foundry-mcp.createCompendiumItem') {
         expect(data).toEqual({
           packId: 'world.homebrew-items',
           sourceUuid: 'Compendium.dnd5e.items.wandOfMagicMissiles',
@@ -515,7 +515,7 @@ describe('CompendiumTools', () => {
 
   it('uses the shared import-item-to-compendium bridge request shape', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
-      if (method === 'foundry-mcp-bridge.importItemToCompendium') {
+      if (method === 'maeinomatic-foundry-mcp.importItemToCompendium') {
         expect(data).toEqual({
           itemIdentifier: 'Storm Sigil',
           packId: 'world.homebrew-items',

@@ -1,5 +1,5 @@
 {
-  "name": "foundry-mcp-integration",
+  "name": "maeinomatic-foundry-mcp",
   "version": "0.6.3",
   "description": "Independently maintained MCP bridge for Foundry VTT with workflow-first automation and multi-system support",
   "private": true,

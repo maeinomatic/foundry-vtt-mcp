@@ -15,7 +15,7 @@ const ConfigSchema = z.object({
   foundry: z.object({
     host: z.string().default('localhost'),
     port: z.number().min(1024).max(65535).default(31415),
-    namespace: z.string().default('/foundry-mcp'),
+    namespace: z.string().default('/maeinomatic-foundry-mcp'),
     reconnectAttempts: z.number().min(1).max(20).default(5),
     reconnectDelay: z.number().min(100).max(30000).default(1000),
     connectionTimeout: z.number().min(1000).max(60000).default(10000),
@@ -50,7 +50,7 @@ const ConfigSchema = z.object({
   }),
   toolResponseMaxChars: z.number().min(256).max(500000).default(20000),
   server: z.object({
-    name: z.string().default('foundry-mcp-server'),
+    name: z.string().default('maeinomatic-foundry-mcp-server'),
     version: z.string().default('0.0.0-dev'),
   }),
 });
@@ -65,7 +65,7 @@ const rawConfig = {
   foundry: {
     host: process.env.FOUNDRY_HOST ?? 'localhost',
     port: parseInt(process.env.FOUNDRY_PORT ?? '31415', 10),
-    namespace: process.env.FOUNDRY_NAMESPACE ?? '/foundry-mcp',
+    namespace: process.env.FOUNDRY_NAMESPACE ?? '/maeinomatic-foundry-mcp',
     reconnectAttempts: parseInt(process.env.FOUNDRY_RECONNECT_ATTEMPTS ?? '5', 10),
     reconnectDelay: parseInt(process.env.FOUNDRY_RECONNECT_DELAY ?? '1000', 10),
     connectionTimeout: parseInt(process.env.FOUNDRY_CONNECTION_TIMEOUT ?? '10000', 10),
@@ -92,7 +92,7 @@ const rawConfig = {
   },
   toolResponseMaxChars: parseInt(process.env.TOOL_RESPONSE_MAX_CHARS ?? '20000', 10),
   server: {
-    name: process.env.SERVER_NAME ?? 'foundry-mcp-server',
+    name: process.env.SERVER_NAME ?? 'maeinomatic-foundry-mcp-server',
     version: process.env.SERVER_VERSION ?? process.env.npm_package_version ?? '0.0.0-dev',
   },
 };

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * Build NSIS Installer for Foundry MCP Server
+ * Build NSIS Installer for Maeinomatic Foundry MCP Server
  *
  * This script prepares files for NSIS installer:
  * - Downloads portable Node.js runtime
@@ -37,7 +37,7 @@ for (let i = 0; i < args.length; i++) {
   }
 }
 
-console.log('🚀 Building Foundry MCP Server NSIS Installer\n');
+console.log('🚀 Building Maeinomatic Foundry MCP Server NSIS Installer\n');
 console.log(`📦 Version: ${version}\n`);
 
 // Configuration
@@ -139,7 +139,7 @@ function copyMcpServerFilesV2() {
   const rootDir = path.join(__dirname, '..');
   const mcpServerSource = path.join(rootDir, 'packages', 'mcp-server');
   const sharedSource = path.join(rootDir, 'shared');
-  const mcpServerDest = path.join(config.outputDir, 'foundry-mcp-server');
+  const mcpServerDest = path.join(config.outputDir, 'maeinomatic-foundry-mcp-server');
 
   // Ensure MCP server was built and bundled
   const builtBundlePath = path.join(mcpServerSource, 'dist', 'index.bundle.cjs');
@@ -186,7 +186,7 @@ function copyMcpServerFilesV2() {
     path.join(mcpServerDest, 'shared', 'package.json')
   );
 
-  const sharedPkgDst = path.join(mcpServerDest, 'node_modules', '@foundry-mcp', 'shared');
+  const sharedPkgDst = path.join(mcpServerDest, 'node_modules', '@maeinomatic', 'foundry-mcp-shared');
   ensureDir(sharedPkgDst);
   copyRecursive(path.join(sharedSource, 'dist'), path.join(sharedPkgDst, 'dist'));
   fs.copyFileSync(path.join(sharedSource, 'package.json'), path.join(sharedPkgDst, 'package.json'));
@@ -200,7 +200,7 @@ function copyMcpServerFiles() {
   const rootDir = path.join(__dirname, '..');
   const mcpServerSource = path.join(rootDir, 'packages', 'mcp-server');
   const sharedSource = path.join(rootDir, 'shared');
-  const mcpServerDest = path.join(config.outputDir, 'foundry-mcp-server');
+  const mcpServerDest = path.join(config.outputDir, 'maeinomatic-foundry-mcp-server');
 
   // Ensure MCP server was built and bundled
   const builtBundlePath = path.join(mcpServerSource, 'dist', 'index.bundle.cjs');
@@ -433,8 +433,8 @@ function updateNSISVersion(sourcePath, destPath, version) {
 
   // Update DisplayVersion in registry (can use 3-part version)
   content = content.replace(
-    /WriteRegStr\s+HKCU\s+"Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\FoundryMCPServer"\s+"DisplayVersion"\s+"[\d.]+"/,
-    `WriteRegStr HKCU "Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Uninstall\\\\FoundryMCPServer" "DisplayVersion" "${cleanVersion}"`
+    /WriteRegStr\s+HKCU\s+"Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\MaeinomaticFoundryMCPServer"\s+"DisplayVersion"\s+"[\d.]+"/,
+    `WriteRegStr HKCU "Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Uninstall\\\\MaeinomaticFoundryMCPServer" "DisplayVersion" "${cleanVersion}"`
   );
 
   // Write the updated content to destination
@@ -458,8 +458,8 @@ function buildInstaller() {
 
   try {
     // Define paths
-    const nsisScript = path.join(config.nsisDir, 'foundry-mcp-server.nsi');
-    const outputPath = path.join(config.buildDir, `FoundryMCPServer-Setup-${version}.exe`);
+    const nsisScript = path.join(config.nsisDir, 'maeinomatic-foundry-mcp-server.nsi');
+    const outputPath = path.join(config.buildDir, `MaeinomaticFoundryMCPServer-Setup-${version}.exe`);
 
     console.log(`   📁 NSIS script: ${nsisScript}`);
     console.log(`   📁 Output path: ${outputPath}`);
@@ -471,7 +471,7 @@ function buildInstaller() {
     beforeFiles.forEach(file => console.log(`      - ${file}`));
 
     // Copy NSIS script to output directory and update version numbers
-    const nsisScriptLocal = path.join(config.outputDir, 'foundry-mcp-server.nsi');
+    const nsisScriptLocal = path.join(config.outputDir, 'maeinomatic-foundry-mcp-server.nsi');
     updateNSISVersion(nsisScript, nsisScriptLocal, version);
     console.log(`   📋 Copied NSIS script with updated version ${version} to working directory`);
 
@@ -483,7 +483,7 @@ function buildInstaller() {
     // Run NSIS compiler with verbose output from local script
     console.log(`   🔨 Running NSIS compiler...`);
     execSync(
-      `makensis /V4 /DVERSION=${version} /DOUTFILE="${outputPath}" "foundry-mcp-server.nsi"`,
+      `makensis /V4 /DVERSION=${version} /DOUTFILE="${outputPath}" "maeinomatic-foundry-mcp-server.nsi"`,
       {
         stdio: 'inherit',
       }
@@ -519,10 +519,10 @@ function buildInstaller() {
       console.log('   🔍 Installer not found at expected location, searching...');
 
       const possibleLocations = [
-        path.join(config.outputDir, 'FoundryMCPServer-Setup.exe'),
-        path.join(config.buildDir, 'FoundryMCPServer-Setup.exe'),
-        path.join(config.nsisDir, 'FoundryMCPServer-Setup.exe'),
-        path.join(__dirname, 'FoundryMCPServer-Setup.exe'),
+        path.join(config.outputDir, 'MaeinomaticFoundryMCPServer-Setup.exe'),
+        path.join(config.buildDir, 'MaeinomaticFoundryMCPServer-Setup.exe'),
+        path.join(config.nsisDir, 'MaeinomaticFoundryMCPServer-Setup.exe'),
+        path.join(__dirname, 'MaeinomaticFoundryMCPServer-Setup.exe'),
       ];
 
       for (const location of possibleLocations) {
@@ -596,7 +596,7 @@ async function build() {
 
     if (success) {
       console.log('🎉 Build completed successfully!');
-      console.log(`📦 Installer: FoundryMCPServer-Setup-${version}.exe`);
+      console.log(`📦 Installer: MaeinomaticFoundryMCPServer-Setup-${version}.exe`);
       console.log('📋 Ready for distribution!');
     } else {
       console.log('⚠️  Build completed but installer creation failed.');

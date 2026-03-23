@@ -4,7 +4,7 @@
  * Mac DMG Builder - Professional Distribution Package
  *
  * Creates a DMG disk image containing:
- * - FoundryMCPServer-{VERSION}-macOS.pkg (installer)
+ * - MaeinomaticFoundryMCPServer-{VERSION}-macOS.pkg (installer)
  * - Uninstall.tool (double-clickable uninstaller)
  * - README.txt (installation instructions)
  */
@@ -18,9 +18,9 @@ const VERSION = process.env.VERSION || require('../package.json').version;
 // Paths
 const BUILD_DIR = path.join(__dirname, 'build');
 const DMG_TEMP = path.join(BUILD_DIR, 'dmg-temp');
-const PKG_FILE = path.join(BUILD_DIR, `FoundryMCPServer-${VERSION}-macOS.pkg`);
+const PKG_FILE = path.join(BUILD_DIR, `MaeinomaticFoundryMCPServer-${VERSION}-macOS.pkg`);
 const UNINSTALL_TOOL = path.join(__dirname, 'Uninstall.tool');
-const DMG_OUTPUT = path.join(BUILD_DIR, `FoundryMCPServer-${VERSION}.dmg`);
+const DMG_OUTPUT = path.join(BUILD_DIR, `MaeinomaticFoundryMCPServer-${VERSION}.dmg`);
 
 console.log('💿 Building Professional Mac DMG Distribution');
 console.log(`Version: ${VERSION}`);
@@ -59,7 +59,7 @@ fs.chmodSync(path.join(DMG_TEMP, 'Uninstall.tool'), 0o755);
 
 // Create README.txt
 console.log('   • Creating README.txt...');
-const readme = `Foundry MCP Server ${VERSION}
+const readme = `Maeinomatic Foundry MCP Server ${VERSION}
 ═══════════════════════════════════════════════════════════════
 
 AI-powered campaign management for Foundry VTT using Claude Desktop
@@ -67,7 +67,7 @@ AI-powered campaign management for Foundry VTT using Claude Desktop
 📦 INSTALLATION
 ═══════════════════════════════════════════════════════════════
 
-1. Double-click "FoundryMCPServer-${VERSION}-macOS.pkg"
+1. Double-click "MaeinomaticFoundryMCPServer-${VERSION}-macOS.pkg"
 2. Follow the installer prompts
 3. Choose components:
    ✅ MCP Server (Required)
@@ -136,7 +136,7 @@ Need help? Report issues at:
 https://github.com/maeinomatic/foundry-vtt-mcp/issues
 
 ═══════════════════════════════════════════════════════════════
-© 2025 Foundry MCP Server
+© 2025 Maeinomatic Foundry MCP Server
 Licensed under MIT License
 `;
 
@@ -157,7 +157,7 @@ console.log(`   Output: ${DMG_OUTPUT}`);
 try {
   // Create DMG with better compression and settings
   execSync(
-    `hdiutil create -volname "Foundry MCP Server ${VERSION}" ` +
+    `hdiutil create -volname "Maeinomatic Foundry MCP Server ${VERSION}" ` +
       `-srcfolder "${DMG_TEMP}" ` +
       `-ov -format UDZO ` +
       `-fs HFS+ ` +
@@ -188,7 +188,7 @@ console.log(`📦 File: ${DMG_OUTPUT}`);
 console.log(`📊 Size: ${sizeMB} MB`);
 console.log('');
 console.log('Contents:');
-console.log(`  • FoundryMCPServer-${VERSION}-macOS.pkg (installer)`);
+console.log(`  • MaeinomaticFoundryMCPServer-${VERSION}-macOS.pkg (installer)`);
 console.log('  • Uninstall.tool (double-click to uninstall)');
 console.log('  • README.txt (installation instructions)');
 console.log('');

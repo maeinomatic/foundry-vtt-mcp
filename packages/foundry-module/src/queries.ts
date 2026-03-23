@@ -66,7 +66,7 @@ import type {
   FoundryUpdateWorldItemRequest,
   FoundryUpdateWorldItemResponse,
   FoundryWorldDetails,
-} from '@foundry-mcp/shared';
+} from '@maeinomatic/foundry-mcp-shared';
 
 type QueryErrorResult = { error: string; success: false; status?: string };
 

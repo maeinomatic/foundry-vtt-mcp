@@ -65,7 +65,7 @@ jobs:
 
       # Run automated tests for the MCP server workspace.
       - name: Run MCP server tests
-        run: npm -w @foundry-mcp/server test -- --run
+        run: npm -w @maeinomatic/foundry-mcp-server test -- --run
 
       # Verify all workspaces can produce their normal build outputs.
       - name: Build

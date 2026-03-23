@@ -1,5 +1,5 @@
 {
-  "foundry-mcp-bridge": {
+  "maeinomatic-foundry-mcp": {
     "settings": {
       "enabled": {
         "name": "Enable MCP Bridge",
@@ -15,7 +15,7 @@
       },
       "namespace": {
         "name": "Socket Namespace",
-        "hint": "Socket.io namespace path for MCP communication (default: /foundry-mcp)"
+        "hint": "Socket.io namespace path for MCP communication (default: /maeinomatic-foundry-mcp)"
       },
       "connectionTimeout": {
         "name": "Connection Timeout (seconds)",
@@ -38,7 +38,7 @@
       "connected": "MCP Bridge connected successfully to external server",
       "disconnected": "MCP Bridge disconnected from external server",
       "connectionFailed": "Failed to connect MCP Bridge to external server",
-      "initializationFailed": "Failed to initialize Foundry MCP Bridge module",
+      "initializationFailed": "Failed to initialize Maeinomatic Foundry MCP Bridge module",
       "settingsReset": "MCP Bridge settings have been reset to defaults",
       "invalidSettings": "MCP Bridge settings validation failed",
       "permissionDenied": "Access denied - this feature is disabled in module settings"

@@ -1,10 +1,10 @@
-// Constants for Foundry MCP Bridge Module
+// Constants for Maeinomatic Foundry MCP Bridge Module
 
 /**
  * Module constants
  */
-export const MODULE_ID = 'foundry-mcp-bridge';
-export const MODULE_TITLE = 'Foundry MCP Bridge';
+export const MODULE_ID = 'maeinomatic-foundry-mcp';
+export const MODULE_TITLE = 'Maeinomatic Foundry MCP Bridge';
 
 /**
  * Socket event names

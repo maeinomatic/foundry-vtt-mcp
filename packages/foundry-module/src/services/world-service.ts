@@ -1,5 +1,5 @@
 import { ERROR_MESSAGES, TOKEN_DISPOSITIONS } from '../constants.js';
-import type { FoundryWorldDetails } from '@foundry-mcp/shared';
+import type { FoundryWorldDetails } from '@maeinomatic/foundry-mcp-shared';
 
 export interface SceneTokenSummary {
   id: string;

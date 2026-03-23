@@ -1,11 +1,11 @@
 #!/bin/bash
 
-# Post-install script for Foundry MCP Server on macOS
+# Post-install script for Maeinomatic Foundry MCP Server on macOS
 # Runs after PKG installation to configure Claude Desktop and detect Foundry/ComfyUI
 
 set -e
 
-echo "Configuring Foundry MCP Server..."
+echo "Configuring Maeinomatic Foundry MCP Server..."
 
 # Get the current user (the one who ran the installer)
 CURRENT_USER=$(stat -f '%Su' /dev/console)
@@ -14,9 +14,9 @@ USER_HOME=$(eval echo ~$CURRENT_USER)
 # Paths
 CLAUDE_CONFIG_DIR="$USER_HOME/Library/Application Support/Claude"
 CLAUDE_CONFIG="$CLAUDE_CONFIG_DIR/claude_desktop_config.json"
-APP_BUNDLE="/Applications/FoundryMCPServer.app"
-MCP_SERVER_BUNDLE="$APP_BUNDLE/Contents/Resources/foundry-mcp-server/backend.bundle.cjs"
-MCP_APP_SUPPORT="$USER_HOME/Library/Application Support/FoundryMCPServer"
+APP_BUNDLE="/Applications/MaeinomaticFoundryMCPServer.app"
+MCP_SERVER_BUNDLE="$APP_BUNDLE/Contents/Resources/maeinomatic-foundry-mcp-server/backend.bundle.cjs"
+MCP_APP_SUPPORT="$USER_HOME/Library/Application Support/MaeinomaticFoundryMCPServer"
 
 echo "User: $CURRENT_USER"
 echo "Home: $USER_HOME"
@@ -44,7 +44,7 @@ fi
 cat > "$CLAUDE_CONFIG" << EOF
 {
   "mcpServers": {
-    "foundry-vtt-mcp": {
+    "maeinomatic-foundry-mcp": {
       "command": "node",
       "args": [
         "$MCP_SERVER_BUNDLE"
@@ -104,9 +104,9 @@ for FOUNDRY_PATH in "${FOUNDRY_PATHS[@]}"; do
     echo "✅ Foundry VTT detected at: $FOUNDRY_PATH"
 
     # Check if module is already installed
-    MODULE_PATH="$FOUNDRY_FOUND/foundry-mcp-bridge"
+    MODULE_PATH="$FOUNDRY_FOUND/maeinomatic-foundry-mcp"
     if [ ! -d "$MODULE_PATH" ]; then
-      echo "Installing Foundry module..."
+      echo "Installing Maeinomatic Foundry MCP Bridge module..."
       # Module will be auto-installed by MCP server on first connection
       echo "Module will be auto-installed on first connection to Foundry VTT"
     else
@@ -146,10 +146,10 @@ if [ -f "$SETUP_SCRIPT" ]; then
     su "$CURRENT_USER" -c "node '$SETUP_SCRIPT'" || {
       echo "⚠️  ComfyUI setup encountered an error"
       echo "You can run the setup manually later:"
-      echo "  cd /Applications/FoundryMCPServer.app/Contents/Resources"
+      echo "  cd /Applications/MaeinomaticFoundryMCPServer.app/Contents/Resources"
       echo "  node setup-comfyui-headless.js"
       echo ""
-      echo "Installation log: $USER_HOME/foundry-mcp-install.log"
+      echo "Installation log: $USER_HOME/maeinomatic-foundry-mcp-install.log"
     }
   else
     echo "⚠️  Node.js not found - cannot run ComfyUI setup automatically"
@@ -168,13 +168,13 @@ echo ""
 echo "Next steps:"
 echo "1. Restart Claude Desktop"
 echo "2. Launch Foundry VTT"
-echo "3. Enable 'Foundry MCP Bridge' in Module Management"
+echo "3. Enable 'Maeinomatic Foundry MCP Bridge' in Module Management"
 echo ""
 echo "Optional:"
-echo "- Check settings in Foundry MCP Bridge module"
-echo "- View install log: $USER_HOME/foundry-mcp-install.log"
+echo "- Check settings in Maeinomatic Foundry MCP Bridge module"
+echo "- View install log: $USER_HOME/maeinomatic-foundry-mcp-install.log"
 echo ""
-echo "Documentation: https://github.com/adambdooley/foundry-vtt-mcp"
+echo "Documentation: https://github.com/maeinomatic/foundry-vtt-mcp"
 echo ""
 
 exit 0

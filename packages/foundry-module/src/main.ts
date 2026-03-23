@@ -108,7 +108,7 @@ function asRollButtonsMap(value: unknown): RollButtonsMap {
 }
 
 /**
- * Main Foundry MCP Bridge Module Class
+ * Main Maeinomatic Foundry MCP Bridge Module Class
  */
 class FoundryMCPBridge {
   private settings: ModuleSettings;
@@ -152,7 +152,7 @@ class FoundryMCPBridge {
    */
   initialize(): void {
     try {
-      this.log('Initializing Foundry MCP Bridge...');
+      this.log('Initializing Maeinomatic Foundry MCP Bridge...');
 
       // Register module settings
       this.settings.registerSettings();
@@ -173,7 +173,7 @@ class FoundryMCPBridge {
       this.log('Module initialized successfully');
     } catch (error) {
       this.log('Failed to initialize', error);
-      ui.notifications.error('Failed to initialize Foundry MCP Bridge');
+      ui.notifications.error('Failed to initialize Maeinomatic Foundry MCP Bridge');
       throw error;
     }
   }
@@ -645,7 +645,7 @@ Hooks.once('ready', async () => {
 
     // Register socket listener for roll state management (after game.user is available)
 
-    game.socket?.on('module.foundry-mcp-bridge', data => {
+    game.socket?.on('module.maeinomatic-foundry-mcp', data => {
       const messageData = asRollButtonMessageData(data);
       if (!messageData) {
         return;

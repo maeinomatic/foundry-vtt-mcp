@@ -7,7 +7,7 @@ import type {
   FoundrySpellcastingEntry,
   FoundryValueField,
   UnknownRecord,
-} from '@foundry-mcp/shared';
+} from '@maeinomatic/foundry-mcp-shared';
 
 export type SpellcastingEntry = FoundrySpellcastingEntry;
 export type SpellInfo = FoundrySpellInfo;

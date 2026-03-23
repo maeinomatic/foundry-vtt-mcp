@@ -16,7 +16,7 @@ This guide covers the complete installation of the Foundry VTT AI Model Integrat
 
 ### Option 1: Windows Installer (Recommended)
 
-1. Download the latest `FoundryMCPServer-Setup.exe` from [Releases](https://github.com/maeinomatic/foundry-vtt-mcp/releases)
+1. Download the latest `MaeinomaticFoundryMCPServer-Setup.exe` from [Releases](https://github.com/maeinomatic/foundry-vtt-mcp/releases)
 2. Run the installer - it will:
    - Install the MCP server with bundled Node.js runtime
    - Configure Claude Desktop automatically
@@ -53,7 +53,7 @@ Add this to your Claude Desktop configuration (claude_desktop_config.json) file:
 ```json
 {
   "mcpServers": {
-    "foundry-mcp": {
+    "maeinomatic-foundry-mcp": {
       "command": "node",
       "args": ["path/to/foundry-vtt-mcp/packages/mcp-server/dist/index.js"],
       "env": {
@@ -100,12 +100,12 @@ Starting Claude Desktop will start the MCP Server.
 ### 2. Test Foundry Module
 
 1. **In Foundry VTT**, check the **Console** (F12) for connection messages
-2. **Look for**: `[foundry-mcp-bridge] GM connection established`
+2. **Look for**: `[maeinomatic-foundry-mcp] GM connection established`
 3. **Verify settings menu** shows "Connected" status
 
 ### 3. Test Claude Connection
 
-1. **In Claude Desktop**, verify "foundry-mcp" appears in the MCP connection list
+1. **In Claude Desktop**, verify "maeinomatic-foundry-mcp" appears in the MCP connection list
 2. **Test basic queries**:
    - "List all characters in my Foundry world"
    - "Search for dragons in the compendium"
@@ -121,10 +121,10 @@ Starting Claude Desktop will start the MCP Server.
 ### Windows
 
 1. **Disable module** in Foundry world settings
-2. **Run the Foundry MCP Bridge uninstaller in Add or Remove Programs** (Windows Only)
+2. **Run the Maeinomatic Foundry MCP Bridge uninstaller in Add or Remove Programs** (Windows Only)
 3. **Restart Claude Desktop**
 
 ### Manual
 
 - **Foundry Module**: Uninstall in Foundry Add-ons
-- **Foundry MCP Server**: Delete the folder with the server and Remove MCP server configuration from claude_desktop_config.json
+- **Maeinomatic Foundry MCP Server**: Delete the folder with the server and Remove MCP server configuration from claude_desktop_config.json

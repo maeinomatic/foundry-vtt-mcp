@@ -130,139 +130,139 @@ export class FoundryClient {
   }
 
   async query(
-    method: 'foundry-mcp-bridge.getCharacterInfo',
+    method: 'maeinomatic-foundry-mcp.getCharacterInfo',
     data: FoundryGetCharacterInfoRequest
   ): Promise<FoundryCharacterInfo<UnknownRecord, UnknownRecord, UnknownRecord>>;
   async query(
-    method: 'foundry-mcp-bridge.searchCharacterItems',
+    method: 'maeinomatic-foundry-mcp.searchCharacterItems',
     data: FoundrySearchCharacterItemsRequest
   ): Promise<FoundrySearchCharacterItemsResponse>;
   async query(
-    method: 'foundry-mcp-bridge.updateActor',
+    method: 'maeinomatic-foundry-mcp.updateActor',
     data: FoundryUpdateActorRequest
   ): Promise<FoundryUpdateActorResponse>;
   async query(
-    method: 'foundry-mcp-bridge.createActorEmbeddedItem',
+    method: 'maeinomatic-foundry-mcp.createActorEmbeddedItem',
     data: FoundryCreateActorEmbeddedItemRequest
   ): Promise<FoundryCreateActorEmbeddedItemResponse>;
   async query(
-    method: 'foundry-mcp-bridge.createCharacterCompanion',
+    method: 'maeinomatic-foundry-mcp.createCharacterCompanion',
     data: FoundryCreateCharacterCompanionRequest
   ): Promise<FoundryCreateCharacterCompanionResponse>;
   async query(
-    method: 'foundry-mcp-bridge.updateCharacterCompanionLink',
+    method: 'maeinomatic-foundry-mcp.updateCharacterCompanionLink',
     data: FoundryUpdateCharacterCompanionLinkRequest
   ): Promise<FoundryUpdateCharacterCompanionLinkResponse>;
   async query(
-    method: 'foundry-mcp-bridge.listCharacterCompanions',
+    method: 'maeinomatic-foundry-mcp.listCharacterCompanions',
     data: FoundryListCharacterCompanionsRequest
   ): Promise<FoundryListCharacterCompanionsResponse>;
   async query(
-    method: 'foundry-mcp-bridge.configureCharacterCompanionSummon',
+    method: 'maeinomatic-foundry-mcp.configureCharacterCompanionSummon',
     data: FoundryConfigureCharacterCompanionSummonRequest
   ): Promise<FoundryConfigureCharacterCompanionSummonResponse>;
   async query(
-    method: 'foundry-mcp-bridge.summonCharacterCompanion',
+    method: 'maeinomatic-foundry-mcp.summonCharacterCompanion',
     data: FoundrySummonCharacterCompanionRequest
   ): Promise<FoundrySummonCharacterCompanionResponse>;
   async query(
-    method: 'foundry-mcp-bridge.dismissCharacterCompanion',
+    method: 'maeinomatic-foundry-mcp.dismissCharacterCompanion',
     data: FoundryDismissCharacterCompanionRequest
   ): Promise<FoundryDismissCharacterCompanionResponse>;
   async query(
-    method: 'foundry-mcp-bridge.unlinkCharacterCompanion',
+    method: 'maeinomatic-foundry-mcp.unlinkCharacterCompanion',
     data: FoundryUnlinkCharacterCompanionRequest
   ): Promise<FoundryUnlinkCharacterCompanionResponse>;
   async query(
-    method: 'foundry-mcp-bridge.deleteCharacterCompanion',
+    method: 'maeinomatic-foundry-mcp.deleteCharacterCompanion',
     data: FoundryDeleteCharacterCompanionRequest
   ): Promise<FoundryDeleteCharacterCompanionResponse>;
   async query(
-    method: 'foundry-mcp-bridge.syncCharacterCompanionProgression',
+    method: 'maeinomatic-foundry-mcp.syncCharacterCompanionProgression',
     data: FoundrySyncCharacterCompanionProgressionRequest
   ): Promise<FoundrySyncCharacterCompanionProgressionResponse>;
   async query(
-    method: 'foundry-mcp-bridge.batchUpdateActorEmbeddedItems',
+    method: 'maeinomatic-foundry-mcp.batchUpdateActorEmbeddedItems',
     data: FoundryBatchUpdateActorEmbeddedItemsRequest
   ): Promise<FoundryBatchUpdateActorEmbeddedItemsResponse>;
   async query(
-    method: 'foundry-mcp-bridge.previewCharacterProgression',
+    method: 'maeinomatic-foundry-mcp.previewCharacterProgression',
     data: FoundryPreviewCharacterProgressionRequest
   ): Promise<FoundryPreviewCharacterProgressionResponse>;
   async query(
-    method: 'foundry-mcp-bridge.getCharacterAdvancementOptions',
+    method: 'maeinomatic-foundry-mcp.getCharacterAdvancementOptions',
     data: FoundryGetCharacterAdvancementOptionsRequest
   ): Promise<FoundryGetCharacterAdvancementOptionsResponse>;
   async query(
-    method: 'foundry-mcp-bridge.applyCharacterAdvancementChoice',
+    method: 'maeinomatic-foundry-mcp.applyCharacterAdvancementChoice',
     data: FoundryApplyCharacterAdvancementChoiceRequest
   ): Promise<FoundryApplyCharacterAdvancementChoiceResponse>;
   async query(
-    method: 'foundry-mcp-bridge.validateCharacterBuild',
+    method: 'maeinomatic-foundry-mcp.validateCharacterBuild',
     data: FoundryValidateCharacterBuildRequest
   ): Promise<FoundryValidateCharacterBuildResponse>;
   async query(
-    method: 'foundry-mcp-bridge.runCharacterRestWorkflow',
+    method: 'maeinomatic-foundry-mcp.runCharacterRestWorkflow',
     data: FoundryRunCharacterRestWorkflowRequest
   ): Promise<FoundryRunCharacterRestWorkflowResponse>;
   async query(
-    method: 'foundry-mcp-bridge.runDnD5eSummonActivity',
+    method: 'maeinomatic-foundry-mcp.runDnD5eSummonActivity',
     data: FoundryRunDnD5eSummonActivityRequest
   ): Promise<FoundryRunDnD5eSummonActivityResponse>;
   async query(
-    method: 'foundry-mcp-bridge.updateActorEmbeddedItem',
+    method: 'maeinomatic-foundry-mcp.updateActorEmbeddedItem',
     data: FoundryUpdateActorEmbeddedItemRequest
   ): Promise<FoundryUpdateActorEmbeddedItemResponse>;
   async query(
-    method: 'foundry-mcp-bridge.applyCharacterPatchTransaction',
+    method: 'maeinomatic-foundry-mcp.applyCharacterPatchTransaction',
     data: FoundryApplyCharacterPatchTransactionRequest
   ): Promise<FoundryApplyCharacterPatchTransactionResponse>;
   async query(
-    method: 'foundry-mcp-bridge.deleteActorEmbeddedItem',
+    method: 'maeinomatic-foundry-mcp.deleteActorEmbeddedItem',
     data: FoundryDeleteActorEmbeddedItemRequest
   ): Promise<FoundryDeleteActorEmbeddedItemResponse>;
   async query(
-    method: 'foundry-mcp-bridge.createWorldItem',
+    method: 'maeinomatic-foundry-mcp.createWorldItem',
     data: FoundryCreateWorldItemRequest
   ): Promise<FoundryCreateWorldItemResponse>;
   async query(
-    method: 'foundry-mcp-bridge.updateWorldItem',
+    method: 'maeinomatic-foundry-mcp.updateWorldItem',
     data: FoundryUpdateWorldItemRequest
   ): Promise<FoundryUpdateWorldItemResponse>;
   async query(
-    method: 'foundry-mcp-bridge.createCompendiumItem',
+    method: 'maeinomatic-foundry-mcp.createCompendiumItem',
     data: FoundryCreateCompendiumItemRequest
   ): Promise<FoundryCreateCompendiumItemResponse>;
   async query(
-    method: 'foundry-mcp-bridge.importItemToCompendium',
+    method: 'maeinomatic-foundry-mcp.importItemToCompendium',
     data: FoundryImportItemToCompendiumRequest
   ): Promise<FoundryImportItemToCompendiumResponse>;
   async query(
-    method: 'foundry-mcp-bridge.searchCompendium',
+    method: 'maeinomatic-foundry-mcp.searchCompendium',
     data: FoundryCompendiumSearchRequest
   ): Promise<FoundryCompendiumSearchResult<UnknownRecord>[]>;
   async query(
-    method: 'foundry-mcp-bridge.listCreaturesByCriteria',
+    method: 'maeinomatic-foundry-mcp.listCreaturesByCriteria',
     data: FoundryCreatureSearchCriteria
   ): Promise<FoundryCreatureSearchEnvelope<UnknownRecord>>;
   async query(
-    method: 'foundry-mcp-bridge.getCompendiumDocumentFull',
+    method: 'maeinomatic-foundry-mcp.getCompendiumDocumentFull',
     data: FoundryGetCompendiumDocumentRequest
   ): Promise<FoundryCompendiumEntryFull<UnknownRecord, UnknownRecord, UnknownRecord> | null>;
   async query(
-    method: 'foundry-mcp-bridge.createActorFromCompendium',
+    method: 'maeinomatic-foundry-mcp.createActorFromCompendium',
     data: FoundryCreateActorFromCompendiumRequest
   ): Promise<FoundryActorCreationResult>;
   async query(
-    method: 'foundry-mcp-bridge.listActors',
+    method: 'maeinomatic-foundry-mcp.listActors',
     data?: FoundryListActorsRequest
   ): Promise<FoundryActorSummary[]>;
   async query(
-    method: 'foundry-mcp-bridge.getPartyCharacters',
+    method: 'maeinomatic-foundry-mcp.getPartyCharacters',
     data?: Record<string, never>
   ): Promise<Array<{ id: string; name: string }>>;
   async query(
-    method: 'foundry-mcp-bridge.getAvailablePacks',
+    method: 'maeinomatic-foundry-mcp.getAvailablePacks',
     data?: undefined
   ): Promise<FoundryCompendiumPackSummary[]>;
   async query<TResult = unknown, TData = unknown>(method: string, data?: TData): Promise<TResult>;
@@ -288,7 +288,7 @@ export class FoundryClient {
   }
 
   ping(): Promise<unknown> {
-    return this.query('foundry-mcp-bridge.ping');
+    return this.query('maeinomatic-foundry-mcp.ping');
   }
 
   getConnectionInfo(): FoundryConnectionInfo {

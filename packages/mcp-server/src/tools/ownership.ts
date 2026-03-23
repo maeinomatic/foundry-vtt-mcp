@@ -211,7 +211,7 @@ export class OwnershipTools {
       for (const player of players) {
         try {
           const result = await this.foundryClient.query<OwnershipUpdateResponse>(
-            'foundry-mcp-bridge.setActorOwnership',
+            'maeinomatic-foundry-mcp.setActorOwnership',
             {
               actorId: actor.id,
               userId: player.id,
@@ -283,7 +283,7 @@ export class OwnershipTools {
 
     try {
       const ownershipData = await this.foundryClient.query<unknown>(
-        'foundry-mcp-bridge.getActorOwnership',
+        'maeinomatic-foundry-mcp.getActorOwnership',
         {
           actorIdentifier,
           playerIdentifier,
@@ -313,7 +313,7 @@ export class OwnershipTools {
       if (identifier.toLowerCase().includes('all friendly npcs')) {
         // Get all tokens in current scene with friendly disposition
         const actors = await this.foundryClient.query<unknown[]>(
-          'foundry-mcp-bridge.getFriendlyNPCs',
+          'maeinomatic-foundry-mcp.getFriendlyNPCs',
           {}
         );
         const resolved = this.toResolvedEntities(actors);
@@ -322,7 +322,7 @@ export class OwnershipTools {
       } else if (identifier.toLowerCase().includes('party characters')) {
         // Get all player-owned characters
         const actors = await this.foundryClient.query<unknown[]>(
-          'foundry-mcp-bridge.getPartyCharacters',
+          'maeinomatic-foundry-mcp.getPartyCharacters',
           {}
         );
         const resolved = this.toResolvedEntities(actors);
@@ -331,7 +331,7 @@ export class OwnershipTools {
       } else {
         // Single actor lookup
         this.logger.debug(`Looking for single actor: ${identifier}`);
-        const actor = await this.foundryClient.query<unknown>('foundry-mcp-bridge.findActor', {
+        const actor = await this.foundryClient.query<unknown>('maeinomatic-foundry-mcp.findActor', {
           identifier,
         });
         this.logger.debug(`Single actor lookup result:`, actor);
@@ -354,7 +354,7 @@ export class OwnershipTools {
       if (identifier.toLowerCase() === 'party') {
         // Get all connected players (excluding GM)
         const players = await this.foundryClient.query<unknown[]>(
-          'foundry-mcp-bridge.getConnectedPlayers',
+          'maeinomatic-foundry-mcp.getConnectedPlayers',
           {}
         );
         const resolved = this.toResolvedEntities(players);
@@ -364,7 +364,7 @@ export class OwnershipTools {
         // Single player lookup with partial matching
         this.logger.debug(`Looking for single player: ${identifier}`);
         const players = await this.foundryClient.query<unknown[]>(
-          'foundry-mcp-bridge.findPlayers',
+          'maeinomatic-foundry-mcp.findPlayers',
           {
             identifier,
             allowPartialMatch: true,

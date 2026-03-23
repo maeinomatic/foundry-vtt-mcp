@@ -51,7 +51,7 @@ class BackendClient {
     { resolve: (value: unknown) => void; reject: (error: unknown) => void }
   >();
 
-  private logFile = path.join(os.tmpdir(), 'foundry-mcp-server', 'wrapper.log');
+  private logFile = path.join(os.tmpdir(), 'maeinomatic-foundry-mcp-server', 'wrapper.log');
 
   private backendProcess: ChildProcess | null = null;
 

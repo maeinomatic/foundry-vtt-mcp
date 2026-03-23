@@ -5,7 +5,7 @@ import type {
   FoundryUpdateActorEmbeddedItemResponse,
   FoundryUpdateActorRequest,
   FoundryUpdateActorResponse,
-} from '@foundry-mcp/shared';
+} from '@maeinomatic/foundry-mcp-shared';
 
 type AuditStatus = 'success' | 'failure';
 

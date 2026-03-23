@@ -590,7 +590,7 @@ export class CompendiumTools {
     });
 
     try {
-      const rawResults = await this.foundryClient.query('foundry-mcp-bridge.searchCompendium', {
+      const rawResults = await this.foundryClient.query('maeinomatic-foundry-mcp.searchCompendium', {
         query,
         packType,
         filters,
@@ -637,7 +637,7 @@ export class CompendiumTools {
     try {
       const gameSystem = await this.getGameSystem();
       // Use the proper document retrieval method that already exists in actor creation
-      const item = await this.foundryClient.query('foundry-mcp-bridge.getCompendiumDocumentFull', {
+      const item = await this.foundryClient.query('maeinomatic-foundry-mcp.getCompendiumDocumentFull', {
         packId,
         documentId: itemId,
       });
@@ -858,7 +858,7 @@ export class CompendiumTools {
 
     try {
       const results = await this.foundryClient.query(
-        'foundry-mcp-bridge.listCreaturesByCriteria',
+        'maeinomatic-foundry-mcp.listCreaturesByCriteria',
         params
       );
 
@@ -910,7 +910,7 @@ export class CompendiumTools {
 
     try {
       const packs = await this.foundryClient.query<CompendiumPack[]>(
-        'foundry-mcp-bridge.getAvailablePacks'
+        'maeinomatic-foundry-mcp.getAvailablePacks'
       );
 
       // Filter by type if specified
@@ -985,7 +985,7 @@ export class CompendiumTools {
     };
 
     const result = await this.foundryClient.query<FoundryCreateWorldItemResponse>(
-      'foundry-mcp-bridge.createWorldItem',
+      'maeinomatic-foundry-mcp.createWorldItem',
       request
     );
 
@@ -1012,7 +1012,7 @@ export class CompendiumTools {
 
     const parsed = schema.parse(args);
     const result = await this.foundryClient.query<FoundryUpdateWorldItemResponse>(
-      'foundry-mcp-bridge.updateWorldItem',
+      'maeinomatic-foundry-mcp.updateWorldItem',
       {
         itemIdentifier: parsed.itemIdentifier,
         updates: parsed.updates,
@@ -1069,7 +1069,7 @@ export class CompendiumTools {
           }
         : undefined;
     const result = await this.foundryClient.query<FoundryCreateCompendiumItemResponse>(
-      'foundry-mcp-bridge.createCompendiumItem',
+      'maeinomatic-foundry-mcp.createCompendiumItem',
       {
         packId: parsed.packId,
         ...(parsed.sourceUuid !== undefined ? { sourceUuid: parsed.sourceUuid } : {}),
@@ -1108,7 +1108,7 @@ export class CompendiumTools {
 
     const parsed = schema.parse(args);
     const result = await this.foundryClient.query<FoundryImportItemToCompendiumResponse>(
-      'foundry-mcp-bridge.importItemToCompendium',
+      'maeinomatic-foundry-mcp.importItemToCompendium',
       {
         itemIdentifier: parsed.itemIdentifier,
         packId: parsed.packId,

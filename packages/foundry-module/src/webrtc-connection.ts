@@ -54,7 +54,7 @@ export class WebRTCConnection {
       });
 
       // Step 2: Create data channel
-      this.dataChannel = this.peerConnection.createDataChannel('foundry-mcp', {
+      this.dataChannel = this.peerConnection.createDataChannel('maeinomatic-foundry-mcp', {
         ordered: true,
         maxRetransmits: 10,
       });

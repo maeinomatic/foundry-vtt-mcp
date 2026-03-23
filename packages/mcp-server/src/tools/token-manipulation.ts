@@ -214,7 +214,7 @@ export class TokenManipulationTools {
     this.logger.info('Moving token', { tokenId, x, y, animate });
 
     try {
-      await this.foundryClient.query('foundry-mcp-bridge.move-token', {
+      await this.foundryClient.query('maeinomatic-foundry-mcp.move-token', {
         tokenId,
         x,
         y,
@@ -259,7 +259,7 @@ export class TokenManipulationTools {
     this.logger.info('Updating token', { tokenId, updates });
 
     try {
-      const result = await this.foundryClient.query('foundry-mcp-bridge.update-token', {
+      const result = await this.foundryClient.query('maeinomatic-foundry-mcp.update-token', {
         tokenId,
         updates,
       });
@@ -291,7 +291,7 @@ export class TokenManipulationTools {
 
     try {
       const result = await this.foundryClient.query<DeleteTokensResult>(
-        'foundry-mcp-bridge.delete-tokens',
+        'maeinomatic-foundry-mcp.delete-tokens',
         {
           tokenIds,
         }
@@ -327,7 +327,7 @@ export class TokenManipulationTools {
 
     try {
       const tokenData = await this.foundryClient.query<UnknownRecord>(
-        'foundry-mcp-bridge.get-token-details',
+        'maeinomatic-foundry-mcp.get-token-details',
         {
           tokenId,
         }
@@ -414,7 +414,7 @@ export class TokenManipulationTools {
 
     try {
       const result = await this.foundryClient.query<ToggleConditionResult>(
-        'foundry-mcp-bridge.toggle-token-condition',
+        'maeinomatic-foundry-mcp.toggle-token-condition',
         {
           tokenId,
           conditionId,
@@ -444,7 +444,7 @@ export class TokenManipulationTools {
 
     try {
       const result = await this.foundryClient.query<AvailableConditionsResult>(
-        'foundry-mcp-bridge.get-available-conditions',
+        'maeinomatic-foundry-mcp.get-available-conditions',
         {}
       );
 

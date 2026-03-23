@@ -97,7 +97,7 @@ jobs:
           manifest.readme = `${serverUrl}/${repository}/blob/${defaultBranch}/README.md`;
           manifest.license = `${serverUrl}/${repository}/blob/${defaultBranch}/LICENSE`;
           manifest.manifest = `https://raw.githubusercontent.com/${repository}/${defaultBranch}/packages/foundry-module/module.json`;
-          manifest.download = `${serverUrl}/${repository}/releases/latest/download/foundry-vtt-mcp.zip`;
+          manifest.download = `${serverUrl}/${repository}/releases/latest/download/maeinomatic-foundry-mcp.zip`;
 
           fs.writeFileSync(path, `${JSON.stringify(manifest, null, 2)}\n`);
           console.log('Prepared manifest metadata for smoke test context.');
@@ -107,10 +107,10 @@ jobs:
       - name: Create Foundry module ZIP
         run: |
           cd packages/foundry-module
-          zip -r ../../foundry-vtt-mcp.zip . -x ".*" -x "node_modules/*"
+          zip -r ../../maeinomatic-foundry-mcp.zip . -x ".*" -x "node_modules/*"
           cd ../..
-          test -f foundry-vtt-mcp.zip
-          ls -lh foundry-vtt-mcp.zip
+          test -f maeinomatic-foundry-mcp.zip
+          ls -lh maeinomatic-foundry-mcp.zip
 
       # Create the manual-installation MCP server ZIP used outside the installers.
       - name: Create standalone MCP server ZIP
@@ -123,7 +123,7 @@ jobs:
 
           cat > standalone-mcp-server/package.json << EOF
           {
-            "name": "foundry-mcp-server",
+            "name": "maeinomatic-foundry-mcp-server",
             "version": "$VERSION_NO_V",
             "description": "Maeinomatic Foundry VTT MCP Server - Standalone Installation",
             "main": "index.js",
@@ -143,10 +143,10 @@ jobs:
           Version: $VERSION
           EOF
 
-          zip -r "foundry-mcp-server-$VERSION.zip" standalone-mcp-server
+          zip -r "maeinomatic-foundry-mcp-server-$VERSION.zip" standalone-mcp-server
           rm -rf standalone-mcp-server
-          test -f "foundry-mcp-server-$VERSION.zip"
-          ls -lh "foundry-mcp-server-$VERSION.zip"
+          test -f "maeinomatic-foundry-mcp-server-$VERSION.zip"
+          ls -lh "maeinomatic-foundry-mcp-server-$VERSION.zip"
 
       # Build the payload shape that would be sent to the Foundry package registry.
       - name: Generate Foundry registry payload (simulation)
@@ -185,10 +185,10 @@ jobs:
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           echo "Expected GitHub release assets for this version:"
-          echo "- foundry-vtt-mcp.zip"
-          echo "- foundry-mcp-server-$VERSION.zip"
-          echo "- FoundryMCPServer-Setup-$VERSION.exe"
-          echo "- FoundryMCPServer-$VERSION.dmg"
+          echo "- maeinomatic-foundry-mcp.zip"
+          echo "- maeinomatic-foundry-mcp-server-$VERSION.zip"
+          echo "- MaeinomaticFoundryMCPServer-Setup-$VERSION.exe"
+          echo "- MaeinomaticFoundryMCPServer-$VERSION.dmg"
 
       # Preserve the smoke-test artifacts for inspection without creating a release.
       - name: Upload smoke artifacts
@@ -196,8 +196,8 @@ jobs:
         with:
           name: release-smoke-${{ steps.version.outputs.version }}
           path: |
-            foundry-vtt-mcp.zip
-            foundry-mcp-server-${{ steps.version.outputs.version }}.zip
+            maeinomatic-foundry-mcp.zip
+            maeinomatic-foundry-mcp-server-${{ steps.version.outputs.version }}.zip
             foundry-registry-payload-smoke.json
             packages/foundry-module/module.json
           retention-days: 7

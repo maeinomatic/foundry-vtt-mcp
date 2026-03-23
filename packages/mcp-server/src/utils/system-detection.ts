@@ -44,7 +44,7 @@ export async function detectGameSystem(
 
   try {
     const worldInfo = await foundryClient.query<FoundryWorldInfo>(
-      'foundry-mcp-bridge.getWorldInfo'
+      'maeinomatic-foundry-mcp.getWorldInfo'
     );
     const worldInfoRecord = asRecord(worldInfo);
     const systemValue = worldInfoRecord?.system;

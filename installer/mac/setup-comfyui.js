@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * Foundry MCP Server - ComfyUI Setup Script for Mac
+ * Maeinomatic Foundry MCP Server - ComfyUI Setup Script for Mac
  *
  * This script downloads and installs:
  * - ComfyUI Desktop (200MB)
@@ -22,7 +22,7 @@ const { URL } = require('url');
 const { execSync } = require('child_process');
 
 // Setup logging to both console and file
-const LOG_FILE = path.join(process.env.HOME || '/tmp', 'foundry-mcp-install.log');
+const LOG_FILE = path.join(process.env.HOME || '/tmp', 'maeinomatic-foundry-mcp-install.log');
 const logStream = fs.createWriteStream(LOG_FILE, { flags: 'a' });
 
 function log(message) {
@@ -39,7 +39,7 @@ function logError(message) {
   logStream.write(logMessage + '\n');
 }
 
-log('🍎 Foundry MCP Server - ComfyUI Setup for Mac');
+log('🍎 Maeinomatic Foundry MCP Server - ComfyUI Setup for Mac');
 log('==============================================\n');
 log(`📝 Install log: ${LOG_FILE}\n`);
 
@@ -284,7 +284,7 @@ async function downloadModels() {
   // Create extra_models_config.yaml to point ComfyUI to our models
   log('Creating ComfyUI configuration...');
   const configPath = path.join(COMFYUI_CONFIG_DIR, 'extra_models_config.yaml');
-  const configContent = `# Foundry MCP Server - Custom Models Configuration
+  const configContent = `# Maeinomatic Foundry MCP Server - Custom Models Configuration
 comfyui:
   base_path: ${COMFYUI_MODELS_BASE}
   checkpoints: checkpoints/
@@ -338,7 +338,7 @@ function installFoundryModule() {
 
   log(`✅ Foundry VTT detected at ${foundryPath}`);
 
-  const modulePath = path.join(foundryPath, 'foundry-mcp-bridge');
+  const modulePath = path.join(foundryPath, 'maeinomatic-foundry-mcp');
   if (fs.existsSync(path.join(modulePath, 'module.json'))) {
     log('✅ Module already installed\n');
     return true;
@@ -399,7 +399,7 @@ async function main() {
   log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
   log('Next steps:');
   log('1. Restart Claude Desktop');
-  log('2. Open Foundry VTT and enable "Foundry MCP Bridge" module');
+  log('2. Open Foundry VTT and enable "Maeinomatic Foundry MCP Bridge" module');
   log('3. In Claude, you can now generate AI battlemaps!');
   log('');
   log('To test: Ask Claude to "generate a forest clearing battlemap"');

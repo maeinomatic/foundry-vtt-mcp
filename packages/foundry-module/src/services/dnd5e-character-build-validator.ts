@@ -3,7 +3,7 @@ import type {
   FoundryOutstandingAdvancementStep,
   FoundryValidateCharacterBuildRequest,
   FoundryValidateCharacterBuildResponse,
-} from '@foundry-mcp/shared';
+} from '@maeinomatic/foundry-mcp-shared';
 import {
   asRecord,
   getActorItems,

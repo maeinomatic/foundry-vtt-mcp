@@ -1,1 +1,1 @@
-export * from '@foundry-mcp/shared';
+export * from '@maeinomatic/foundry-mcp-shared';

@@ -5,7 +5,7 @@ import type {
   FoundryRunDnD5eTransformActivityRequest,
   FoundryRunDnD5eTransformActivityResponse,
   UnknownRecord,
-} from '@foundry-mcp/shared';
+} from '@maeinomatic/foundry-mcp-shared';
 
 type AuditStatus = 'success' | 'failure';
 

@@ -79,14 +79,14 @@ export function getAppDataDir(): string {
   switch (platform) {
     case 'win32':
       return process.env.LOCALAPPDATA
-        ? `${process.env.LOCALAPPDATA}\\FoundryMCPServer`
-        : 'C:\\Users\\Default\\AppData\\Local\\FoundryMCPServer';
+        ? `${process.env.LOCALAPPDATA}\\MaeinomaticFoundryMCPServer`
+        : 'C:\\Users\\Default\\AppData\\Local\\MaeinomaticFoundryMCPServer';
 
     case 'darwin':
-      return `${process.env.HOME}/Library/Application Support/FoundryMCPServer`;
+      return `${process.env.HOME}/Library/Application Support/MaeinomaticFoundryMCPServer`;
 
     case 'linux':
-      return `${process.env.HOME}/.local/share/FoundryMCPServer`;
+      return `${process.env.HOME}/.local/share/MaeinomaticFoundryMCPServer`;
 
     default:
       return assertNever(platform);

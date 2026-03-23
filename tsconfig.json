@@ -23,8 +23,8 @@
     "resolveJsonModule": true,
     "baseUrl": ".",
     "paths": {
-      "@foundry-mcp/shared": ["./shared/src/index.ts"],
-      "@foundry-mcp/shared/*": ["./shared/src/*"],
+      "@maeinomatic/foundry-mcp-shared": ["./shared/src/index.ts"],
+      "@maeinomatic/foundry-mcp-shared/*": ["./shared/src/*"],
       "@shared/*": ["./shared/*"],
       "@foundry-module/*": ["./packages/foundry-module/*"],
       "@mcp-server/*": ["./packages/mcp-server/src/*"]

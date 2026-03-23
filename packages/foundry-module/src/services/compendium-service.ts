@@ -15,7 +15,7 @@ import type {
   FoundryCreatureSearchResult,
   FoundryItemDocumentBase,
   UnknownRecord,
-} from '@foundry-mcp/shared';
+} from '@maeinomatic/foundry-mcp-shared';
 
 export type CompendiumSearchResult = FoundryCompendiumSearchResult<Record<string, unknown>>;
 

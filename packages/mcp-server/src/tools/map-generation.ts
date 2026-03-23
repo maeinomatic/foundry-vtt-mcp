@@ -198,7 +198,7 @@ export class MapGenerationTools {
         include_active_only: Boolean(safeInput.include_active_only),
       };
       const response = await this.foundryClient.query<SceneListResponse>(
-        'foundry-mcp-bridge.list-scenes',
+        'maeinomatic-foundry-mcp.list-scenes',
         params
       );
       return response;
@@ -225,7 +225,7 @@ export class MapGenerationTools {
       };
 
       const response = await this.foundryClient.query<SwitchSceneResponse>(
-        'foundry-mcp-bridge.switch-scene',
+        'maeinomatic-foundry-mcp.switch-scene',
         params
       );
       return response;
@@ -263,7 +263,7 @@ export class MapGenerationTools {
       } as const;
 
       const response = await this.foundryClient.query<MapGenerationResponse>(
-        'foundry-mcp-bridge.generate-map',
+        'maeinomatic-foundry-mcp.generate-map',
         params
       );
       if (response.error) {
@@ -306,7 +306,7 @@ export class MapGenerationTools {
       this.logger.info('Map status check requested via MCP', { jobId, input: safeInput });
 
       const response = await this.foundryClient.query<MapGenerationResponse>(
-        'foundry-mcp-bridge.check-map-status',
+        'maeinomatic-foundry-mcp.check-map-status',
         {
           job_id: jobId,
         }
@@ -361,7 +361,7 @@ export class MapGenerationTools {
       this.logger.info('Map job cancellation requested via MCP', { jobId, input: safeInput });
 
       const response = await this.foundryClient.query<MapGenerationResponse>(
-        'foundry-mcp-bridge.cancel-map-job',
+        'maeinomatic-foundry-mcp.cancel-map-job',
         {
           job_id: jobId,
         }

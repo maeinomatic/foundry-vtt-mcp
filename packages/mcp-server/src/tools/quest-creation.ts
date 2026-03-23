@@ -235,7 +235,7 @@ export class QuestCreationTools {
 
       // Create journal entry via Foundry client
       const result = await this.foundryClient.query<FoundryJournalResponse>(
-        'foundry-mcp-bridge.createJournalEntry',
+        'maeinomatic-foundry-mcp.createJournalEntry',
         {
           name: request.questTitle,
           content: questContent,
@@ -277,7 +277,7 @@ export class QuestCreationTools {
 
       // Get journal content first
       const journalResult = await this.foundryClient.query<FoundryJournalResponse>(
-        'foundry-mcp-bridge.getJournalContent',
+        'maeinomatic-foundry-mcp.getJournalContent',
         {
           journalId: request.journalId,
         }
@@ -299,7 +299,7 @@ export class QuestCreationTools {
 
       // Update journal with NPC link
       const updateResult = await this.foundryClient.query<FoundryJournalResponse>(
-        'foundry-mcp-bridge.updateJournalContent',
+        'maeinomatic-foundry-mcp.updateJournalContent',
         {
           journalId: request.journalId,
           content: updatedContent,
@@ -340,7 +340,7 @@ export class QuestCreationTools {
 
       // Get current journal content
       const currentJournal = await this.foundryClient.query<FoundryJournalResponse>(
-        'foundry-mcp-bridge.getJournalContent',
+        'maeinomatic-foundry-mcp.getJournalContent',
         {
           journalId: request.journalId,
         }
@@ -365,7 +365,7 @@ export class QuestCreationTools {
 
       // Update the journal
       const result = await this.foundryClient.query<FoundryJournalResponse>(
-        'foundry-mcp-bridge.updateJournalContent',
+        'maeinomatic-foundry-mcp.updateJournalContent',
         {
           journalId: request.journalId,
           content: updatedContent,
@@ -386,7 +386,7 @@ export class QuestCreationTools {
 
       // Verify the update by reading the content back
       const verifyResult = await this.foundryClient.query<FoundryJournalResponse>(
-        'foundry-mcp-bridge.getJournalContent',
+        'maeinomatic-foundry-mcp.getJournalContent',
         {
           journalId: request.journalId,
         }
@@ -440,7 +440,7 @@ export class QuestCreationTools {
 
       // Get all journals
       const journalsResult = await this.foundryClient.query<unknown[] | { error: string }>(
-        'foundry-mcp-bridge.listJournals',
+        'maeinomatic-foundry-mcp.listJournals',
         {}
       );
 
@@ -470,7 +470,7 @@ export class QuestCreationTools {
         for (const journal of filteredJournals) {
           try {
             const content = await this.foundryClient.query<FoundryJournalResponse>(
-              'foundry-mcp-bridge.getJournalContent',
+              'maeinomatic-foundry-mcp.getJournalContent',
               {
                 journalId: journal.id,
               }
@@ -508,7 +508,7 @@ export class QuestCreationTools {
 
       // Get all journals
       const journalsResult = await this.foundryClient.query<unknown[] | { error: string }>(
-        'foundry-mcp-bridge.listJournals',
+        'maeinomatic-foundry-mcp.listJournals',
         {}
       );
 
@@ -547,7 +547,7 @@ export class QuestCreationTools {
         if (request.searchType === 'content' || request.searchType === 'both') {
           try {
             const contentResult = await this.foundryClient.query<FoundryJournalResponse>(
-              'foundry-mcp-bridge.getJournalContent',
+              'maeinomatic-foundry-mcp.getJournalContent',
               {
                 journalId: journal.id,
               }

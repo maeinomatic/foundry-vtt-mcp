@@ -49,7 +49,7 @@ These are consumed in `packages/mcp-server/src/config.ts`.
 
 - `FOUNDRY_HOST`: host name (default: `localhost`)
 - `FOUNDRY_PORT`: websocket/webrtc signaling port (default: `31415`)
-- `FOUNDRY_NAMESPACE`: socket namespace (default: `/foundry-mcp`)
+- `FOUNDRY_NAMESPACE`: socket namespace (default: `/maeinomatic-foundry-mcp`)
 - `FOUNDRY_RECONNECT_ATTEMPTS`: reconnect tries (default: `5`)
 - `FOUNDRY_RECONNECT_DELAY`: ms between reconnect attempts (default: `1000`)
 - `FOUNDRY_CONNECTION_TIMEOUT`: connection timeout ms (default: `10000`)
@@ -69,7 +69,7 @@ These are consumed in `packages/mcp-server/src/config.ts`.
 
 ### Server metadata and output shaping
 
-- `SERVER_NAME`: logical server name (default: `foundry-mcp-server`)
+- `SERVER_NAME`: logical server name (default: `maeinomatic-foundry-mcp-server`)
 - `SERVER_VERSION`: optional override for display/runtime version string
 - `TOOL_RESPONSE_MAX_CHARS`: truncation guard for large tool output (default: `20000`)
 

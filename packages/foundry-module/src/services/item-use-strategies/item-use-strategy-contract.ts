@@ -50,7 +50,7 @@ function getChatMessageApi(): ChatMessageApiLike | null {
 
 export function runItemAction(promise: Promise<unknown>, itemName: string): void {
   void promise.catch((error: Error) => {
-    console.error(`[foundry-mcp-bridge] Error using item ${itemName}:`, error);
+    console.error(`[maeinomatic-foundry-mcp] Error using item ${itemName}:`, error);
   });
 }
 

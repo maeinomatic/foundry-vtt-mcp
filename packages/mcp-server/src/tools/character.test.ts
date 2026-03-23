@@ -27,7 +27,7 @@ describe('CharacterTools', () => {
 
   it('uses the shared character-info bridge request shape', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
-      if (method === 'foundry-mcp-bridge.getCharacterInfo') {
+      if (method === 'maeinomatic-foundry-mcp.getCharacterInfo') {
         expect(data).toEqual({ identifier: 'Aldric' });
         return Promise.resolve({
           id: 'actor-1',
@@ -51,7 +51,7 @@ describe('CharacterTools', () => {
       identifier: 'Aldric',
     })) as Record<string, unknown>;
 
-    expect(query).toHaveBeenCalledWith('foundry-mcp-bridge.getCharacterInfo', {
+    expect(query).toHaveBeenCalledWith('maeinomatic-foundry-mcp.getCharacterInfo', {
       identifier: 'Aldric',
     });
     expect(result).toMatchObject({
@@ -65,7 +65,7 @@ describe('CharacterTools', () => {
 
   it('uses the shared search-character-items bridge request shape with default limit', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
-      if (method === 'foundry-mcp-bridge.searchCharacterItems') {
+      if (method === 'maeinomatic-foundry-mcp.searchCharacterItems') {
         expect(data).toEqual({
           characterIdentifier: 'Aldric',
           query: 'sword',
@@ -102,7 +102,7 @@ describe('CharacterTools', () => {
       type: 'weapon',
     });
 
-    expect(query).toHaveBeenCalledWith('foundry-mcp-bridge.searchCharacterItems', {
+    expect(query).toHaveBeenCalledWith('maeinomatic-foundry-mcp.searchCharacterItems', {
       characterIdentifier: 'Aldric',
       query: 'sword',
       type: 'weapon',
@@ -117,7 +117,7 @@ describe('CharacterTools', () => {
 
   it('uses the shared update-character bridge request shape', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
-      if (method === 'foundry-mcp-bridge.updateActor') {
+      if (method === 'maeinomatic-foundry-mcp.updateActor') {
         expect(data).toEqual({
           identifier: 'Aldric',
           updates: {
@@ -167,11 +167,11 @@ describe('CharacterTools', () => {
 
   it('routes DnD5e resource updates through shared actor and item update bridges', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
-      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+      if (method === 'maeinomatic-foundry-mcp.getWorldInfo') {
         return Promise.resolve({ system: 'dnd5e' });
       }
 
-      if (method === 'foundry-mcp-bridge.getCharacterInfo') {
+      if (method === 'maeinomatic-foundry-mcp.getCharacterInfo') {
         expect(data).toEqual({ identifier: 'Laeral' });
         return Promise.resolve({
           id: 'actor-3',
@@ -194,7 +194,7 @@ describe('CharacterTools', () => {
         });
       }
 
-      if (method === 'foundry-mcp-bridge.updateActor') {
+      if (method === 'maeinomatic-foundry-mcp.updateActor') {
         expect(data).toEqual({
           identifier: 'Laeral',
           updates: {
@@ -230,7 +230,7 @@ describe('CharacterTools', () => {
         });
       }
 
-      if (method === 'foundry-mcp-bridge.batchUpdateActorEmbeddedItems') {
+      if (method === 'maeinomatic-foundry-mcp.batchUpdateActorEmbeddedItems') {
         expect(data).toEqual({
           actorIdentifier: 'Laeral',
           updates: [
@@ -321,11 +321,11 @@ describe('CharacterTools', () => {
 
   it('routes PF2e ability score updates through adapter-prepared actor paths', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
-      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+      if (method === 'maeinomatic-foundry-mcp.getWorldInfo') {
         return Promise.resolve({ system: 'pf2e' });
       }
 
-      if (method === 'foundry-mcp-bridge.getCharacterInfo') {
+      if (method === 'maeinomatic-foundry-mcp.getCharacterInfo') {
         expect(data).toEqual({ identifier: 'Seoni' });
         return Promise.resolve({
           id: 'actor-pf2e-1',
@@ -343,7 +343,7 @@ describe('CharacterTools', () => {
         });
       }
 
-      if (method === 'foundry-mcp-bridge.updateActor') {
+      if (method === 'maeinomatic-foundry-mcp.updateActor') {
         expect(data).toEqual({
           identifier: 'Seoni',
           updates: {
@@ -401,11 +401,11 @@ describe('CharacterTools', () => {
 
   it('routes DnD5e skill proficiency updates through adapter-prepared actor paths', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
-      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+      if (method === 'maeinomatic-foundry-mcp.getWorldInfo') {
         return Promise.resolve({ system: 'dnd5e' });
       }
 
-      if (method === 'foundry-mcp-bridge.getCharacterInfo') {
+      if (method === 'maeinomatic-foundry-mcp.getCharacterInfo') {
         expect(data).toEqual({ identifier: 'Aldric' });
         return Promise.resolve({
           id: 'actor-1',
@@ -422,7 +422,7 @@ describe('CharacterTools', () => {
         });
       }
 
-      if (method === 'foundry-mcp-bridge.updateActor') {
+      if (method === 'maeinomatic-foundry-mcp.updateActor') {
         expect(data).toEqual({
           identifier: 'Aldric',
           updates: {
@@ -475,7 +475,7 @@ describe('CharacterTools', () => {
 
   it('uses the shared batch-update-character-items bridge request shape', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
-      if (method === 'foundry-mcp-bridge.batchUpdateActorEmbeddedItems') {
+      if (method === 'maeinomatic-foundry-mcp.batchUpdateActorEmbeddedItems') {
         expect(data).toEqual({
           actorIdentifier: 'Aldric',
           updates: [
@@ -576,7 +576,7 @@ describe('CharacterTools', () => {
 
   it('uses the shared apply-character-patch-transaction bridge request shape', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
-      if (method === 'foundry-mcp-bridge.applyCharacterPatchTransaction') {
+      if (method === 'maeinomatic-foundry-mcp.applyCharacterPatchTransaction') {
         expect(data).toEqual({
           actorIdentifier: 'Aldric',
           actorUpdates: {
@@ -728,11 +728,11 @@ describe('CharacterTools', () => {
 
   it('routes DnD5e proficiency updates through adapter-prepared actor paths', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
-      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+      if (method === 'maeinomatic-foundry-mcp.getWorldInfo') {
         return Promise.resolve({ system: 'dnd5e' });
       }
 
-      if (method === 'foundry-mcp-bridge.getCharacterInfo') {
+      if (method === 'maeinomatic-foundry-mcp.getCharacterInfo') {
         expect(data).toEqual({ identifier: 'Laeral' });
         return Promise.resolve({
           id: 'actor-3',
@@ -754,7 +754,7 @@ describe('CharacterTools', () => {
         });
       }
 
-      if (method === 'foundry-mcp-bridge.updateActor') {
+      if (method === 'maeinomatic-foundry-mcp.updateActor') {
         expect(data).toEqual({
           identifier: 'Laeral',
           updates: {
@@ -847,7 +847,7 @@ describe('CharacterTools', () => {
 
   it('uses the shared add-character-item bridge request shape', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
-      if (method === 'foundry-mcp-bridge.createActorEmbeddedItem') {
+      if (method === 'maeinomatic-foundry-mcp.createActorEmbeddedItem') {
         expect(data).toEqual({
           actorIdentifier: 'Aldric',
           sourceUuid: 'Compendium.dnd5e.items.Item.longsword',
@@ -911,7 +911,7 @@ describe('CharacterTools', () => {
 
   it('uses the shared update-character-item bridge request shape', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
-      if (method === 'foundry-mcp-bridge.updateActorEmbeddedItem') {
+      if (method === 'maeinomatic-foundry-mcp.updateActorEmbeddedItem') {
         expect(data).toEqual({
           actorIdentifier: 'Aldric',
           itemIdentifier: 'Longsword',
@@ -964,7 +964,7 @@ describe('CharacterTools', () => {
 
   it('uses the shared remove-character-item bridge request shape', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
-      if (method === 'foundry-mcp-bridge.deleteActorEmbeddedItem') {
+      if (method === 'maeinomatic-foundry-mcp.deleteActorEmbeddedItem') {
         expect(data).toEqual({
           actorIdentifier: 'Aldric',
           itemIdentifier: 'Longsword',
@@ -1007,11 +1007,11 @@ describe('CharacterTools', () => {
 
   it('learns a DnD5e spell through the generic item-create bridge', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
-      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+      if (method === 'maeinomatic-foundry-mcp.getWorldInfo') {
         return Promise.resolve({ system: 'dnd5e' });
       }
 
-      if (method === 'foundry-mcp-bridge.getCharacterInfo') {
+      if (method === 'maeinomatic-foundry-mcp.getCharacterInfo') {
         expect(data).toEqual({ identifier: 'Laeral' });
         return Promise.resolve({
           id: 'actor-3',
@@ -1035,7 +1035,7 @@ describe('CharacterTools', () => {
         });
       }
 
-      if (method === 'foundry-mcp-bridge.createActorEmbeddedItem') {
+      if (method === 'maeinomatic-foundry-mcp.createActorEmbeddedItem') {
         expect(data).toEqual({
           actorIdentifier: 'Laeral',
           sourceUuid: 'Compendium.dnd5e.spells.Item.fireball',
@@ -1091,11 +1091,11 @@ describe('CharacterTools', () => {
 
   it('updates DnD5e spell preparation through the shared item-update bridge', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
-      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+      if (method === 'maeinomatic-foundry-mcp.getWorldInfo') {
         return Promise.resolve({ system: 'dnd5e' });
       }
 
-      if (method === 'foundry-mcp-bridge.updateActorEmbeddedItem') {
+      if (method === 'maeinomatic-foundry-mcp.updateActorEmbeddedItem') {
         expect(data).toEqual({
           actorIdentifier: 'Laeral',
           itemIdentifier: 'Fireball',
@@ -1145,11 +1145,11 @@ describe('CharacterTools', () => {
 
   it('forgets a DnD5e spell through the shared item-delete bridge', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
-      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+      if (method === 'maeinomatic-foundry-mcp.getWorldInfo') {
         return Promise.resolve({ system: 'dnd5e' });
       }
 
-      if (method === 'foundry-mcp-bridge.deleteActorEmbeddedItem') {
+      if (method === 'maeinomatic-foundry-mcp.deleteActorEmbeddedItem') {
         expect(data).toEqual({
           actorIdentifier: 'Laeral',
           itemIdentifier: 'Fireball',
@@ -1190,11 +1190,11 @@ describe('CharacterTools', () => {
 
   it('updates DnD5e spell slots through the shared actor-update bridge', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
-      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+      if (method === 'maeinomatic-foundry-mcp.getWorldInfo') {
         return Promise.resolve({ system: 'dnd5e' });
       }
 
-      if (method === 'foundry-mcp-bridge.updateActor') {
+      if (method === 'maeinomatic-foundry-mcp.updateActor') {
         expect(data).toEqual({
           identifier: 'Laeral',
           updates: {
@@ -1246,11 +1246,11 @@ describe('CharacterTools', () => {
 
   it('reassigns a DnD5e spell to a concrete spellcasting class item', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
-      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+      if (method === 'maeinomatic-foundry-mcp.getWorldInfo') {
         return Promise.resolve({ system: 'dnd5e' });
       }
 
-      if (method === 'foundry-mcp-bridge.getCharacterInfo') {
+      if (method === 'maeinomatic-foundry-mcp.getCharacterInfo') {
         expect(data).toEqual({ identifier: 'Laeral' });
         return Promise.resolve({
           id: 'actor-3',
@@ -1285,7 +1285,7 @@ describe('CharacterTools', () => {
         });
       }
 
-      if (method === 'foundry-mcp-bridge.updateActorEmbeddedItem') {
+      if (method === 'maeinomatic-foundry-mcp.updateActorEmbeddedItem') {
         expect(data).toEqual({
           actorIdentifier: 'Laeral',
           itemIdentifier: 'Fireball',
@@ -1338,11 +1338,11 @@ describe('CharacterTools', () => {
 
   it('bulk reassigns DnD5e spells to concrete spellcasting classes through the batch item-update bridge', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
-      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+      if (method === 'maeinomatic-foundry-mcp.getWorldInfo') {
         return Promise.resolve({ system: 'dnd5e' });
       }
 
-      if (method === 'foundry-mcp-bridge.getCharacterInfo') {
+      if (method === 'maeinomatic-foundry-mcp.getCharacterInfo') {
         expect(data).toEqual({ identifier: 'Laeral' });
         return Promise.resolve({
           id: 'actor-3',
@@ -1389,7 +1389,7 @@ describe('CharacterTools', () => {
         });
       }
 
-      if (method === 'foundry-mcp-bridge.batchUpdateActorEmbeddedItems') {
+      if (method === 'maeinomatic-foundry-mcp.batchUpdateActorEmbeddedItems') {
         expect(data).toEqual({
           actorIdentifier: 'Laeral',
           updates: [
@@ -1478,11 +1478,11 @@ describe('CharacterTools', () => {
 
   it('sets DnD5e prepared spells in replace mode through the batch item-update bridge', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
-      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+      if (method === 'maeinomatic-foundry-mcp.getWorldInfo') {
         return Promise.resolve({ system: 'dnd5e' });
       }
 
-      if (method === 'foundry-mcp-bridge.getCharacterInfo') {
+      if (method === 'maeinomatic-foundry-mcp.getCharacterInfo') {
         expect(data).toEqual({ identifier: 'Laeral' });
         return Promise.resolve({
           id: 'actor-3',
@@ -1539,7 +1539,7 @@ describe('CharacterTools', () => {
         });
       }
 
-      if (method === 'foundry-mcp-bridge.batchUpdateActorEmbeddedItems') {
+      if (method === 'maeinomatic-foundry-mcp.batchUpdateActorEmbeddedItems') {
         expect(data).toEqual({
           actorIdentifier: 'Laeral',
           updates: [
@@ -1649,11 +1649,11 @@ describe('CharacterTools', () => {
 
   it('validates a DnD5e spellbook for multiclass source-class issues', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
-      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+      if (method === 'maeinomatic-foundry-mcp.getWorldInfo') {
         return Promise.resolve({ system: 'dnd5e' });
       }
 
-      if (method === 'foundry-mcp-bridge.getCharacterInfo') {
+      if (method === 'maeinomatic-foundry-mcp.getCharacterInfo') {
         expect(data).toEqual({ identifier: 'Laeral' });
         return Promise.resolve({
           id: 'actor-3',
@@ -1789,14 +1789,14 @@ describe('CharacterTools', () => {
 
   it('organizes a DnD5e spellbook by auto-fixing safe source-class and preparation issues', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
-      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+      if (method === 'maeinomatic-foundry-mcp.getWorldInfo') {
         return Promise.resolve({ system: 'dnd5e' });
       }
 
-      if (method === 'foundry-mcp-bridge.getCharacterInfo') {
+      if (method === 'maeinomatic-foundry-mcp.getCharacterInfo') {
         expect(data).toEqual({ identifier: 'Laeral' });
         const characterInfoCallCount = query.mock.calls.filter(
-          ([calledMethod]) => calledMethod === 'foundry-mcp-bridge.getCharacterInfo'
+          ([calledMethod]) => calledMethod === 'maeinomatic-foundry-mcp.getCharacterInfo'
         ).length;
 
         if (characterInfoCallCount === 1) {
@@ -1921,9 +1921,9 @@ describe('CharacterTools', () => {
         });
       }
 
-      if (method === 'foundry-mcp-bridge.batchUpdateActorEmbeddedItems') {
+      if (method === 'maeinomatic-foundry-mcp.batchUpdateActorEmbeddedItems') {
         const batchCallCount = query.mock.calls.filter(
-          ([calledMethod]) => calledMethod === 'foundry-mcp-bridge.batchUpdateActorEmbeddedItems'
+          ([calledMethod]) => calledMethod === 'maeinomatic-foundry-mcp.batchUpdateActorEmbeddedItems'
         ).length;
 
         if (batchCallCount === 1) {
@@ -2076,11 +2076,11 @@ describe('CharacterTools', () => {
 
   it('returns review-required guidance when a DnD5e spellbook issue is still ambiguous after safe fixes', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
-      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+      if (method === 'maeinomatic-foundry-mcp.getWorldInfo') {
         return Promise.resolve({ system: 'dnd5e' });
       }
 
-      if (method === 'foundry-mcp-bridge.getCharacterInfo') {
+      if (method === 'maeinomatic-foundry-mcp.getCharacterInfo') {
         expect(data).toEqual({ identifier: 'Laeral' });
         return Promise.resolve({
           id: 'actor-spellbook-2',
@@ -2187,13 +2187,13 @@ describe('CharacterTools', () => {
 
   it('applies explicit spell preparation plans during the DnD5e spellbook workflow', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
-      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+      if (method === 'maeinomatic-foundry-mcp.getWorldInfo') {
         return Promise.resolve({ system: 'dnd5e' });
       }
 
-      if (method === 'foundry-mcp-bridge.getCharacterInfo') {
+      if (method === 'maeinomatic-foundry-mcp.getCharacterInfo') {
         const characterInfoCallCount = query.mock.calls.filter(
-          ([calledMethod]) => calledMethod === 'foundry-mcp-bridge.getCharacterInfo'
+          ([calledMethod]) => calledMethod === 'maeinomatic-foundry-mcp.getCharacterInfo'
         ).length;
 
         expect(data).toEqual({ identifier: 'Laeral' });
@@ -2287,7 +2287,7 @@ describe('CharacterTools', () => {
         });
       }
 
-      if (method === 'foundry-mcp-bridge.batchUpdateActorEmbeddedItems') {
+      if (method === 'maeinomatic-foundry-mcp.batchUpdateActorEmbeddedItems') {
         expect(data).toEqual({
           actorIdentifier: 'Laeral',
           updates: [
@@ -2395,11 +2395,11 @@ describe('CharacterTools', () => {
 
   it('uses the shared run-dnd5e-rest-workflow bridge request shape and applies post-rest spell preparation plans', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
-      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+      if (method === 'maeinomatic-foundry-mcp.getWorldInfo') {
         return Promise.resolve({ system: 'dnd5e' });
       }
 
-      if (method === 'foundry-mcp-bridge.runCharacterRestWorkflow') {
+      if (method === 'maeinomatic-foundry-mcp.runCharacterRestWorkflow') {
         expect(data).toEqual({
           actorIdentifier: 'Laeral',
           restType: 'long',
@@ -2441,7 +2441,7 @@ describe('CharacterTools', () => {
         });
       }
 
-      if (method === 'foundry-mcp-bridge.getCharacterInfo') {
+      if (method === 'maeinomatic-foundry-mcp.getCharacterInfo') {
         expect(data).toEqual({ identifier: 'Laeral' });
         return Promise.resolve({
           id: 'actor-3',
@@ -2487,7 +2487,7 @@ describe('CharacterTools', () => {
         });
       }
 
-      if (method === 'foundry-mcp-bridge.batchUpdateActorEmbeddedItems') {
+      if (method === 'maeinomatic-foundry-mcp.batchUpdateActorEmbeddedItems') {
         expect(data).toEqual({
           actorIdentifier: 'Laeral',
           updates: [
@@ -2595,11 +2595,11 @@ describe('CharacterTools', () => {
 
   it('runs a DnD5e group rest workflow across party characters and applies per-actor post-rest spell preparation plans', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
-      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+      if (method === 'maeinomatic-foundry-mcp.getWorldInfo') {
         return Promise.resolve({ system: 'dnd5e' });
       }
 
-      if (method === 'foundry-mcp-bridge.getPartyCharacters') {
+      if (method === 'maeinomatic-foundry-mcp.getPartyCharacters') {
         expect(data).toEqual({});
         return Promise.resolve([
           { id: 'actor-laeral', name: 'Laeral' },
@@ -2607,7 +2607,7 @@ describe('CharacterTools', () => {
         ]);
       }
 
-      if (method === 'foundry-mcp-bridge.runCharacterRestWorkflow') {
+      if (method === 'maeinomatic-foundry-mcp.runCharacterRestWorkflow') {
         if ((data as Record<string, unknown>).actorIdentifier === 'actor-laeral') {
           expect(data).toEqual({
             actorIdentifier: 'actor-laeral',
@@ -2663,7 +2663,7 @@ describe('CharacterTools', () => {
         });
       }
 
-      if (method === 'foundry-mcp-bridge.getCharacterInfo') {
+      if (method === 'maeinomatic-foundry-mcp.getCharacterInfo') {
         expect(data).toEqual({ identifier: 'actor-laeral' });
         return Promise.resolve({
           id: 'actor-laeral',
@@ -2698,7 +2698,7 @@ describe('CharacterTools', () => {
         });
       }
 
-      if (method === 'foundry-mcp-bridge.batchUpdateActorEmbeddedItems') {
+      if (method === 'maeinomatic-foundry-mcp.batchUpdateActorEmbeddedItems') {
         expect(data).toEqual({
           actorIdentifier: 'actor-laeral',
           updates: [
@@ -2813,11 +2813,11 @@ describe('CharacterTools', () => {
 
   it('reports partial failure when one actor in the DnD5e group rest workflow does not complete cleanly', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
-      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+      if (method === 'maeinomatic-foundry-mcp.getWorldInfo') {
         return Promise.resolve({ system: 'dnd5e' });
       }
 
-      if (method === 'foundry-mcp-bridge.runCharacterRestWorkflow') {
+      if (method === 'maeinomatic-foundry-mcp.runCharacterRestWorkflow') {
         if ((data as Record<string, unknown>).actorIdentifier === 'Laeral') {
           return Promise.resolve({
             success: true,
@@ -2892,7 +2892,7 @@ describe('CharacterTools', () => {
 
   it('exposes DnD5e progression preview as a dedicated tool response', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
-      if (method === 'foundry-mcp-bridge.getCharacterInfo') {
+      if (method === 'maeinomatic-foundry-mcp.getCharacterInfo') {
         expect(data).toEqual({ identifier: 'Laeral' });
         return Promise.resolve({
           id: 'actor-3',
@@ -2914,11 +2914,11 @@ describe('CharacterTools', () => {
         });
       }
 
-      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+      if (method === 'maeinomatic-foundry-mcp.getWorldInfo') {
         return Promise.resolve({ system: 'dnd5e' });
       }
 
-      if (method === 'foundry-mcp-bridge.previewCharacterProgression') {
+      if (method === 'maeinomatic-foundry-mcp.previewCharacterProgression') {
         expect(data).toEqual({
           actorIdentifier: 'Laeral',
           classIdentifier: 'Wizard',
@@ -2996,7 +2996,7 @@ describe('CharacterTools', () => {
 
   it('returns DnD5e advancement options for an ASI step', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
-      if (method === 'foundry-mcp-bridge.getCharacterAdvancementOptions') {
+      if (method === 'maeinomatic-foundry-mcp.getCharacterAdvancementOptions') {
         expect(data).toEqual({
           actorIdentifier: 'Laeral',
           classIdentifier: 'Wizard',
@@ -3089,11 +3089,11 @@ describe('CharacterTools', () => {
 
   it('uses the shared validate-dnd5e-character-build bridge request shape', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
-      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+      if (method === 'maeinomatic-foundry-mcp.getWorldInfo') {
         return Promise.resolve({ system: 'dnd5e' });
       }
 
-      if (method === 'foundry-mcp-bridge.validateCharacterBuild') {
+      if (method === 'maeinomatic-foundry-mcp.validateCharacterBuild') {
         expect(data).toEqual({
           actorIdentifier: 'Laeral',
         });
@@ -3201,7 +3201,7 @@ describe('CharacterTools', () => {
 
   it('applies a DnD5e ASI choice and refreshes the remaining progression state', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
-      if (method === 'foundry-mcp-bridge.applyCharacterAdvancementChoice') {
+      if (method === 'maeinomatic-foundry-mcp.applyCharacterAdvancementChoice') {
         expect(data).toEqual({
           actorIdentifier: 'Laeral',
           classIdentifier: 'Wizard',
@@ -3237,7 +3237,7 @@ describe('CharacterTools', () => {
         });
       }
 
-      if (method === 'foundry-mcp-bridge.previewCharacterProgression') {
+      if (method === 'maeinomatic-foundry-mcp.previewCharacterProgression') {
         expect(data).toEqual({
           actorIdentifier: 'Laeral',
           classIdentifier: 'Wizard',
@@ -3301,7 +3301,7 @@ describe('CharacterTools', () => {
 
   it('applies a DnD5e feat choice and reports created feat items', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
-      if (method === 'foundry-mcp-bridge.applyCharacterAdvancementChoice') {
+      if (method === 'maeinomatic-foundry-mcp.applyCharacterAdvancementChoice') {
         expect(data).toEqual({
           actorIdentifier: 'Laeral',
           classIdentifier: 'Wizard',
@@ -3334,7 +3334,7 @@ describe('CharacterTools', () => {
         });
       }
 
-      if (method === 'foundry-mcp-bridge.previewCharacterProgression') {
+      if (method === 'maeinomatic-foundry-mcp.previewCharacterProgression') {
         return Promise.resolve({
           system: 'dnd5e',
           actorId: 'actor-3',
@@ -3395,7 +3395,7 @@ describe('CharacterTools', () => {
 
   it('applies a DnD5e subclass choice and exposes subclass-owned follow-up advancement steps', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
-      if (method === 'foundry-mcp-bridge.applyCharacterAdvancementChoice') {
+      if (method === 'maeinomatic-foundry-mcp.applyCharacterAdvancementChoice') {
         expect(data).toEqual({
           actorIdentifier: 'Laeral',
           classIdentifier: 'Wizard',
@@ -3426,7 +3426,7 @@ describe('CharacterTools', () => {
         });
       }
 
-      if (method === 'foundry-mcp-bridge.previewCharacterProgression') {
+      if (method === 'maeinomatic-foundry-mcp.previewCharacterProgression') {
         return Promise.resolve({
           system: 'dnd5e',
           actorId: 'actor-3',
@@ -3495,7 +3495,7 @@ describe('CharacterTools', () => {
 
   it('applies a DnD5e item-grant choice through the shared progression bridge', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
-      if (method === 'foundry-mcp-bridge.applyCharacterAdvancementChoice') {
+      if (method === 'maeinomatic-foundry-mcp.applyCharacterAdvancementChoice') {
         expect(data).toEqual({
           actorIdentifier: 'Laeral',
           classIdentifier: 'Wizard',
@@ -3525,7 +3525,7 @@ describe('CharacterTools', () => {
         });
       }
 
-      if (method === 'foundry-mcp-bridge.previewCharacterProgression') {
+      if (method === 'maeinomatic-foundry-mcp.previewCharacterProgression') {
         return Promise.resolve({
           system: 'dnd5e',
           actorId: 'actor-3',
@@ -3575,7 +3575,7 @@ describe('CharacterTools', () => {
 
   it('applies a DnD5e trait choice through the shared progression bridge', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
-      if (method === 'foundry-mcp-bridge.applyCharacterAdvancementChoice') {
+      if (method === 'maeinomatic-foundry-mcp.applyCharacterAdvancementChoice') {
         expect(data).toEqual({
           actorIdentifier: 'Laeral',
           classIdentifier: 'Wizard',
@@ -3605,7 +3605,7 @@ describe('CharacterTools', () => {
         });
       }
 
-      if (method === 'foundry-mcp-bridge.previewCharacterProgression') {
+      if (method === 'maeinomatic-foundry-mcp.previewCharacterProgression') {
         return Promise.resolve({
           system: 'dnd5e',
           actorId: 'actor-3',
@@ -3655,7 +3655,7 @@ describe('CharacterTools', () => {
 
   it('applies a DnD5e size choice through the shared progression bridge', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
-      if (method === 'foundry-mcp-bridge.applyCharacterAdvancementChoice') {
+      if (method === 'maeinomatic-foundry-mcp.applyCharacterAdvancementChoice') {
         expect(data).toEqual({
           actorIdentifier: 'Laeral',
           classIdentifier: 'Wizard',
@@ -3685,7 +3685,7 @@ describe('CharacterTools', () => {
         });
       }
 
-      if (method === 'foundry-mcp-bridge.previewCharacterProgression') {
+      if (method === 'maeinomatic-foundry-mcp.previewCharacterProgression') {
         return Promise.resolve({
           system: 'dnd5e',
           actorId: 'actor-3',
@@ -3735,7 +3735,7 @@ describe('CharacterTools', () => {
 
   it('applies a DnD5e hit-point choice through the shared progression bridge', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
-      if (method === 'foundry-mcp-bridge.applyCharacterAdvancementChoice') {
+      if (method === 'maeinomatic-foundry-mcp.applyCharacterAdvancementChoice') {
         expect(data).toEqual({
           actorIdentifier: 'Laeral',
           classIdentifier: 'Wizard',
@@ -3767,7 +3767,7 @@ describe('CharacterTools', () => {
         });
       }
 
-      if (method === 'foundry-mcp-bridge.previewCharacterProgression') {
+      if (method === 'maeinomatic-foundry-mcp.previewCharacterProgression') {
         return Promise.resolve({
           system: 'dnd5e',
           actorId: 'actor-3',
@@ -3817,7 +3817,7 @@ describe('CharacterTools', () => {
 
   it('applies a DnD5e item-choice selection through the shared progression bridge', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
-      if (method === 'foundry-mcp-bridge.applyCharacterAdvancementChoice') {
+      if (method === 'maeinomatic-foundry-mcp.applyCharacterAdvancementChoice') {
         expect(data).toEqual({
           actorIdentifier: 'Laeral',
           classIdentifier: 'Wizard',
@@ -3850,7 +3850,7 @@ describe('CharacterTools', () => {
         });
       }
 
-      if (method === 'foundry-mcp-bridge.previewCharacterProgression') {
+      if (method === 'maeinomatic-foundry-mcp.previewCharacterProgression') {
         return Promise.resolve({
           system: 'dnd5e',
           actorId: 'actor-3',
@@ -3910,7 +3910,7 @@ describe('CharacterTools', () => {
 
   it('uses the adapter-generated progression update and generic actor-update bridge request', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
-      if (method === 'foundry-mcp-bridge.getCharacterInfo') {
+      if (method === 'maeinomatic-foundry-mcp.getCharacterInfo') {
         expect(data).toEqual({ identifier: 'Merisiel' });
         return Promise.resolve({
           id: 'actor-2',
@@ -3926,11 +3926,11 @@ describe('CharacterTools', () => {
         });
       }
 
-      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+      if (method === 'maeinomatic-foundry-mcp.getWorldInfo') {
         return Promise.resolve({ system: 'pf2e' });
       }
 
-      if (method === 'foundry-mcp-bridge.updateActor') {
+      if (method === 'maeinomatic-foundry-mcp.updateActor') {
         expect(data).toEqual({
           identifier: 'Merisiel',
           updates: {
@@ -3967,7 +3967,7 @@ describe('CharacterTools', () => {
       targetLevel: 4,
     })) as Record<string, unknown>;
 
-    expect(query).toHaveBeenCalledWith('foundry-mcp-bridge.updateActor', {
+    expect(query).toHaveBeenCalledWith('maeinomatic-foundry-mcp.updateActor', {
       identifier: 'Merisiel',
       updates: {
         'system.details.level.value': 4,
@@ -3990,7 +3990,7 @@ describe('CharacterTools', () => {
 
   it('blocks blind DnD5e class leveling when system-managed advancement steps are pending', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
-      if (method === 'foundry-mcp-bridge.getCharacterInfo') {
+      if (method === 'maeinomatic-foundry-mcp.getCharacterInfo') {
         expect(data).toEqual({ identifier: 'Laeral' });
         return Promise.resolve({
           id: 'actor-3',
@@ -4012,11 +4012,11 @@ describe('CharacterTools', () => {
         });
       }
 
-      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+      if (method === 'maeinomatic-foundry-mcp.getWorldInfo') {
         return Promise.resolve({ system: 'dnd5e' });
       }
 
-      if (method === 'foundry-mcp-bridge.previewCharacterProgression') {
+      if (method === 'maeinomatic-foundry-mcp.previewCharacterProgression') {
         expect(data).toEqual({
           actorIdentifier: 'Laeral',
           classIdentifier: 'Wizard',
@@ -4094,14 +4094,14 @@ describe('CharacterTools', () => {
       ],
     });
     expect(query).not.toHaveBeenCalledWith(
-      'foundry-mcp-bridge.updateActorEmbeddedItem',
+      'maeinomatic-foundry-mcp.updateActorEmbeddedItem',
       expect.anything()
     );
   });
 
   it('uses the DnD5e class-item update only when no system-managed advancement steps are pending', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
-      if (method === 'foundry-mcp-bridge.getCharacterInfo') {
+      if (method === 'maeinomatic-foundry-mcp.getCharacterInfo') {
         return Promise.resolve({
           id: 'actor-4',
           name: 'Khelben',
@@ -4122,11 +4122,11 @@ describe('CharacterTools', () => {
         });
       }
 
-      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+      if (method === 'maeinomatic-foundry-mcp.getWorldInfo') {
         return Promise.resolve({ system: 'dnd5e' });
       }
 
-      if (method === 'foundry-mcp-bridge.previewCharacterProgression') {
+      if (method === 'maeinomatic-foundry-mcp.previewCharacterProgression') {
         expect(data).toEqual({
           actorIdentifier: 'Khelben',
           classIdentifier: 'Wizard',
@@ -4146,7 +4146,7 @@ describe('CharacterTools', () => {
         });
       }
 
-      if (method === 'foundry-mcp-bridge.updateActorEmbeddedItem') {
+      if (method === 'maeinomatic-foundry-mcp.updateActorEmbeddedItem') {
         expect(data).toEqual({
           actorIdentifier: 'Khelben',
           itemIdentifier: 'class-wizard',
@@ -4188,7 +4188,7 @@ describe('CharacterTools', () => {
       targetLevel: 5,
     })) as Record<string, unknown>;
 
-    expect(query).toHaveBeenCalledWith('foundry-mcp-bridge.updateActorEmbeddedItem', {
+    expect(query).toHaveBeenCalledWith('maeinomatic-foundry-mcp.updateActorEmbeddedItem', {
       actorIdentifier: 'Khelben',
       itemIdentifier: 'class-wizard',
       itemType: 'class',
@@ -4216,7 +4216,7 @@ describe('CharacterTools', () => {
 
   it('uses explicit advancement selections during update-character-progression before finalizing', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
-      if (method === 'foundry-mcp-bridge.getCharacterInfo') {
+      if (method === 'maeinomatic-foundry-mcp.getCharacterInfo') {
         return Promise.resolve({
           id: 'actor-6',
           name: 'Laeral',
@@ -4240,13 +4240,13 @@ describe('CharacterTools', () => {
         });
       }
 
-      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+      if (method === 'maeinomatic-foundry-mcp.getWorldInfo') {
         return Promise.resolve({ system: 'dnd5e' });
       }
 
-      if (method === 'foundry-mcp-bridge.previewCharacterProgression') {
+      if (method === 'maeinomatic-foundry-mcp.previewCharacterProgression') {
         const previewCallCount = query.mock.calls.filter(
-          ([calledMethod]) => calledMethod === 'foundry-mcp-bridge.previewCharacterProgression'
+          ([calledMethod]) => calledMethod === 'maeinomatic-foundry-mcp.previewCharacterProgression'
         ).length;
 
         if (previewCallCount <= 1) {
@@ -4322,9 +4322,9 @@ describe('CharacterTools', () => {
         });
       }
 
-      if (method === 'foundry-mcp-bridge.applyCharacterAdvancementChoice') {
+      if (method === 'maeinomatic-foundry-mcp.applyCharacterAdvancementChoice') {
         const applyCallCount = query.mock.calls.filter(
-          ([calledMethod]) => calledMethod === 'foundry-mcp-bridge.applyCharacterAdvancementChoice'
+          ([calledMethod]) => calledMethod === 'maeinomatic-foundry-mcp.applyCharacterAdvancementChoice'
         ).length;
 
         if (applyCallCount === 1) {
@@ -4389,7 +4389,7 @@ describe('CharacterTools', () => {
         });
       }
 
-      if (method === 'foundry-mcp-bridge.updateActorEmbeddedItem') {
+      if (method === 'maeinomatic-foundry-mcp.updateActorEmbeddedItem') {
         return Promise.resolve({
           success: true,
           actorId: 'actor-6',
@@ -4456,7 +4456,7 @@ describe('CharacterTools', () => {
 
   it('fails cleanly when update-character-progression receives a selection that does not exist for the level-up', async () => {
     const query = vi.fn().mockImplementation((method: string, _data?: unknown) => {
-      if (method === 'foundry-mcp-bridge.getCharacterInfo') {
+      if (method === 'maeinomatic-foundry-mcp.getCharacterInfo') {
         return Promise.resolve({
           id: 'actor-7',
           name: 'Laeral',
@@ -4477,11 +4477,11 @@ describe('CharacterTools', () => {
         });
       }
 
-      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+      if (method === 'maeinomatic-foundry-mcp.getWorldInfo') {
         return Promise.resolve({ system: 'dnd5e' });
       }
 
-      if (method === 'foundry-mcp-bridge.previewCharacterProgression') {
+      if (method === 'maeinomatic-foundry-mcp.previewCharacterProgression') {
         return Promise.resolve({
           system: 'dnd5e',
           actorId: 'actor-7',
@@ -4541,7 +4541,7 @@ describe('CharacterTools', () => {
 
   it('auto-runs safe DnD5e item-grant steps before finalizing the class level update', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
-      if (method === 'foundry-mcp-bridge.getCharacterInfo') {
+      if (method === 'maeinomatic-foundry-mcp.getCharacterInfo') {
         return Promise.resolve({
           id: 'actor-5',
           name: 'Laeral',
@@ -4562,11 +4562,11 @@ describe('CharacterTools', () => {
         });
       }
 
-      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+      if (method === 'maeinomatic-foundry-mcp.getWorldInfo') {
         return Promise.resolve({ system: 'dnd5e' });
       }
 
-      if (method === 'foundry-mcp-bridge.previewCharacterProgression') {
+      if (method === 'maeinomatic-foundry-mcp.previewCharacterProgression') {
         expect(data).toEqual({
           actorIdentifier: 'Laeral',
           classIdentifier: 'Wizard',
@@ -4574,7 +4574,7 @@ describe('CharacterTools', () => {
         });
 
         const previewCallCount = query.mock.calls.filter(
-          ([calledMethod]) => calledMethod === 'foundry-mcp-bridge.previewCharacterProgression'
+          ([calledMethod]) => calledMethod === 'maeinomatic-foundry-mcp.previewCharacterProgression'
         ).length;
 
         if (previewCallCount <= 1) {
@@ -4630,7 +4630,7 @@ describe('CharacterTools', () => {
         });
       }
 
-      if (method === 'foundry-mcp-bridge.applyCharacterAdvancementChoice') {
+      if (method === 'maeinomatic-foundry-mcp.applyCharacterAdvancementChoice') {
         expect(data).toEqual({
           actorIdentifier: 'Laeral',
           classIdentifier: 'Wizard',
@@ -4661,7 +4661,7 @@ describe('CharacterTools', () => {
         });
       }
 
-      if (method === 'foundry-mcp-bridge.updateActorEmbeddedItem') {
+      if (method === 'maeinomatic-foundry-mcp.updateActorEmbeddedItem') {
         expect(data).toEqual({
           actorIdentifier: 'Laeral',
           itemIdentifier: 'class-wizard',
@@ -4733,7 +4733,7 @@ describe('CharacterTools', () => {
 
   it('auto-runs safe DnD5e size steps before finalizing the class level update', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
-      if (method === 'foundry-mcp-bridge.getCharacterInfo') {
+      if (method === 'maeinomatic-foundry-mcp.getCharacterInfo') {
         return Promise.resolve({
           id: 'actor-8',
           name: 'Laeral',
@@ -4754,13 +4754,13 @@ describe('CharacterTools', () => {
         });
       }
 
-      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+      if (method === 'maeinomatic-foundry-mcp.getWorldInfo') {
         return Promise.resolve({ system: 'dnd5e' });
       }
 
-      if (method === 'foundry-mcp-bridge.previewCharacterProgression') {
+      if (method === 'maeinomatic-foundry-mcp.previewCharacterProgression') {
         const previewCallCount = query.mock.calls.filter(
-          ([calledMethod]) => calledMethod === 'foundry-mcp-bridge.previewCharacterProgression'
+          ([calledMethod]) => calledMethod === 'maeinomatic-foundry-mcp.previewCharacterProgression'
         ).length;
 
         if (previewCallCount <= 1) {
@@ -4820,7 +4820,7 @@ describe('CharacterTools', () => {
         });
       }
 
-      if (method === 'foundry-mcp-bridge.applyCharacterAdvancementChoice') {
+      if (method === 'maeinomatic-foundry-mcp.applyCharacterAdvancementChoice') {
         expect(data).toEqual({
           actorIdentifier: 'Laeral',
           classIdentifier: 'Wizard',
@@ -4850,7 +4850,7 @@ describe('CharacterTools', () => {
         });
       }
 
-      if (method === 'foundry-mcp-bridge.updateActorEmbeddedItem') {
+      if (method === 'maeinomatic-foundry-mcp.updateActorEmbeddedItem') {
         expect(data).toEqual({
           actorIdentifier: 'Laeral',
           itemIdentifier: 'class-wizard',
@@ -4914,11 +4914,11 @@ describe('CharacterTools', () => {
 
   it('returns guided pending-step options when complete-dnd5e-level-up-workflow still needs choices', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
-      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+      if (method === 'maeinomatic-foundry-mcp.getWorldInfo') {
         return Promise.resolve({ system: 'dnd5e' });
       }
 
-      if (method === 'foundry-mcp-bridge.getCharacterInfo') {
+      if (method === 'maeinomatic-foundry-mcp.getCharacterInfo') {
         return Promise.resolve({
           id: 'actor-8b',
           name: 'Laeral',
@@ -4939,7 +4939,7 @@ describe('CharacterTools', () => {
         });
       }
 
-      if (method === 'foundry-mcp-bridge.previewCharacterProgression') {
+      if (method === 'maeinomatic-foundry-mcp.previewCharacterProgression') {
         expect(data).toEqual({
           actorIdentifier: 'Laeral',
           classIdentifier: 'Wizard',
@@ -4972,7 +4972,7 @@ describe('CharacterTools', () => {
         });
       }
 
-      if (method === 'foundry-mcp-bridge.getCharacterAdvancementOptions') {
+      if (method === 'maeinomatic-foundry-mcp.getCharacterAdvancementOptions') {
         expect(data).toEqual({
           actorIdentifier: 'Laeral',
           classIdentifier: 'Wizard',
@@ -5084,13 +5084,13 @@ describe('CharacterTools', () => {
 
   it('completes the DnD5e level-up workflow and validates the finished build', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
-      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+      if (method === 'maeinomatic-foundry-mcp.getWorldInfo') {
         return Promise.resolve({ system: 'dnd5e' });
       }
 
-      if (method === 'foundry-mcp-bridge.getCharacterInfo') {
+      if (method === 'maeinomatic-foundry-mcp.getCharacterInfo') {
         const characterInfoCallCount = query.mock.calls.filter(
-          ([calledMethod]) => calledMethod === 'foundry-mcp-bridge.getCharacterInfo'
+          ([calledMethod]) => calledMethod === 'maeinomatic-foundry-mcp.getCharacterInfo'
         ).length;
 
         if (characterInfoCallCount === 1) {
@@ -5140,9 +5140,9 @@ describe('CharacterTools', () => {
         });
       }
 
-      if (method === 'foundry-mcp-bridge.previewCharacterProgression') {
+      if (method === 'maeinomatic-foundry-mcp.previewCharacterProgression') {
         const previewCallCount = query.mock.calls.filter(
-          ([calledMethod]) => calledMethod === 'foundry-mcp-bridge.previewCharacterProgression'
+          ([calledMethod]) => calledMethod === 'maeinomatic-foundry-mcp.previewCharacterProgression'
         ).length;
 
         expect(data).toEqual({
@@ -5190,7 +5190,7 @@ describe('CharacterTools', () => {
         });
       }
 
-      if (method === 'foundry-mcp-bridge.applyCharacterAdvancementChoice') {
+      if (method === 'maeinomatic-foundry-mcp.applyCharacterAdvancementChoice') {
         expect(data).toEqual({
           actorIdentifier: 'Laeral',
           classIdentifier: 'Wizard',
@@ -5221,7 +5221,7 @@ describe('CharacterTools', () => {
         });
       }
 
-      if (method === 'foundry-mcp-bridge.updateActorEmbeddedItem') {
+      if (method === 'maeinomatic-foundry-mcp.updateActorEmbeddedItem') {
         expect(data).toEqual({
           actorIdentifier: 'Laeral',
           itemIdentifier: 'class-wizard',
@@ -5245,7 +5245,7 @@ describe('CharacterTools', () => {
         });
       }
 
-      if (method === 'foundry-mcp-bridge.validateCharacterBuild') {
+      if (method === 'maeinomatic-foundry-mcp.validateCharacterBuild') {
         expect(data).toEqual({
           actorIdentifier: 'Laeral',
         });
@@ -5326,11 +5326,11 @@ describe('CharacterTools', () => {
 
   it('awards split DnD5e party resources with remainder reporting and build validation', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
-      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+      if (method === 'maeinomatic-foundry-mcp.getWorldInfo') {
         return Promise.resolve({ system: 'dnd5e' });
       }
 
-      if (method === 'foundry-mcp-bridge.getPartyCharacters') {
+      if (method === 'maeinomatic-foundry-mcp.getPartyCharacters') {
         expect(data).toEqual({});
         return Promise.resolve([
           { id: 'actor-award-1', name: 'Laeral' },
@@ -5338,7 +5338,7 @@ describe('CharacterTools', () => {
         ]);
       }
 
-      if (method === 'foundry-mcp-bridge.getCharacterInfo') {
+      if (method === 'maeinomatic-foundry-mcp.getCharacterInfo') {
         if ((data as Record<string, unknown>).identifier === 'actor-award-1') {
           return Promise.resolve({
             id: 'actor-award-1',
@@ -5378,7 +5378,7 @@ describe('CharacterTools', () => {
         }
       }
 
-      if (method === 'foundry-mcp-bridge.updateActor') {
+      if (method === 'maeinomatic-foundry-mcp.updateActor') {
         if ((data as Record<string, unknown>).identifier === 'actor-award-1') {
           expect(data).toEqual({
             identifier: 'actor-award-1',
@@ -5434,7 +5434,7 @@ describe('CharacterTools', () => {
         });
       }
 
-      if (method === 'foundry-mcp-bridge.validateCharacterBuild') {
+      if (method === 'maeinomatic-foundry-mcp.validateCharacterBuild') {
         return Promise.resolve({
           system: 'dnd5e',
           actorId: (data as Record<string, unknown>).actorIdentifier,
@@ -5542,11 +5542,11 @@ describe('CharacterTools', () => {
 
   it('awards explicit DnD5e character resources in each mode without validation', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
-      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+      if (method === 'maeinomatic-foundry-mcp.getWorldInfo') {
         return Promise.resolve({ system: 'dnd5e' });
       }
 
-      if (method === 'foundry-mcp-bridge.getCharacterInfo') {
+      if (method === 'maeinomatic-foundry-mcp.getCharacterInfo') {
         return Promise.resolve({
           id: (data as Record<string, unknown>).identifier,
           name: (data as Record<string, unknown>).identifier,
@@ -5564,7 +5564,7 @@ describe('CharacterTools', () => {
         });
       }
 
-      if (method === 'foundry-mcp-bridge.updateActor') {
+      if (method === 'maeinomatic-foundry-mcp.updateActor') {
         if ((data as Record<string, unknown>).identifier === 'Laeral') {
           expect(data).toEqual({
             identifier: 'Laeral',
@@ -5620,7 +5620,7 @@ describe('CharacterTools', () => {
     })) as Record<string, unknown>;
 
     expect(query).not.toHaveBeenCalledWith(
-      'foundry-mcp-bridge.validateCharacterBuild',
+      'maeinomatic-foundry-mcp.validateCharacterBuild',
       expect.anything()
     );
     expect(result).toMatchObject({
@@ -5660,16 +5660,16 @@ describe('CharacterTools', () => {
 
   it('stages DnD5e awards on a primary party group actor', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
-      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+      if (method === 'maeinomatic-foundry-mcp.getWorldInfo') {
         return Promise.resolve({ system: 'dnd5e' });
       }
 
-      if (method === 'foundry-mcp-bridge.listActors') {
+      if (method === 'maeinomatic-foundry-mcp.listActors') {
         expect(data).toEqual({ type: 'group' });
         return Promise.resolve([{ id: 'party-group-1', name: 'The Company', type: 'group' }]);
       }
 
-      if (method === 'foundry-mcp-bridge.getCharacterInfo') {
+      if (method === 'maeinomatic-foundry-mcp.getCharacterInfo') {
         expect(data).toEqual({ identifier: 'party-group-1' });
         return Promise.resolve({
           id: 'party-group-1',
@@ -5689,7 +5689,7 @@ describe('CharacterTools', () => {
         });
       }
 
-      if (method === 'foundry-mcp-bridge.updateActor') {
+      if (method === 'maeinomatic-foundry-mcp.updateActor') {
         expect(data).toEqual({
           identifier: 'party-group-1',
           updates: {
@@ -5772,11 +5772,11 @@ describe('CharacterTools', () => {
 
   it('distributes staged DnD5e party awards with caps and retained remainders', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
-      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+      if (method === 'maeinomatic-foundry-mcp.getWorldInfo') {
         return Promise.resolve({ system: 'dnd5e' });
       }
 
-      if (method === 'foundry-mcp-bridge.getPartyCharacters') {
+      if (method === 'maeinomatic-foundry-mcp.getPartyCharacters') {
         expect(data).toEqual({});
         return Promise.resolve([
           { id: 'actor-award-1', name: 'Laeral' },
@@ -5784,12 +5784,12 @@ describe('CharacterTools', () => {
         ]);
       }
 
-      if (method === 'foundry-mcp-bridge.listActors') {
+      if (method === 'maeinomatic-foundry-mcp.listActors') {
         expect(data).toEqual({ type: 'group' });
         return Promise.resolve([{ id: 'party-group-1', name: 'The Company', type: 'group' }]);
       }
 
-      if (method === 'foundry-mcp-bridge.getCharacterInfo') {
+      if (method === 'maeinomatic-foundry-mcp.getCharacterInfo') {
         if ((data as Record<string, unknown>).identifier === 'party-group-1') {
           return Promise.resolve({
             id: 'party-group-1',
@@ -5845,7 +5845,7 @@ describe('CharacterTools', () => {
         }
       }
 
-      if (method === 'foundry-mcp-bridge.updateActor') {
+      if (method === 'maeinomatic-foundry-mcp.updateActor') {
         if ((data as Record<string, unknown>).identifier === 'actor-award-1') {
           expect(data).toEqual({
             identifier: 'actor-award-1',
@@ -5902,7 +5902,7 @@ describe('CharacterTools', () => {
         });
       }
 
-      if (method === 'foundry-mcp-bridge.validateCharacterBuild') {
+      if (method === 'maeinomatic-foundry-mcp.validateCharacterBuild') {
         return Promise.resolve({
           system: 'dnd5e',
           actorId: (data as Record<string, unknown>).actorIdentifier,
@@ -6039,11 +6039,11 @@ describe('CharacterTools', () => {
 
   it('requires partyIdentifier when staged awards cannot resolve a unique group actor', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
-      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+      if (method === 'maeinomatic-foundry-mcp.getWorldInfo') {
         return Promise.resolve({ system: 'dnd5e' });
       }
 
-      if (method === 'foundry-mcp-bridge.listActors') {
+      if (method === 'maeinomatic-foundry-mcp.listActors') {
         expect(data).toEqual({ type: 'group' });
         return Promise.resolve([
           { id: 'group-1', name: 'Heroes', type: 'group' },
@@ -6073,11 +6073,11 @@ describe('CharacterTools', () => {
 
   it('uses the shared run-dnd5e-summon-activity bridge request shape', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
-      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+      if (method === 'maeinomatic-foundry-mcp.getWorldInfo') {
         return Promise.resolve({ system: 'dnd5e' });
       }
 
-      if (method === 'foundry-mcp-bridge.runDnD5eSummonActivity') {
+      if (method === 'maeinomatic-foundry-mcp.runDnD5eSummonActivity') {
         expect(data).toEqual({
           actorIdentifier: 'Laeral',
           itemIdentifier: 'Conjure Elemental',
@@ -6161,11 +6161,11 @@ describe('CharacterTools', () => {
 
   it('surfaces summon profile choices when run-dnd5e-summon-activity still needs selection data', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
-      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+      if (method === 'maeinomatic-foundry-mcp.getWorldInfo') {
         return Promise.resolve({ system: 'dnd5e' });
       }
 
-      if (method === 'foundry-mcp-bridge.runDnD5eSummonActivity') {
+      if (method === 'maeinomatic-foundry-mcp.runDnD5eSummonActivity') {
         expect(data).toEqual({
           actorIdentifier: 'Laeral',
           itemIdentifier: 'Conjure Elemental',
@@ -6252,11 +6252,11 @@ describe('CharacterTools', () => {
 
   it('uses the shared run-dnd5e-transform-activity-workflow bridge request shape', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
-      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+      if (method === 'maeinomatic-foundry-mcp.getWorldInfo') {
         return Promise.resolve({ system: 'dnd5e' });
       }
 
-      if (method === 'foundry-mcp-bridge.runDnD5eTransformActivity') {
+      if (method === 'maeinomatic-foundry-mcp.runDnD5eTransformActivity') {
         expect(data).toEqual({
           actorIdentifier: 'Laeral',
           itemIdentifier: 'Wild Shape',
@@ -6341,11 +6341,11 @@ describe('CharacterTools', () => {
 
   it('surfaces transform activity choices when run-dnd5e-transform-activity-workflow needs selection data', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
-      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+      if (method === 'maeinomatic-foundry-mcp.getWorldInfo') {
         return Promise.resolve({ system: 'dnd5e' });
       }
 
-      if (method === 'foundry-mcp-bridge.runDnD5eTransformActivity') {
+      if (method === 'maeinomatic-foundry-mcp.runDnD5eTransformActivity') {
         expect(data).toEqual({
           actorIdentifier: 'Laeral',
           itemIdentifier: 'Wild Shape',
@@ -6432,13 +6432,13 @@ describe('CharacterTools', () => {
 
   it('completes the DnD5e multiclass entry workflow, reconciles the spellbook, and validates the final build', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
-      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+      if (method === 'maeinomatic-foundry-mcp.getWorldInfo') {
         return Promise.resolve({ system: 'dnd5e' });
       }
 
-      if (method === 'foundry-mcp-bridge.getCharacterInfo') {
+      if (method === 'maeinomatic-foundry-mcp.getCharacterInfo') {
         const characterInfoCallCount = query.mock.calls.filter(
-          ([calledMethod]) => calledMethod === 'foundry-mcp-bridge.getCharacterInfo'
+          ([calledMethod]) => calledMethod === 'maeinomatic-foundry-mcp.getCharacterInfo'
         ).length;
 
         expect(data).toEqual({ identifier: 'Laeral' });
@@ -6494,7 +6494,7 @@ describe('CharacterTools', () => {
         });
       }
 
-      if (method === 'foundry-mcp-bridge.getCompendiumDocumentFull') {
+      if (method === 'maeinomatic-foundry-mcp.getCompendiumDocumentFull') {
         expect(data).toEqual({
           packId: 'dnd5e.classes',
           documentId: 'wizard',
@@ -6506,7 +6506,7 @@ describe('CharacterTools', () => {
         });
       }
 
-      if (method === 'foundry-mcp-bridge.createActorEmbeddedItem') {
+      if (method === 'maeinomatic-foundry-mcp.createActorEmbeddedItem') {
         expect(data).toEqual({
           actorIdentifier: 'Laeral',
           sourceUuid: 'Compendium.dnd5e.classes.wizard',
@@ -6525,7 +6525,7 @@ describe('CharacterTools', () => {
         });
       }
 
-      if (method === 'foundry-mcp-bridge.previewCharacterProgression') {
+      if (method === 'maeinomatic-foundry-mcp.previewCharacterProgression') {
         expect(data).toEqual({
           actorIdentifier: 'Laeral',
           classIdentifier: 'class-wizard-new',
@@ -6545,7 +6545,7 @@ describe('CharacterTools', () => {
         });
       }
 
-      if (method === 'foundry-mcp-bridge.updateActorEmbeddedItem') {
+      if (method === 'maeinomatic-foundry-mcp.updateActorEmbeddedItem') {
         expect(data).toEqual({
           actorIdentifier: 'Laeral',
           itemIdentifier: 'class-wizard-new',
@@ -6569,7 +6569,7 @@ describe('CharacterTools', () => {
         });
       }
 
-      if (method === 'foundry-mcp-bridge.validateCharacterBuild') {
+      if (method === 'maeinomatic-foundry-mcp.validateCharacterBuild') {
         return Promise.resolve({
           system: 'dnd5e',
           actorId: 'actor-10',
@@ -6647,13 +6647,13 @@ describe('CharacterTools', () => {
 
   it('returns resumable level-up guidance when multiclass entry still needs advancement choices', async () => {
     const query = vi.fn().mockImplementation((method: string) => {
-      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+      if (method === 'maeinomatic-foundry-mcp.getWorldInfo') {
         return Promise.resolve({ system: 'dnd5e' });
       }
 
-      if (method === 'foundry-mcp-bridge.getCharacterInfo') {
+      if (method === 'maeinomatic-foundry-mcp.getCharacterInfo') {
         const characterInfoCallCount = query.mock.calls.filter(
-          ([calledMethod]) => calledMethod === 'foundry-mcp-bridge.getCharacterInfo'
+          ([calledMethod]) => calledMethod === 'maeinomatic-foundry-mcp.getCharacterInfo'
         ).length;
 
         if (characterInfoCallCount === 1) {
@@ -6704,7 +6704,7 @@ describe('CharacterTools', () => {
         });
       }
 
-      if (method === 'foundry-mcp-bridge.getCompendiumDocumentFull') {
+      if (method === 'maeinomatic-foundry-mcp.getCompendiumDocumentFull') {
         return Promise.resolve({
           id: 'wizard',
           name: 'Wizard',
@@ -6712,7 +6712,7 @@ describe('CharacterTools', () => {
         });
       }
 
-      if (method === 'foundry-mcp-bridge.createActorEmbeddedItem') {
+      if (method === 'maeinomatic-foundry-mcp.createActorEmbeddedItem') {
         return Promise.resolve({
           success: true,
           actorId: 'actor-11',
@@ -6725,7 +6725,7 @@ describe('CharacterTools', () => {
         });
       }
 
-      if (method === 'foundry-mcp-bridge.previewCharacterProgression') {
+      if (method === 'maeinomatic-foundry-mcp.previewCharacterProgression') {
         return Promise.resolve({
           system: 'dnd5e',
           actorId: 'actor-11',
@@ -6750,7 +6750,7 @@ describe('CharacterTools', () => {
         });
       }
 
-      if (method === 'foundry-mcp-bridge.getCharacterAdvancementOptions') {
+      if (method === 'maeinomatic-foundry-mcp.getCharacterAdvancementOptions') {
         return Promise.resolve({
           system: 'dnd5e',
           actorId: 'actor-11',
@@ -6826,13 +6826,13 @@ describe('CharacterTools', () => {
 
   it('adds a new DnD5e class item and finalizes the initial multiclass level flow', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
-      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+      if (method === 'maeinomatic-foundry-mcp.getWorldInfo') {
         return Promise.resolve({ system: 'dnd5e' });
       }
 
-      if (method === 'foundry-mcp-bridge.getCharacterInfo') {
+      if (method === 'maeinomatic-foundry-mcp.getCharacterInfo') {
         const characterInfoCallCount = query.mock.calls.filter(
-          ([calledMethod]) => calledMethod === 'foundry-mcp-bridge.getCharacterInfo'
+          ([calledMethod]) => calledMethod === 'maeinomatic-foundry-mcp.getCharacterInfo'
         ).length;
 
         if (characterInfoCallCount === 1) {
@@ -6882,7 +6882,7 @@ describe('CharacterTools', () => {
         });
       }
 
-      if (method === 'foundry-mcp-bridge.getCompendiumDocumentFull') {
+      if (method === 'maeinomatic-foundry-mcp.getCompendiumDocumentFull') {
         expect(data).toEqual({
           packId: 'dnd5e.classes',
           documentId: 'wizard',
@@ -6894,7 +6894,7 @@ describe('CharacterTools', () => {
         });
       }
 
-      if (method === 'foundry-mcp-bridge.createActorEmbeddedItem') {
+      if (method === 'maeinomatic-foundry-mcp.createActorEmbeddedItem') {
         expect(data).toEqual({
           actorIdentifier: 'Laeral',
           sourceUuid: 'Compendium.dnd5e.classes.wizard',
@@ -6912,7 +6912,7 @@ describe('CharacterTools', () => {
         });
       }
 
-      if (method === 'foundry-mcp-bridge.previewCharacterProgression') {
+      if (method === 'maeinomatic-foundry-mcp.previewCharacterProgression') {
         expect(data).toEqual({
           actorIdentifier: 'Laeral',
           classIdentifier: 'class-wizard-new',
@@ -6932,7 +6932,7 @@ describe('CharacterTools', () => {
         });
       }
 
-      if (method === 'foundry-mcp-bridge.updateActorEmbeddedItem') {
+      if (method === 'maeinomatic-foundry-mcp.updateActorEmbeddedItem') {
         expect(data).toEqual({
           actorIdentifier: 'Laeral',
           itemIdentifier: 'class-wizard-new',
@@ -6995,7 +6995,7 @@ describe('CharacterTools', () => {
 
   it('uses the shared create-character-companion bridge request shape', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
-      if (method === 'foundry-mcp-bridge.createCharacterCompanion') {
+      if (method === 'maeinomatic-foundry-mcp.createCharacterCompanion') {
         expect(data).toEqual({
           ownerActorIdentifier: 'Laeral',
           role: 'familiar',
@@ -7059,7 +7059,7 @@ describe('CharacterTools', () => {
 
   it('uses the shared list-character-companions bridge request shape', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
-      if (method === 'foundry-mcp-bridge.listCharacterCompanions') {
+      if (method === 'maeinomatic-foundry-mcp.listCharacterCompanions') {
         expect(data).toEqual({
           ownerActorIdentifier: 'Laeral',
           role: 'familiar',
@@ -7112,7 +7112,7 @@ describe('CharacterTools', () => {
 
   it('uses the shared summon-character-companion bridge request shape', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
-      if (method === 'foundry-mcp-bridge.summonCharacterCompanion') {
+      if (method === 'maeinomatic-foundry-mcp.summonCharacterCompanion') {
         expect(data).toEqual({
           ownerActorIdentifier: 'Laeral',
           companionIdentifier: 'Nimbus',
@@ -7161,7 +7161,7 @@ describe('CharacterTools', () => {
 
   it('uses the shared dismiss-character-companion bridge request shape', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
-      if (method === 'foundry-mcp-bridge.dismissCharacterCompanion') {
+      if (method === 'maeinomatic-foundry-mcp.dismissCharacterCompanion') {
         expect(data).toEqual({
           ownerActorIdentifier: 'Laeral',
           companionIdentifier: 'Nimbus',
@@ -7210,7 +7210,7 @@ describe('CharacterTools', () => {
 
   it('uses the shared update-character-companion-link bridge request shape', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
-      if (method === 'foundry-mcp-bridge.updateCharacterCompanionLink') {
+      if (method === 'maeinomatic-foundry-mcp.updateCharacterCompanionLink') {
         expect(data).toEqual({
           ownerActorIdentifier: 'Laeral',
           companionIdentifier: 'Nimbus',
@@ -7272,7 +7272,7 @@ describe('CharacterTools', () => {
 
   it('uses the shared configure-character-companion-summon bridge request shape', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
-      if (method === 'foundry-mcp-bridge.configureCharacterCompanionSummon') {
+      if (method === 'maeinomatic-foundry-mcp.configureCharacterCompanionSummon') {
         expect(data).toEqual({
           ownerActorIdentifier: 'Laeral',
           companionIdentifier: 'Nimbus',
@@ -7329,7 +7329,7 @@ describe('CharacterTools', () => {
 
   it('uses the shared unlink-character-companion bridge request shape', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
-      if (method === 'foundry-mcp-bridge.unlinkCharacterCompanion') {
+      if (method === 'maeinomatic-foundry-mcp.unlinkCharacterCompanion') {
         expect(data).toEqual({
           ownerActorIdentifier: 'Laeral',
           companionIdentifier: 'Nimbus',
@@ -7371,7 +7371,7 @@ describe('CharacterTools', () => {
 
   it('uses the shared delete-character-companion bridge request shape', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
-      if (method === 'foundry-mcp-bridge.deleteCharacterCompanion') {
+      if (method === 'maeinomatic-foundry-mcp.deleteCharacterCompanion') {
         expect(data).toEqual({
           ownerActorIdentifier: 'Laeral',
           companionIdentifier: 'Nimbus',
@@ -7419,7 +7419,7 @@ describe('CharacterTools', () => {
 
   it('uses the shared sync-character-companion-progression bridge request shape', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
-      if (method === 'foundry-mcp-bridge.syncCharacterCompanionProgression') {
+      if (method === 'maeinomatic-foundry-mcp.syncCharacterCompanionProgression') {
         expect(data).toEqual({
           ownerActorIdentifier: 'Laeral',
           companionIdentifier: 'Nimbus',

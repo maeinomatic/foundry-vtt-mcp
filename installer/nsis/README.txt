@@ -1,7 +1,7 @@
-Foundry MCP Server v0.4.8
-===========================
+Maeinomatic Foundry MCP Server
+==============================
 
-Thank you for installing Foundry MCP Server!
+Thank you for installing Maeinomatic Foundry MCP Server!
 
 This software enables AI-powered campaign management for Foundry VTT 
 using Claude Desktop.
@@ -22,22 +22,22 @@ using Claude Desktop.
 • Enhanced creature index for instant monster searches
 
 🔧 UTILITY SCRIPTS:
-• Start Menu → Foundry MCP Server → Foundry MCP Server (start server)
-• Start Menu → Foundry MCP Server → Test Connection (verify installation)
+• Start Menu → Maeinomatic Foundry MCP Server → Maeinomatic Foundry MCP Server (start server)
+• Start Menu → Maeinomatic Foundry MCP Server → Test Connection (verify installation)
 
 📚 DOCUMENTATION:
-Complete setup guide: https://github.com/adambdooley/foundry-vtt-mcp
+Complete setup guide: https://github.com/maeinomatic/foundry-vtt-mcp
 
 💡 TROUBLESHOOTING:
 If you encounter issues:
 1. Ensure Claude Desktop was restarted after installation
 2. Verify Foundry VTT has the MCP Bridge module installed and enabled
 3. Run "Test Connection" from the Start Menu
-4. Visit: https://github.com/adambdooley/foundry-vtt-mcp/issues
+4. Visit: https://github.com/maeinomatic/foundry-vtt-mcp/issues
 
 🎯 SUPPORT:
-• Documentation: https://github.com/adambdooley/foundry-vtt-mcp
-• Issues: https://github.com/adambdooley/foundry-vtt-mcp/issues
+• Documentation: https://github.com/maeinomatic/foundry-vtt-mcp
+• Issues: https://github.com/maeinomatic/foundry-vtt-mcp/issues
 • Foundry VTT Community: https://foundryvtt.com/community
 
 Enjoy your AI-powered Foundry VTT campaigns! 🎲

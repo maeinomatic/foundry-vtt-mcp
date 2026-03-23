@@ -8,7 +8,7 @@ import type {
   FoundryUpdateWorldItemRequest,
   FoundryUpdateWorldItemResponse,
   UnknownRecord,
-} from '@foundry-mcp/shared';
+} from '@maeinomatic/foundry-mcp-shared';
 
 type AuditStatus = 'success' | 'failure';
 

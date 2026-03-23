@@ -22,12 +22,14 @@ preserved in the license, docs, and manifest metadata.
 
 ## Compatibility Note
 
-Some technical identifiers still intentionally remain stable for compatibility,
-including:
+The fork now uses its own technical identity as well as its own public brand.
 
-- the Foundry module ID `foundry-mcp-bridge`
-- internal bridge query namespaces using `foundry-mcp-bridge`
-- workspace package names under `@foundry-mcp/*`
+Canonical project identifiers include:
 
-These identifiers are currently retained so existing installations, socket
-routing, and MCP integrations do not break during the branding transition.
+- the Foundry module ID `maeinomatic-foundry-mcp`
+- bridge query namespaces using `maeinomatic-foundry-mcp.*`
+- the Claude Desktop MCP server key `maeinomatic-foundry-mcp`
+- workspace package names under `@maeinomatic/foundry-mcp-*`
+
+The project still preserves upstream attribution and the MIT license, but the
+runtime/build identity is now its own.

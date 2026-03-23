@@ -19,7 +19,7 @@ function createLoggerStub(): Logger {
 describe('SceneTools', () => {
   it('uses the shared active-scene bridge request and formats visible scene data', async () => {
     const query = vi.fn().mockImplementation((method: string) => {
-      if (method === 'foundry-mcp-bridge.getActiveScene') {
+      if (method === 'maeinomatic-foundry-mcp.getActiveScene') {
         return Promise.resolve({
           id: 'scene-1',
           name: 'Goblin Caves',
@@ -73,7 +73,7 @@ describe('SceneTools', () => {
       includeHidden: false,
     })) as Record<string, unknown>;
 
-    expect(query).toHaveBeenCalledWith('foundry-mcp-bridge.getActiveScene');
+    expect(query).toHaveBeenCalledWith('maeinomatic-foundry-mcp.getActiveScene');
     expect(result).toMatchObject({
       id: 'scene-1',
       name: 'Goblin Caves',
@@ -104,7 +104,7 @@ describe('SceneTools', () => {
 
   it('uses the shared world-info bridge request and summarizes active users', async () => {
     const query = vi.fn().mockImplementation((method: string) => {
-      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+      if (method === 'maeinomatic-foundry-mcp.getWorldInfo') {
         return Promise.resolve({
           id: 'world-1',
           title: 'Shadows of the Coast',
@@ -129,7 +129,7 @@ describe('SceneTools', () => {
 
     const result = await tools.handleGetWorldInfo({});
 
-    expect(query).toHaveBeenCalledWith('foundry-mcp-bridge.getWorldInfo');
+    expect(query).toHaveBeenCalledWith('maeinomatic-foundry-mcp.getWorldInfo');
     expect(result).toMatchObject({
       id: 'world-1',
       title: 'Shadows of the Coast',

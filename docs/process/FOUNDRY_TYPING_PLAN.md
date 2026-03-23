@@ -59,12 +59,12 @@ with tests."
 - Remove remaining MCP-tool-local DTO copies where a shared bridge DTO already
   exists.
 - Prefer shared request/response models for these bridge methods first:
-  - `foundry-mcp-bridge.getCharacterInfo`
-  - `foundry-mcp-bridge.searchCharacterItems`
-  - `foundry-mcp-bridge.searchCompendium`
-  - `foundry-mcp-bridge.listCreaturesByCriteria`
-  - `foundry-mcp-bridge.getCompendiumDocumentFull`
-  - `foundry-mcp-bridge.getAvailablePacks`
+  - `maeinomatic-foundry-mcp.getCharacterInfo`
+  - `maeinomatic-foundry-mcp.searchCharacterItems`
+  - `maeinomatic-foundry-mcp.searchCompendium`
+  - `maeinomatic-foundry-mcp.listCreaturesByCriteria`
+  - `maeinomatic-foundry-mcp.getCompendiumDocumentFull`
+  - `maeinomatic-foundry-mcp.getAvailablePacks`
 - Keep full compendium entry DTOs and lightweight search DTOs distinct. Do not
   collapse them into one giant "compendium entity" type.
 
@@ -106,7 +106,7 @@ Run on every typing slice:
 - `npm run lint:strict`
 - `npm run typecheck`
 - `npm run build`
-- `npm -w @foundry-mcp/server test -- --run`
+- `npm -w @maeinomatic/foundry-mcp-server test -- --run`
 - `npm run test:mcp:schema`
 
 ## Priority File List

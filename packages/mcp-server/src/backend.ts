@@ -53,22 +53,22 @@ const LOCK_FILE = path.join(os.tmpdir(), 'foundry-mcp-backend.lock');
 
 function getBundledPythonPath(): string {
   // Detect installation directory based on current executable location
-  let installDir = path.join(os.homedir(), 'AppData', 'Local', 'FoundryMCPServer');
+  let installDir = path.join(os.homedir(), 'AppData', 'Local', 'MaeinomaticFoundryMCPServer');
 
   // Try to detect install directory from current process location
   const currentDir = process.cwd();
   const execDir = path.dirname(process.execPath);
 
   // Check if we're running from an installed location
-  if (currentDir.includes('FoundryMCPServer') || execDir.includes('FoundryMCPServer')) {
+  if (currentDir.includes('MaeinomaticFoundryMCPServer') || execDir.includes('MaeinomaticFoundryMCPServer')) {
     // Extract the installation directory
-    const foundryMcpIndex = currentDir.indexOf('FoundryMCPServer');
+    const foundryMcpIndex = currentDir.indexOf('MaeinomaticFoundryMCPServer');
     if (foundryMcpIndex !== -1) {
-      installDir = currentDir.substring(0, foundryMcpIndex + 'FoundryMCPServer'.length);
+      installDir = currentDir.substring(0, foundryMcpIndex + 'MaeinomaticFoundryMCPServer'.length);
     } else {
-      const foundryMcpExecIndex = execDir.indexOf('FoundryMCPServer');
+      const foundryMcpExecIndex = execDir.indexOf('MaeinomaticFoundryMCPServer');
       if (foundryMcpExecIndex !== -1) {
-        installDir = execDir.substring(0, foundryMcpExecIndex + 'FoundryMCPServer'.length);
+        installDir = execDir.substring(0, foundryMcpExecIndex + 'MaeinomaticFoundryMCPServer'.length);
       }
     }
   }
@@ -105,7 +105,7 @@ function getBundledPythonPath(): string {
       os.homedir(),
       'AppData',
       'Local',
-      'FoundryMCPServer',
+      'MaeinomaticFoundryMCPServer',
       'ComfyUI',
       'ComfyUI',
       'python_embeded',
@@ -115,7 +115,7 @@ function getBundledPythonPath(): string {
       os.homedir(),
       'AppData',
       'Local',
-      'FoundryMCPServer',
+      'MaeinomaticFoundryMCPServer',
       'ComfyUI-headless',
       'ComfyUI',
       'python_embeded',
@@ -125,7 +125,7 @@ function getBundledPythonPath(): string {
       os.homedir(),
       'AppData',
       'Local',
-      'FoundryMCPServer',
+      'MaeinomaticFoundryMCPServer',
       'ComfyUI',
       'python_embeded',
       'python.exe'
@@ -134,7 +134,7 @@ function getBundledPythonPath(): string {
       os.homedir(),
       'AppData',
       'Local',
-      'FoundryMCPServer',
+      'MaeinomaticFoundryMCPServer',
       'ComfyUI-headless',
       'python_embeded',
       'python.exe'
@@ -143,14 +143,14 @@ function getBundledPythonPath(): string {
       os.homedir(),
       'AppData',
       'Local',
-      'FoundryMCPServer',
+      'MaeinomaticFoundryMCPServer',
       'ComfyUI-env',
       'Scripts',
       'python.exe'
     ),
     path.join(process.cwd(), '..', '..', 'ComfyUI-env', 'Scripts', 'python.exe'),
     path.join(__dirname, '..', '..', '..', 'ComfyUI-env', 'Scripts', 'python.exe'),
-    path.join(os.homedir(), 'AppData', 'Local', 'FoundryMCPServer', 'Python', 'python.exe'),
+    path.join(os.homedir(), 'AppData', 'Local', 'MaeinomaticFoundryMCPServer', 'Python', 'python.exe'),
   ];
 
   for (const fallbackPath of fallbackPaths) {
@@ -356,7 +356,7 @@ function findComfyUIPath(): string {
     os.homedir(),
     'AppData',
     'Local',
-    'FoundryMCPServer',
+    'MaeinomaticFoundryMCPServer',
     'ComfyUI',
     'ComfyUI'
   );
@@ -371,7 +371,7 @@ function findComfyUIPath(): string {
     os.homedir(),
     'AppData',
     'Local',
-    'FoundryMCPServer',
+    'MaeinomaticFoundryMCPServer',
     'ComfyUI-headless',
     'ComfyUI'
   );
@@ -382,7 +382,7 @@ function findComfyUIPath(): string {
 
   // Check for flat ComfyUI installation (unlikely but possible)
 
-  const flatPath = path.join(os.homedir(), 'AppData', 'Local', 'FoundryMCPServer', 'ComfyUI');
+  const flatPath = path.join(os.homedir(), 'AppData', 'Local', 'MaeinomaticFoundryMCPServer', 'ComfyUI');
 
   if (fs.existsSync(path.join(flatPath, 'main.py'))) {
     return flatPath;
@@ -394,7 +394,7 @@ function findComfyUIPath(): string {
     os.homedir(),
     'AppData',
     'Local',
-    'FoundryMCPServer',
+    'MaeinomaticFoundryMCPServer',
     'ComfyUI-headless'
   );
 
@@ -1112,7 +1112,7 @@ async function processMapGenerationInBackend(
       const uploadResponse = await foundryClient.query<
         UnknownRecord,
         { filename: string; imageData: string }
-      >('foundry-mcp-bridge.upload-generated-map', {
+      >('maeinomatic-foundry-mcp.upload-generated-map', {
         filename,
         imageData: base64Image,
       });
@@ -1248,7 +1248,7 @@ async function startBackend(): Promise<void> {
 
     enableFile: true,
 
-    filePath: path.join(os.tmpdir(), 'foundry-mcp-server', 'mcp-server.log'),
+    filePath: path.join(os.tmpdir(), 'maeinomatic-foundry-mcp-server', 'mcp-server.log'),
   });
 
   logger.info('Starting Foundry MCP Backend', {

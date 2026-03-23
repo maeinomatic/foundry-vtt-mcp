@@ -1,4 +1,4 @@
-; Foundry MCP Server Windows Installer
+; Maeinomatic Foundry MCP Server Windows Installer
 ; Built with NSIS (Nullsoft Scriptable Install System)
 
 ;--------------------------------
@@ -28,18 +28,18 @@
 
 ;--------------------------------
 ; General Configuration
-Name "Foundry MCP Server"
+Name "Maeinomatic Foundry MCP Server"
 
 ; Allow output file to be overridden from command line
 !ifndef OUTFILE
-  !define OUTFILE "FoundryMCPServer-Setup.exe"
+  !define OUTFILE "MaeinomaticFoundryMCPServer-Setup.exe"
 !endif
 OutFile "${OUTFILE}"
 
 Unicode True
 
 ; Default installation directory
-InstallDir "$LOCALAPPDATA\FoundryMCPServer"
+InstallDir "$LOCALAPPDATA\MaeinomaticFoundryMCPServer"
 
 ; Request application privileges (user level, no admin required)
 RequestExecutionLevel user
@@ -62,11 +62,11 @@ RequestExecutionLevel user
 !endif
 
 VIProductVersion "${VERSION_BASE}.0"
-VIAddVersionKey "ProductName" "Foundry MCP Server"
-VIAddVersionKey "CompanyName" "Foundry MCP Bridge"
+VIAddVersionKey "ProductName" "Maeinomatic Foundry MCP Server"
+VIAddVersionKey "CompanyName" "Maeinomatic Foundry MCP Bridge"
 VIAddVersionKey "FileDescription" "AI-powered campaign management with map generation for Foundry VTT"
 VIAddVersionKey "FileVersion" "${VERSION_BASE}.0"
-VIAddVersionKey "LegalCopyright" "© 2024 Foundry MCP Bridge"
+VIAddVersionKey "LegalCopyright" "© 2024 Maeinomatic Foundry MCP Bridge"
 
 ;--------------------------------
 ; Interface Configuration
@@ -75,11 +75,11 @@ VIAddVersionKey "LegalCopyright" "© 2024 Foundry MCP Bridge"
 !define MUI_UNICON "icon.ico"
 
 ; Welcome page
-!define MUI_WELCOMEPAGE_TITLE "Foundry MCP Server Setup"
-!define MUI_WELCOMEPAGE_TEXT "This wizard will install Foundry MCP Server, which enables AI-powered campaign management and battlemap generation for Foundry VTT using Claude Desktop.$\r$\n$\r$\nOptionally install the Foundry MCP Bridge module and ComfyUI for AI-powered map generation directly to your system for seamless setup.$\r$\n$\r$\nClick Next to continue."
+!define MUI_WELCOMEPAGE_TITLE "Maeinomatic Foundry MCP Server Setup"
+!define MUI_WELCOMEPAGE_TEXT "This wizard will install Maeinomatic Foundry MCP Server, which enables AI-powered campaign management and battlemap generation for Foundry VTT using Claude Desktop.$\r$\n$\r$\nOptionally install the Maeinomatic Foundry MCP Bridge module and ComfyUI for AI-powered map generation directly to your system for seamless setup.$\r$\n$\r$\nClick Next to continue."
 
 ; Directory page
-!define MUI_DIRECTORYPAGE_TEXT_TOP "Choose the folder where you want to install Foundry MCP Server."
+!define MUI_DIRECTORYPAGE_TEXT_TOP "Choose the folder where you want to install Maeinomatic Foundry MCP Server."
 
 ; Components page
 !define MUI_COMPONENTSPAGE_TEXT_TOP "Select the components you want to install:"
@@ -88,9 +88,9 @@ VIAddVersionKey "LegalCopyright" "© 2024 Foundry MCP Bridge"
 ; Finish page (will be customized based on what was installed)
 !define MUI_FINISHPAGE_TITLE "Installation Complete"
 !define MUI_FINISHPAGE_TEXT_NOREBOOTSUPPORT
-!define MUI_FINISHPAGE_TEXT "Thank you for installing Foundry MCP Server!$\r$\n$\r$\nNext steps:$\r$\n$\r$\n1. Restart Claude Desktop$\r$\n2. Launch Foundry VTT$\r$\n$\r$\nIf the Foundry module was installed, it will be available in your modules list. Otherwise, install the MCP Bridge module manually.$\r$\n$\r$\nFor support and documentation, visit our GitHub repository."
+!define MUI_FINISHPAGE_TEXT "Thank you for installing Maeinomatic Foundry MCP Server!$\r$\n$\r$\nNext steps:$\r$\n$\r$\n1. Restart Claude Desktop$\r$\n2. Launch Foundry VTT$\r$\n$\r$\nIf the Foundry module was installed, it will be available in your modules list. Otherwise, install the MCP Bridge module manually.$\r$\n$\r$\nFor support and documentation, visit our GitHub repository."
 !define MUI_FINISHPAGE_RUN
-!define MUI_FINISHPAGE_RUN_TEXT "Open Foundry VTT MCP GitHub"
+!define MUI_FINISHPAGE_RUN_TEXT "Open GitHub Repository"
 !define MUI_FINISHPAGE_RUN_FUNCTION "OpenGitHub"
 
 ;--------------------------------
@@ -219,7 +219,7 @@ FunctionEnd
 ;--------------------------------
 ; Helper Functions
 Function OpenGitHub
-  ExecShell "open" "https://github.com/adambdooley/foundry-vtt-mcp"
+  ExecShell "open" "https://github.com/maeinomatic/foundry-vtt-mcp"
 FunctionEnd
 
 Function DownloadComfyUIModels
@@ -657,7 +657,7 @@ FunctionEnd
 Function .onGUIEnd
   ; Simply mark installation as successful if registry entry exists
   ; No popup dialogs - information is shown on the finish page instead
-  ReadRegStr $0 HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\FoundryMCPServer" "DisplayName"
+  ReadRegStr $0 HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\MaeinomaticFoundryMCPServer" "DisplayName"
   StrCmp $0 "" installation_failed installation_success
 
   installation_success:
@@ -683,7 +683,7 @@ Function UpdateClaudeConfig
   
   powershell_failed:
     DetailPrint "PowerShell test failed (exit code: $0)"
-    MessageBox MB_ICONEXCLAMATION|MB_OK "PowerShell Not Available$\r$\n$\r$\nFoundry MCP Server installed successfully, but PowerShell is required for automatic Claude Desktop configuration.$\r$\n$\r$\n- See manual setup guide in Start Menu$\r$\n- Configure Claude Desktop manually$\r$\n- Contact support if PowerShell should be available"
+    MessageBox MB_ICONEXCLAMATION|MB_OK "PowerShell Not Available$\r$\n$\r$\nMaeinomatic Foundry MCP Server installed successfully, but PowerShell is required for automatic Claude Desktop configuration.$\r$\n$\r$\n- See manual setup guide in Start Menu$\r$\n- Configure Claude Desktop manually$\r$\n- Contact support if PowerShell should be available"
     Goto config_done
     
   powershell_ok:
@@ -747,9 +747,9 @@ Function UpdateClaudeConfig
           
           short_error:
           ${If} $InstallationSuccess == "true"
-            MessageBox MB_ICONEXCLAMATION|MB_OK "Claude Desktop Configuration Failed$\r$\n$\r$\nError: $7$\r$\n$\r$\nFoundry MCP Server installed successfully, but Claude Desktop configuration could not be completed automatically.$\r$\n$\r$\n- Check detailed error log: %TEMP%\foundry-mcp-claude-config.log$\r$\n- See manual setup guide in Start Menu$\r$\n- Restart Claude Desktop after manual configuration"
+            MessageBox MB_ICONEXCLAMATION|MB_OK "Claude Desktop Configuration Failed$\r$\n$\r$\nError: $7$\r$\n$\r$\nMaeinomatic Foundry MCP Server installed successfully, but Claude Desktop configuration could not be completed automatically.$\r$\n$\r$\n- Check detailed error log: %TEMP%\maeinomatic-foundry-mcp-claude-config.log$\r$\n- See manual setup guide in Start Menu$\r$\n- Restart Claude Desktop after manual configuration"
           ${Else}
-            MessageBox MB_ICONEXCLAMATION|MB_OK "Claude Desktop Configuration Failed$\r$\n$\r$\nError: $7$\r$\n$\r$\nInstallation was not completed successfully.$\r$\n$\r$\n- Check detailed error log: %TEMP%\foundry-mcp-claude-config.log$\r$\n- Try running the installer again"
+            MessageBox MB_ICONEXCLAMATION|MB_OK "Claude Desktop Configuration Failed$\r$\n$\r$\nError: $7$\r$\n$\r$\nInstallation was not completed successfully.$\r$\n$\r$\n- Check detailed error log: %TEMP%\maeinomatic-foundry-mcp-claude-config.log$\r$\n- Try running the installer again"
           ${EndIf}
           Goto config_done
         
@@ -761,7 +761,7 @@ FunctionEnd
 
 ;--------------------------------
 ; Installer Sections
-Section "Foundry MCP Server" SecMain
+Section "Maeinomatic Foundry MCP Server" SecMain
   SectionIn RO ; Read-only section (required)
   ; Set estimated size: Node.js runtime + MCP server + shared components (~32MB)
   SectionSetSize ${SecMain} 32768
@@ -776,8 +776,8 @@ Section "Foundry MCP Server" SecMain
   
   ; Install MCP Server files  
   DetailPrint "Installing MCP Server..."
-  SetOutPath "$INSTDIR\foundry-mcp-server"
-  File /r "foundry-mcp-server\*"
+  SetOutPath "$INSTDIR\maeinomatic-foundry-mcp-server"
+  File /r "maeinomatic-foundry-mcp-server\*"
   SetOutPath "$INSTDIR"
   
   ; Install documentation
@@ -795,17 +795,17 @@ Section "Foundry MCP Server" SecMain
   WriteUninstaller "$INSTDIR\Uninstall.exe"
   
   ; Create Start Menu shortcuts (minimal set to avoid confusion)
-  CreateDirectory "$SMPROGRAMS\Foundry MCP Server"
-  CreateShortcut "$SMPROGRAMS\Foundry MCP Server\Uninstall.lnk" "$INSTDIR\Uninstall.exe"
+  CreateDirectory "$SMPROGRAMS\Maeinomatic Foundry MCP Server"
+  CreateShortcut "$SMPROGRAMS\Maeinomatic Foundry MCP Server\Uninstall.lnk" "$INSTDIR\Uninstall.exe"
   
   ; Add to Windows Programs list
-  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\FoundryMCPServer" "DisplayName" "Foundry MCP Server"
-  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\FoundryMCPServer" "UninstallString" "$INSTDIR\Uninstall.exe"
-  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\FoundryMCPServer" "DisplayIcon" "$INSTDIR\icon.ico"
-  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\FoundryMCPServer" "Publisher" "Foundry MCP Bridge"
-  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\FoundryMCPServer" "DisplayVersion" "0.5.0"
-  WriteRegDWORD HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\FoundryMCPServer" "NoModify" 1
-  WriteRegDWORD HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\FoundryMCPServer" "NoRepair" 1
+  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\MaeinomaticFoundryMCPServer" "DisplayName" "Maeinomatic Foundry MCP Server"
+  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\MaeinomaticFoundryMCPServer" "UninstallString" "$INSTDIR\Uninstall.exe"
+  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\MaeinomaticFoundryMCPServer" "DisplayIcon" "$INSTDIR\icon.ico"
+  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\MaeinomaticFoundryMCPServer" "Publisher" "Maeinomatic Foundry MCP Bridge"
+  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\MaeinomaticFoundryMCPServer" "DisplayVersion" "0.5.0"
+  WriteRegDWORD HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\MaeinomaticFoundryMCPServer" "NoModify" 1
+  WriteRegDWORD HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\MaeinomaticFoundryMCPServer" "NoRepair" 1
   
   ; Create utility scripts
   DetailPrint "Creating utility scripts..."
@@ -813,22 +813,22 @@ Section "Foundry MCP Server" SecMain
   ; Start server script
   FileOpen $0 "$INSTDIR\start-server.bat" w
   FileWrite $0 '@echo off$\r$\n'
-  FileWrite $0 'echo Starting Foundry MCP Server...$\r$\n'
+  FileWrite $0 'echo Starting Maeinomatic Foundry MCP Server...$\r$\n'
   FileWrite $0 'cd /d "$INSTDIR"$\r$\n'
-  FileWrite $0 '"$INSTDIR\node.exe" "$INSTDIR\foundry-mcp-server\packages\mcp-server\dist\index.cjs"$\r$\n'
+  FileWrite $0 '"$INSTDIR\node.exe" "$INSTDIR\maeinomatic-foundry-mcp-server\packages\mcp-server\dist\index.cjs"$\r$\n'
   FileWrite $0 'pause$\r$\n'
   FileClose $0
   
   ; Test connection script
   FileOpen $0 "$INSTDIR\test-connection.bat" w
   FileWrite $0 '@echo off$\r$\n'
-  FileWrite $0 'echo Testing Foundry MCP Server installation...$\r$\n'
+  FileWrite $0 'echo Testing Maeinomatic Foundry MCP Server installation...$\r$\n'
   FileWrite $0 'echo.$\r$\n'
   FileWrite $0 'echo Checking Node.js...$\r$\n'
   FileWrite $0 '"$INSTDIR\node.exe" --version$\r$\n'
   FileWrite $0 'echo.$\r$\n'
   FileWrite $0 'echo Checking MCP Server files...$\r$\n'
-  FileWrite $0 'if exist "$INSTDIR\foundry-mcp-server\packages\mcp-server\dist\index.cjs" ($\r$\n'
+  FileWrite $0 'if exist "$INSTDIR\maeinomatic-foundry-mcp-server\packages\mcp-server\dist\index.cjs" ($\r$\n'
   FileWrite $0 '  echo ✓ MCP Server files found$\r$\n'
   FileWrite $0 ') else ($\r$\n'
   FileWrite $0 '  echo ✗ MCP Server files missing$\r$\n'
@@ -843,7 +843,7 @@ Section "Foundry MCP Server" SecMain
   Call UpdateClaudeConfig
   
   ; Success message
-  DetailPrint "Foundry MCP Server installation complete!"
+  DetailPrint "Maeinomatic Foundry MCP Server installation complete!"
   
 SectionEnd
 
@@ -851,7 +851,7 @@ SectionEnd
 
 ;--------------------------------
 ; Foundry Module Installation Section
-Section "Foundry MCP Bridge" SecFoundryModule
+Section "Maeinomatic Foundry MCP Bridge" SecFoundryModule
   ; This section is checked by default
   ; Set estimated size: Compiled JS + assets + templates (~5MB)
   SectionSetSize ${SecFoundryModule} 5120
@@ -864,28 +864,28 @@ Section "Foundry MCP Bridge" SecFoundryModule
   StrCmp $FoundryPath "" module_skipped module_install
   
   module_install:
-  DetailPrint "Installing Foundry MCP Bridge Module to: $FoundryPath\foundry-mcp-bridge"
+  DetailPrint "Installing Maeinomatic Foundry MCP Bridge Module to: $FoundryPath\maeinomatic-foundry-mcp"
   
   ; Check if module already exists
-  IfFileExists "$FoundryPath\foundry-mcp-bridge\module.json" existing_module new_install
+  IfFileExists "$FoundryPath\maeinomatic-foundry-mcp\module.json" existing_module new_install
   
   existing_module:
   DetailPrint "Existing module installation found - updating files..."
   Goto do_install
   
   new_install:
-  DetailPrint "Installing fresh Foundry MCP Bridge module..."
+  DetailPrint "Installing fresh Maeinomatic Foundry MCP Bridge module..."
   
   do_install:
   ; Create module directory
-  CreateDirectory "$FoundryPath\foundry-mcp-bridge"
-  SetOutPath "$FoundryPath\foundry-mcp-bridge"
+  CreateDirectory "$FoundryPath\maeinomatic-foundry-mcp"
+  SetOutPath "$FoundryPath\maeinomatic-foundry-mcp"
   SetOverwrite on
   
   ; Copy all module files
   File /r "foundry-module\*"
   
-  DetailPrint "Foundry MCP Bridge Module installed successfully"
+  DetailPrint "Maeinomatic Foundry MCP Bridge Module installed successfully"
   Goto module_done
   
   module_skipped:
@@ -1131,7 +1131,7 @@ Section "ComfyUI Map Generation" SecComfyUI
   FileClose $0
 
   ; Add ComfyUI test shortcut to Start Menu (for troubleshooting only)
-  CreateShortcut "$SMPROGRAMS\Foundry MCP Server\Test ComfyUI.lnk" "$INSTDIR\test-comfyui.bat" "" "$INSTDIR\icon.ico"
+  CreateShortcut "$SMPROGRAMS\Maeinomatic Foundry MCP Server\Test ComfyUI.lnk" "$INSTDIR\test-comfyui.bat" "" "$INSTDIR\icon.ico"
 
   DetailPrint "ComfyUI installation complete!"
 
@@ -1140,8 +1140,8 @@ SectionEnd
 ;--------------------------------
 ; Section Descriptions
 !insertmacro MUI_FUNCTION_DESCRIPTION_BEGIN
-  !insertmacro MUI_DESCRIPTION_TEXT ${SecMain} "The core Foundry MCP Server that connects Claude Desktop to Foundry VTT. Includes Node.js runtime and MCP server. Required component (~32MB)."
-  !insertmacro MUI_DESCRIPTION_TEXT ${SecFoundryModule} "Install the Foundry MCP Bridge module directly to your Foundry VTT for seamless AI-powered campaign management. Includes compiled JavaScript, templates, and assets (~5MB)."
+  !insertmacro MUI_DESCRIPTION_TEXT ${SecMain} "The core Maeinomatic Foundry MCP Server that connects Claude Desktop to Foundry VTT. Includes Node.js runtime and MCP server. Required component (~32MB)."
+  !insertmacro MUI_DESCRIPTION_TEXT ${SecFoundryModule} "Install the Maeinomatic Foundry MCP Bridge module directly to your Foundry VTT for seamless AI-powered campaign management. Includes compiled JavaScript, templates, and assets (~5MB)."
   !insertmacro MUI_DESCRIPTION_TEXT ${SecComfyUI} "Optional AI battlemap generation (~15.7GB total). Includes ComfyUI, Python runtime, SDXL models, and PyTorch."
 !insertmacro MUI_FUNCTION_DESCRIPTION_END
 
@@ -1149,14 +1149,14 @@ SectionEnd
 ; Uninstaller Section
 Section "Uninstall"
   
-  DetailPrint "Starting Foundry MCP Server uninstallation..."
+  DetailPrint "Starting Maeinomatic Foundry MCP Server uninstallation..."
   
   ; Remove MCP Server files and directories
   DetailPrint "Removing MCP Server files..."
   Delete "$INSTDIR\node.exe"
   RMDir /r "$INSTDIR\node"
   RMDir /r "$INSTDIR\node_modules"
-  RMDir /r "$INSTDIR\foundry-mcp-server"
+  RMDir /r "$INSTDIR\maeinomatic-foundry-mcp-server"
   Delete "$INSTDIR\README.txt"
   Delete "$INSTDIR\LICENSE.txt"
   Delete "$INSTDIR\configure-claude.ps1"
@@ -1178,14 +1178,14 @@ Section "Uninstall"
   
   ; Remove Start Menu shortcuts
   DetailPrint "Removing Start Menu shortcuts..."
-  RMDir /r "$SMPROGRAMS\Foundry MCP Server"
+  RMDir /r "$SMPROGRAMS\Maeinomatic Foundry MCP Server"
   
   ; Remove registry entries
   DetailPrint "Removing registry entries..."
-  DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\FoundryMCPServer"
+  DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\MaeinomaticFoundryMCPServer"
   
   ; Ask about Foundry module removal
-  MessageBox MB_YESNO "Do you want to remove the Foundry MCP Bridge module from your Foundry VTT installation?$\r$\n$\r$\n(This will not affect your worlds, actors, or other Foundry data)" IDYES remove_foundry_module IDNO skip_foundry_removal
+  MessageBox MB_YESNO "Do you want to remove the Maeinomatic Foundry MCP Bridge module from your Foundry VTT installation?$\r$\n$\r$\n(This will not affect your worlds, actors, or other Foundry data)" IDYES remove_foundry_module IDNO skip_foundry_removal
   
   remove_foundry_module:
   DetailPrint "Checking for Foundry module installation..."
@@ -1193,16 +1193,16 @@ Section "Uninstall"
   StrCmp $un.FoundryPath "" foundry_not_found remove_foundry_files
   
   remove_foundry_files:
-  DetailPrint "Removing Foundry MCP Bridge module from: $un.FoundryPath"
-  RMDir /r "$un.FoundryPath\foundry-mcp-bridge"
-  IfFileExists "$un.FoundryPath\foundry-mcp-bridge" foundry_removal_failed foundry_removal_success
+  DetailPrint "Removing Maeinomatic Foundry MCP Bridge module from: $un.FoundryPath"
+  RMDir /r "$un.FoundryPath\maeinomatic-foundry-mcp"
+  IfFileExists "$un.FoundryPath\maeinomatic-foundry-mcp" foundry_removal_failed foundry_removal_success
   
   foundry_removal_failed:
   DetailPrint "Warning: Could not completely remove Foundry module files"
   Goto skip_foundry_removal
   
   foundry_removal_success:
-  DetailPrint "Foundry MCP Bridge module removed successfully"
+  DetailPrint "Maeinomatic Foundry MCP Bridge module removed successfully"
   Goto skip_foundry_removal
   
   foundry_not_found:
@@ -1211,7 +1211,7 @@ Section "Uninstall"
   skip_foundry_removal:
   
   ; Ask about Claude Desktop configuration removal
-  MessageBox MB_YESNO "Do you want to remove the Foundry MCP Server entry from your Claude Desktop configuration?$\r$\n$\r$\n(Recommended - this will not affect other MCP servers)" IDYES remove_claude_config IDNO skip_claude_config
+  MessageBox MB_YESNO "Do you want to remove the Maeinomatic Foundry MCP Server entry from your Claude Desktop configuration?$\r$\n$\r$\n(Recommended - this will not affect other MCP servers)" IDYES remove_claude_config IDNO skip_claude_config
   
   remove_claude_config:
   DetailPrint "Removing Claude Desktop configuration entry..."
@@ -1225,7 +1225,7 @@ Section "Uninstall"
   Delete "$INSTDIR\Uninstall.exe"
   
   DetailPrint "Uninstallation completed successfully"
-  MessageBox MB_ICONINFORMATION "Foundry MCP Server has been successfully uninstalled.$\r$\n$\r$\nIf you removed the Claude Desktop configuration, please restart Claude Desktop."
+  MessageBox MB_ICONINFORMATION "Maeinomatic Foundry MCP Server has been successfully uninstalled.$\r$\n$\r$\nIf you removed the Claude Desktop configuration, please restart Claude Desktop."
   
 SectionEnd
 
@@ -1235,35 +1235,35 @@ Function un.DetectFoundryModule
   
   ; Check primary location
   StrCpy $un.FoundryPath "$LOCALAPPDATA\FoundryVTT\Data\modules"
-  IfFileExists "$un.FoundryPath\foundry-mcp-bridge\module.json" foundry_module_found
+  IfFileExists "$un.FoundryPath\maeinomatic-foundry-mcp\module.json" foundry_module_found
   
   ; Check secondary location
   StrCpy $un.FoundryPath "$APPDATA\FoundryVTT\Data\modules"
-  IfFileExists "$un.FoundryPath\foundry-mcp-bridge\module.json" foundry_module_found
+  IfFileExists "$un.FoundryPath\maeinomatic-foundry-mcp\module.json" foundry_module_found
   
   ; Check environment variable
   ReadEnvStr $0 "FOUNDRY_VTT_DATA_PATH"
   StrCmp $0 "" manual_search
   StrCpy $un.FoundryPath "$0\Data\modules"
-  IfFileExists "$un.FoundryPath\foundry-mcp-bridge\module.json" foundry_module_found
+  IfFileExists "$un.FoundryPath\maeinomatic-foundry-mcp\module.json" foundry_module_found
   
   manual_search:
   ; Ask user to locate Foundry installation
-  MessageBox MB_YESNO "Foundry MCP Bridge module not found automatically.$\r$\n$\r$\nWould you like to browse for your Foundry User Data folder to remove the module?" IDYES browse_for_foundry IDNO module_not_found
+  MessageBox MB_YESNO "Maeinomatic Foundry MCP Bridge module not found automatically.$\r$\n$\r$\nWould you like to browse for your Foundry User Data folder to remove the module?" IDYES browse_for_foundry IDNO module_not_found
   
   browse_for_foundry:
   nsDialogs::SelectFolderDialog "Select Foundry VTT User Data Folder" "$LOCALAPPDATA"
   Pop $0
   StrCmp $0 CANCEL module_not_found
   StrCpy $un.FoundryPath "$0\Data\modules"
-  IfFileExists "$un.FoundryPath\foundry-mcp-bridge\module.json" foundry_module_found
+  IfFileExists "$un.FoundryPath\maeinomatic-foundry-mcp\module.json" foundry_module_found
   
   module_not_found:
   StrCpy $un.FoundryPath ""
   Return
   
   foundry_module_found:
-  DetailPrint "Found Foundry module at: $un.FoundryPath\foundry-mcp-bridge"
+  DetailPrint "Found Foundry module at: $un.FoundryPath\maeinomatic-foundry-mcp"
 FunctionEnd
 
 Function un.GetClaudeConfigPath
@@ -1278,7 +1278,7 @@ Function un.GetClaudeConfigPath
 FunctionEnd
 
 Function un.RemoveClaudeConfig
-  ; Remove Foundry MCP Server entry from Claude Desktop config
+  ; Remove Maeinomatic Foundry MCP Server entry from Claude Desktop config
   Call un.GetClaudeConfigPath
   StrCmp $un.ClaudeConfigPath "" no_config_found
   
@@ -1288,19 +1288,19 @@ Function un.RemoveClaudeConfig
   DetailPrint "Created backup at: $2"
   
   ; Create temporary PowerShell script for config removal
-  FileOpen $4 "$TEMP\remove-foundry-mcp.ps1" w
+  FileOpen $4 "$TEMP\remove-maeinomatic-foundry-mcp.ps1" w
   FileWrite $4 "try {$\r$\n"
-  FileWrite $4 "  Write-Host 'Removing foundry-mcp from Claude Desktop config'$\r$\n"
+  FileWrite $4 "  Write-Host 'Removing maeinomatic-foundry-mcp from Claude Desktop config'$\r$\n"
   FileWrite $4 "  $$configPath = '$un.ClaudeConfigPath'$\r$\n"
   FileWrite $4 "  Write-Host 'Config path:' $$configPath$\r$\n"
   FileWrite $4 "  $$config = Get-Content $$configPath -Raw | ConvertFrom-Json$\r$\n"
-  FileWrite $4 "  if ($$config.mcpServers -and $$config.mcpServers.'foundry-mcp') {$\r$\n"
-  FileWrite $4 "    $$config.mcpServers.PSObject.Properties.Remove('foundry-mcp')$\r$\n"
+  FileWrite $4 "  if ($$config.mcpServers -and $$config.mcpServers.'maeinomatic-foundry-mcp') {$\r$\n"
+  FileWrite $4 "    $$config.mcpServers.PSObject.Properties.Remove('maeinomatic-foundry-mcp')$\r$\n"
   FileWrite $4 "    $$json = $$config | ConvertTo-Json -Depth 10$\r$\n"
   FileWrite $4 "    [System.IO.File]::WriteAllText($$configPath, $$json, [System.Text.UTF8Encoding]::new($$false))$\r$\n"
-  FileWrite $4 "    Write-Host 'SUCCESS: foundry-mcp entry removed from Claude config'$\r$\n"
+  FileWrite $4 "    Write-Host 'SUCCESS: maeinomatic-foundry-mcp entry removed from Claude config'$\r$\n"
   FileWrite $4 "  } else {$\r$\n"
-  FileWrite $4 "    Write-Host 'INFO: foundry-mcp entry not found in config'$\r$\n"
+  FileWrite $4 "    Write-Host 'INFO: maeinomatic-foundry-mcp entry not found in config'$\r$\n"
   FileWrite $4 "  }$\r$\n"
   FileWrite $4 "} catch {$\r$\n"
   FileWrite $4 "  Write-Host 'ERROR:' $$_.Exception.Message$\r$\n"
@@ -1309,10 +1309,10 @@ Function un.RemoveClaudeConfig
   FileClose $4
   
   ; Execute the temporary PowerShell script
-  ${PowerShellExecWithOutput} 'powershell.exe -inputformat none -NoProfile -ExecutionPolicy Bypass -File "$TEMP\remove-foundry-mcp.ps1"'
+  ${PowerShellExecWithOutput} 'powershell.exe -inputformat none -NoProfile -ExecutionPolicy Bypass -File "$TEMP\remove-maeinomatic-foundry-mcp.ps1"'
   
   ; Clean up temp script
-  Delete "$TEMP\remove-foundry-mcp.ps1"
+  Delete "$TEMP\remove-maeinomatic-foundry-mcp.ps1"
   Pop $0 ; Exit code
   Pop $1 ; Output
   
@@ -1326,7 +1326,7 @@ Function un.RemoveClaudeConfig
   config_failed:
   DetailPrint "Failed to update Claude Desktop configuration (exit code: $0)"
   DetailPrint "PowerShell output: $1"
-  MessageBox MB_ICONEXCLAMATION "Failed to remove Foundry MCP Server from Claude Desktop configuration.$\r$\n$\r$\nYou may need to manually remove the 'foundry-mcp' entry from:$\r$\n$un.ClaudeConfigPath$\r$\n$\r$\nA backup was created at:$\r$\n$un.ClaudeConfigPath.backup"
+  MessageBox MB_ICONEXCLAMATION "Failed to remove Maeinomatic Foundry MCP Server from Claude Desktop configuration.$\r$\n$\r$\nYou may need to manually remove the 'maeinomatic-foundry-mcp' entry from:$\r$\n$un.ClaudeConfigPath$\r$\n$\r$\nA backup was created at:$\r$\n$un.ClaudeConfigPath.backup"
   Return
   
   no_config_found:

@@ -5,8 +5,8 @@ import { z } from 'zod';
 import { FoundryClient } from '../foundry-client.js';
 import { ErrorHandler } from '../utils/error-handler.js';
 import { Logger } from '../logger.js';
-import { CampaignPartTypeSchema } from '@foundry-mcp/shared';
-import type { CampaignStructure, CampaignPart, CampaignSubPart } from '@foundry-mcp/shared';
+import { CampaignPartTypeSchema } from '@maeinomatic/foundry-mcp-shared';
+import type { CampaignStructure, CampaignPart, CampaignSubPart } from '@maeinomatic/foundry-mcp-shared';
 
 type CampaignTemplateType =
   | 'five-part-adventure'
@@ -207,7 +207,7 @@ export class CampaignManagementTools {
 
       // Create the journal entry in Foundry (organized in campaign-specific folder)
       const journalResult = await this.foundryClient.query<JournalResult>(
-        'foundry-mcp-bridge.createJournalEntry',
+        'maeinomatic-foundry-mcp.createJournalEntry',
         {
           name: `${request.campaignTitle} - Campaign Dashboard`,
           content: dashboardContent,

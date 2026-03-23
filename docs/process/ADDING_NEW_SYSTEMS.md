@@ -147,7 +147,7 @@ export interface MySystemCreatureIndex extends SystemCreatureIndex {
 export class MySystemIndexBuilder implements IndexBuilder {
   private moduleId: string;
 
-  constructor(moduleId: string = 'foundry-mcp-bridge') {
+  constructor(moduleId: string = 'maeinomatic-foundry-mcp') {
     this.moduleId = moduleId;
   }
 
@@ -424,7 +424,7 @@ That's it! Your system is now supported.
 
 2. **Test in Foundry:**
    - Launch a world using your game system
-   - Enable the Foundry MCP Bridge module
+   - Enable the Maeinomatic Foundry MCP Bridge module
    - Rebuild the enhanced creature index
    - Test the following MCP tools:
      - `search-compendium` - Should support your filters

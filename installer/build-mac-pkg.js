@@ -29,7 +29,7 @@ const COMFYUI_ROOT = path.join(BUILD_DIR, 'comfyui-pkg-root');
 const CORE_PKG = path.join(BUILD_DIR, 'FoundryMCP-Core.pkg');
 const FOUNDRY_PKG = path.join(BUILD_DIR, 'FoundryMCP-FoundryModule.pkg');
 const COMFYUI_PKG = path.join(BUILD_DIR, 'FoundryMCP-ComfyUI.pkg');
-const FINAL_PKG = path.join(BUILD_DIR, `FoundryMCPServer-${VERSION}-macOS.pkg`);
+const FINAL_PKG = path.join(BUILD_DIR, `MaeinomaticFoundryMCPServer-${VERSION}-macOS.pkg`);
 
 console.log('🍎 Building Multi-Component Mac PKG Installer');
 console.log(`Version: ${VERSION}`);
@@ -73,7 +73,7 @@ console.log('\n📦 Building Component 1: MCP Server (Required)...');
 const coreAppBundle = path.join(
   CORE_ROOT,
   'Applications',
-  'FoundryMCPServer.app',
+  'MaeinomaticFoundryMCPServer.app',
   'Contents',
   'Resources'
 );
@@ -81,7 +81,7 @@ fs.mkdirSync(coreAppBundle, { recursive: true });
 
 // Copy MCP server bundles
 const mcpServerDist = path.join(ROOT_DIR, 'packages', 'mcp-server', 'dist');
-const mcpServerDest = path.join(coreAppBundle, 'foundry-mcp-server');
+const mcpServerDest = path.join(coreAppBundle, 'maeinomatic-foundry-mcp-server');
 fs.mkdirSync(mcpServerDest, { recursive: true });
 
 if (!fs.existsSync(path.join(mcpServerDist, 'backend.bundle.cjs'))) {
@@ -120,8 +120,8 @@ echo "Configuring Claude Desktop for user: $CURRENT_USER"
 
 CLAUDE_CONFIG_DIR="$USER_HOME/Library/Application Support/Claude"
 CLAUDE_CONFIG="$CLAUDE_CONFIG_DIR/claude_desktop_config.json"
-MCP_SERVER_DIR="$USER_HOME/Library/Application Support/FoundryMCPServer"
-SERVER_PATH="/Applications/FoundryMCPServer.app/Contents/Resources/foundry-mcp-server/index.cjs"
+MCP_SERVER_DIR="$USER_HOME/Library/Application Support/MaeinomaticFoundryMCPServer"
+SERVER_PATH="/Applications/MaeinomaticFoundryMCPServer.app/Contents/Resources/maeinomatic-foundry-mcp-server/index.cjs"
 
 # Create Claude config directory
 mkdir -p "$CLAUDE_CONFIG_DIR"
@@ -140,7 +140,7 @@ fi
 cat > "$CLAUDE_CONFIG" <<EOF
 {
   "mcpServers": {
-    "foundry-mcp": {
+    "maeinomatic-foundry-mcp": {
       "command": "node",
       "args": [
         "$SERVER_PATH"
@@ -169,7 +169,7 @@ execSync(
   `pkgbuild \\
   --root "${CORE_ROOT}" \\
   --scripts "${coreScripts}" \\
-  --identifier com.foundry-mcp.core \\
+  --identifier io.github.maeinomatic.foundrymcp.core \\
   --version "${VERSION}" \\
   --install-location / \\
   "${CORE_PKG}"`,
@@ -188,7 +188,7 @@ console.log('\n📦 Building Component 2: Foundry Module (Optional)...');
 const foundryAppBundle = path.join(
   FOUNDRY_ROOT,
   'Applications',
-  'FoundryMCPServer.app',
+  'MaeinomaticFoundryMCPServer.app',
   'Contents',
   'Resources'
 );
@@ -226,9 +226,9 @@ set -e
 CURRENT_USER=$(stat -f '%Su' /dev/console)
 USER_HOME=$(eval echo ~$CURRENT_USER)
 
-echo "Installing Foundry MCP Bridge module..."
+echo "Installing Maeinomatic Foundry MCP Bridge module..."
 
-MODULE_SOURCE="/Applications/FoundryMCPServer.app/Contents/Resources/foundry-module"
+MODULE_SOURCE="/Applications/MaeinomaticFoundryMCPServer.app/Contents/Resources/foundry-module"
 
 # Try to find Foundry VTT installation
 FOUNDRY_PATHS=(
@@ -239,7 +239,7 @@ FOUNDRY_PATHS=(
 
 for FOUNDRY_PATH in "\${FOUNDRY_PATHS[@]}"; do
   if [ -d "$FOUNDRY_PATH" ]; then
-    MODULE_DEST="$FOUNDRY_PATH/foundry-mcp-bridge"
+    MODULE_DEST="$FOUNDRY_PATH/maeinomatic-foundry-mcp"
 
     # Remove old version
     if [ -d "$MODULE_DEST" ]; then
@@ -267,7 +267,7 @@ execSync(
   `pkgbuild \\
   --root "${FOUNDRY_ROOT}" \\
   --scripts "${foundryScripts}" \\
-  --identifier com.foundry-mcp.foundry-module \\
+  --identifier io.github.maeinomatic.foundrymcp.foundry-module \\
   --version "${VERSION}" \\
   --install-location / \\
   "${FOUNDRY_PKG}"`,
@@ -286,7 +286,7 @@ console.log('\n📦 Building Component 3: ComfyUI AI Maps (Optional)...');
 const comfyuiAppBundle = path.join(
   COMFYUI_ROOT,
   'Applications',
-  'FoundryMCPServer.app',
+  'MaeinomaticFoundryMCPServer.app',
   'Contents',
   'Resources'
 );
@@ -346,23 +346,23 @@ if [ -z "$NODE_PATH" ]; then
   exit 1
 fi
 
-SETUP_SCRIPT="/Applications/FoundryMCPServer.app/Contents/Resources/setup-comfyui-headless.js"
+SETUP_SCRIPT="/Applications/MaeinomaticFoundryMCPServer.app/Contents/Resources/setup-comfyui-headless.js"
 
 echo "Running ComfyUI setup..."
 USER_HOME="$USER_HOME" CURRENT_USER="$CURRENT_USER" "$NODE_PATH" "$SETUP_SCRIPT" || {
   echo ""
   echo "⚠️  ComfyUI setup encountered an error"
   echo "You can run the setup manually later:"
-  echo "  cd /Applications/FoundryMCPServer.app/Contents/Resources"
+  echo "  cd /Applications/MaeinomaticFoundryMCPServer.app/Contents/Resources"
   echo "  node setup-comfyui-headless.js"
   echo ""
-  echo "Installation log: $USER_HOME/foundry-mcp-install.log"
+  echo "Installation log: $USER_HOME/maeinomatic-foundry-mcp-install.log"
   exit 1
 }
 
 # Fix permissions on ComfyUI directory so user can run it
 echo "Setting ComfyUI permissions for user: $CURRENT_USER"
-chown -R "$CURRENT_USER:staff" /Applications/FoundryMCPServer.app/Contents/Resources/ComfyUI/
+chown -R "$CURRENT_USER:staff" /Applications/MaeinomaticFoundryMCPServer.app/Contents/Resources/ComfyUI/
 
 echo ""
 echo "✅ ComfyUI installation complete"
@@ -377,7 +377,7 @@ execSync(
   `pkgbuild \\
   --root "${COMFYUI_ROOT}" \\
   --scripts "${comfyuiScripts}" \\
-  --identifier com.foundry-mcp.comfyui \\
+  --identifier io.github.maeinomatic.foundrymcp.comfyui \\
   --version "${VERSION}" \\
   --install-location / \\
   "${COMFYUI_PKG}"`,
@@ -397,7 +397,7 @@ const welcomeHTML = `<!DOCTYPE html>
 <html>
 <head><meta charset="UTF-8"></head>
 <body>
-<h1>Welcome to Foundry MCP Server ${VERSION}</h1>
+<h1>Welcome to Maeinomatic Foundry MCP Server ${VERSION}</h1>
 <p>This installer will set up the Maeinomatic Foundry MCP Bridge to connect Claude Desktop with your Foundry VTT game.</p>
 <h2>Components:</h2>
 <ul>
@@ -462,8 +462,8 @@ console.log('\n📝 Creating distribution XML...');
 
 const distributionXML = `<?xml version="1.0" encoding="utf-8"?>
 <installer-gui-script minSpecVersion="2">
-    <title>Foundry MCP Server</title>
-    <organization>com.foundry-mcp</organization>
+    <title>Maeinomatic Foundry MCP Server</title>
+    <organization>io.github.maeinomatic.foundrymcp</organization>
     <domains enable_localSystem="true"/>
     <options customize="always" require-scripts="true" hostArchitectures="arm64,x86_64"/>
 
@@ -477,19 +477,19 @@ const distributionXML = `<?xml version="1.0" encoding="utf-8"?>
         <line choice="comfyui"/>
     </choices-outline>
 
-    <choice id="core" visible="true" enabled="false" selected="true" title="MCP Server" description="Core Foundry MCP Server and Claude Desktop integration (Required, ~5MB)">
-        <pkg-ref id="com.foundry-mcp.core"/>
+    <choice id="core" visible="true" enabled="false" selected="true" title="MCP Server" description="Core Maeinomatic Foundry MCP Server and Claude Desktop integration (Required, ~5MB)">
+        <pkg-ref id="io.github.maeinomatic.foundrymcp.core"/>
     </choice>
-    <choice id="foundryModule" visible="true" enabled="true" start_selected="true" title="Foundry MCP Bridge" description="Foundry VTT module for Claude integration (~5MB)">
-        <pkg-ref id="com.foundry-mcp.foundry-module"/>
+    <choice id="foundryModule" visible="true" enabled="true" start_selected="true" title="Maeinomatic Foundry MCP Bridge" description="Foundry VTT module for Claude integration (~5MB)">
+        <pkg-ref id="io.github.maeinomatic.foundrymcp.foundry-module"/>
     </choice>
     <choice id="comfyui" visible="true" enabled="true" start_selected="true" title="ComfyUI AI Map Generation" description="AI-powered battlemap generation. Downloads Python, ComfyUI, PyTorch, and AI models (~15GB total, 20-30 min install time)">
-        <pkg-ref id="com.foundry-mcp.comfyui"/>
+        <pkg-ref id="io.github.maeinomatic.foundrymcp.comfyui"/>
     </choice>
 
-    <pkg-ref id="com.foundry-mcp.core" version="${VERSION}" onConclusion="none">FoundryMCP-Core.pkg</pkg-ref>
-    <pkg-ref id="com.foundry-mcp.foundry-module" version="${VERSION}" onConclusion="none">FoundryMCP-FoundryModule.pkg</pkg-ref>
-    <pkg-ref id="com.foundry-mcp.comfyui" version="${VERSION}" onConclusion="none">FoundryMCP-ComfyUI.pkg</pkg-ref>
+    <pkg-ref id="io.github.maeinomatic.foundrymcp.core" version="${VERSION}" onConclusion="none">FoundryMCP-Core.pkg</pkg-ref>
+    <pkg-ref id="io.github.maeinomatic.foundrymcp.foundry-module" version="${VERSION}" onConclusion="none">FoundryMCP-FoundryModule.pkg</pkg-ref>
+    <pkg-ref id="io.github.maeinomatic.foundrymcp.comfyui" version="${VERSION}" onConclusion="none">FoundryMCP-ComfyUI.pkg</pkg-ref>
 </installer-gui-script>
 `;
 

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Foundry MCP Server Launch Script for macOS
+# Maeinomatic Foundry MCP Server Launch Script for macOS
 # Detects architecture (Apple Silicon vs Intel) and launches with appropriate Node.js binary
 
 set -e
@@ -8,7 +8,7 @@ set -e
 # Get the directory where this script is located
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 RESOURCES_DIR="$SCRIPT_DIR/../Resources"
-SERVER_DIR="$RESOURCES_DIR/foundry-mcp-server"
+SERVER_DIR="$RESOURCES_DIR/maeinomatic-foundry-mcp-server"
 
 # Detect architecture
 ARCH=$(uname -m)

@@ -6,7 +6,7 @@ import type {
   FoundryGetCharacterAdvancementOptionsResponse,
   FoundryProgressionPreviewStep,
   FoundryPreviewCharacterProgressionResponse,
-} from '@foundry-mcp/shared';
+} from '@maeinomatic/foundry-mcp-shared';
 import {
   asRecord,
   getActorItems,

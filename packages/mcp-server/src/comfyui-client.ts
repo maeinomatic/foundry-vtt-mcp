@@ -250,7 +250,7 @@ export class ComfyUIClient {
 
   private getDefaultInstallPath(): string {
     // Use cross-platform app data directory
-    return path.join(getAppDataDir(), 'foundry-mcp-server', 'ComfyUI-headless');
+    return path.join(getAppDataDir(), 'maeinomatic-foundry-mcp-server', 'ComfyUI-headless');
   }
 
   checkInstallation(): boolean {

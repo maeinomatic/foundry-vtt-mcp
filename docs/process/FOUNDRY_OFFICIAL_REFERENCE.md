@@ -106,7 +106,7 @@ Run this process weekly, and before any release candidate:
 4. Update docs/foundry-v14-compatibility-plan.md tracker rows.
 5. Run regression checks:
    - npm run typecheck
-   - npm -w @foundry-mcp/server test -- --run
+   - npm -w @maeinomatic/foundry-mcp-server test -- --run
    - npm run build
    - npm run test:mcp:schema
 6. Record tested Foundry build + system versions in the compatibility plan.

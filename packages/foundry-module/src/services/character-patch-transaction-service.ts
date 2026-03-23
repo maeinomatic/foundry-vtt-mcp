@@ -5,7 +5,7 @@ import type {
   FoundryCharacterPatchTransactionDeleteItemRequest,
   FoundryCharacterPatchTransactionUpdatedItem,
   UnknownRecord,
-} from '@foundry-mcp/shared';
+} from '@maeinomatic/foundry-mcp-shared';
 import { transactionManager } from '../transaction-manager.js';
 
 type AuditStatus = 'success' | 'failure';

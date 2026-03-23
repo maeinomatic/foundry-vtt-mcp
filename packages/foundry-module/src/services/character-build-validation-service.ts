@@ -1,7 +1,7 @@
 import type {
   FoundryValidateCharacterBuildRequest,
   FoundryValidateCharacterBuildResponse,
-} from '@foundry-mcp/shared';
+} from '@maeinomatic/foundry-mcp-shared';
 import { validateDnD5eCharacterBuild } from './dnd5e-character-build-validator.js';
 
 type AuditStatus = 'success' | 'failure';

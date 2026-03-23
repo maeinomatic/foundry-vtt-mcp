@@ -30,7 +30,7 @@ function getCommonComfyUIPaths(): string[] {
 
     // Windows paths
     paths.push(
-      `${localAppData}\\FoundryMCPServer\\ComfyUI-headless`,
+      `${localAppData}\\MaeinomaticFoundryMCPServer\\ComfyUI-headless`,
       `${localAppData}\\ComfyUI`,
       'C:\\ComfyUI',
       `${home}\\ComfyUI`
@@ -40,8 +40,8 @@ function getCommonComfyUIPaths(): string[] {
 
     // Mac paths - prioritize headless installer using system Python
     paths.push(
-      '/Applications/FoundryMCPServer.app/Contents/Resources/ComfyUI', // Headless install (uses system Python)
-      `${appSupport}/FoundryMCPServer/ComfyUI-headless`,
+      '/Applications/MaeinomaticFoundryMCPServer.app/Contents/Resources/ComfyUI', // Headless install (uses system Python)
+      `${appSupport}/MaeinomaticFoundryMCPServer/ComfyUI-headless`,
       `${appSupport}/ComfyUI`,
       '/Applications/ComfyUI.app/Contents/Resources/ComfyUI', // Desktop app (legacy)
       `${home}/ComfyUI`,
@@ -51,7 +51,7 @@ function getCommonComfyUIPaths(): string[] {
   } else {
     // Linux paths
     paths.push(
-      `${home}/.local/share/FoundryMCPServer/ComfyUI-headless`,
+      `${home}/.local/share/MaeinomaticFoundryMCPServer/ComfyUI-headless`,
       `${home}/ComfyUI`,
       '/opt/ComfyUI',
       '/usr/local/ComfyUI'

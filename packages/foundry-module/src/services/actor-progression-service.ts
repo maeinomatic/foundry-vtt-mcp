@@ -5,7 +5,7 @@ import type {
   FoundryGetCharacterAdvancementOptionsResponse,
   FoundryPreviewCharacterProgressionRequest,
   FoundryPreviewCharacterProgressionResponse,
-} from '@foundry-mcp/shared';
+} from '@maeinomatic/foundry-mcp-shared';
 import { getActorProgressionStrategy } from './actor-progression-strategies/actor-progression-strategy-registry.js';
 import type { ActorProgressionActorLike } from './actor-progression-strategies/actor-progression-strategy-contract.js';
 

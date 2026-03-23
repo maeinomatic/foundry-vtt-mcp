@@ -3,13 +3,13 @@ param(
     [string]$InstallDir
 )
 
-# Configure Claude Desktop for Foundry MCP Server
+# Configure Claude Desktop for Maeinomatic Foundry MCP Server
 # This script safely merges MCP server configuration into existing Claude Desktop config
 
 $ErrorActionPreference = "Stop"
 
 # Enhanced logging with file output
-$LogFile = Join-Path $env:TEMP "foundry-mcp-claude-config.log"
+$LogFile = Join-Path $env:TEMP "maeinomatic-foundry-mcp-claude-config.log"
 
 function Write-LogMessage {
     param([string]$Message, [string]$Level = "INFO")
@@ -85,7 +85,7 @@ try {
     
     # Validate required files exist
     $nodeExe = Join-Path $InstallDir "node.exe"
-    $mcpServer = Join-Path $InstallDir "foundry-mcp-server\packages\mcp-server\dist\index.cjs"
+    $mcpServer = Join-Path $InstallDir "maeinomatic-foundry-mcp-server\packages\mcp-server\dist\index.cjs"
     
     if (-not (Test-Path $nodeExe)) {
         throw "Node.js executable not found: $nodeExe"
@@ -176,8 +176,8 @@ try {
         }
     }
     
-    # Configure Foundry MCP Server
-    Write-LogMessage "Configuring Foundry MCP Server..."
+    # Configure Maeinomatic Foundry MCP Server
+    Write-LogMessage "Configuring Maeinomatic Foundry MCP Server..."
     
     $foundryMcpConfig = [PSCustomObject]@{
         command = $nodeExe
@@ -185,14 +185,14 @@ try {
         env = [PSCustomObject]@{}
     }
     
-    # Add or update foundry-mcp server configuration
-    if ($config.mcpServers.PSObject.Properties.Name -contains "foundry-mcp") {
-        Write-LogMessage "Updating existing foundry-mcp configuration..."
-        $config.mcpServers."foundry-mcp" = $foundryMcpConfig
+    # Add or update the maeinomatic-foundry-mcp server configuration
+    if ($config.mcpServers.PSObject.Properties.Name -contains "maeinomatic-foundry-mcp") {
+        Write-LogMessage "Updating existing maeinomatic-foundry-mcp configuration..."
+        $config.mcpServers."maeinomatic-foundry-mcp" = $foundryMcpConfig
     }
     else {
-        Write-LogMessage "Adding new foundry-mcp configuration..."
-        $config.mcpServers | Add-Member -Type NoteProperty -Name "foundry-mcp" -Value $foundryMcpConfig
+        Write-LogMessage "Adding new maeinomatic-foundry-mcp configuration..."
+        $config.mcpServers | Add-Member -Type NoteProperty -Name "maeinomatic-foundry-mcp" -Value $foundryMcpConfig
     }
     
     # Convert to JSON with proper formatting for Claude Desktop

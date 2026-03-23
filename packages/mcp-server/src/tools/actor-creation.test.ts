@@ -57,7 +57,7 @@ describe('ActorCreationTools', () => {
       placement: { type: 'grid' },
     })) as Record<string, unknown>;
 
-    expect(query).toHaveBeenCalledWith('foundry-mcp-bridge.createActorFromCompendium', {
+    expect(query).toHaveBeenCalledWith('maeinomatic-foundry-mcp.createActorFromCompendium', {
       packId: 'dnd5e.monsters',
       itemId: 'goblin',
       customNames: ['Gib', 'Gib 2'],
@@ -118,7 +118,7 @@ describe('ActorCreationTools', () => {
       entryId: 'adult-black-dragon',
     })) as Record<string, unknown>;
 
-    expect(query).toHaveBeenCalledWith('foundry-mcp-bridge.getCompendiumDocumentFull', {
+    expect(query).toHaveBeenCalledWith('maeinomatic-foundry-mcp.getCompendiumDocumentFull', {
       packId: 'dnd5e.monsters',
       documentId: 'adult-black-dragon',
     });

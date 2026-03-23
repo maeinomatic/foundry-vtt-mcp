@@ -584,7 +584,7 @@ export class CharacterTools {
   }
 
   private async getCharacterData(identifier: string): Promise<CharacterInfoResponse> {
-    return this.foundryClient.query<CharacterInfoResponse>('foundry-mcp-bridge.getCharacterInfo', {
+    return this.foundryClient.query<CharacterInfoResponse>('maeinomatic-foundry-mcp.getCharacterInfo', {
       identifier,
     });
   }
@@ -604,7 +604,7 @@ export class CharacterTools {
     const parsedClassUuid = parseCompendiumDocumentUuid(params.classUuid);
     if (parsedClassUuid) {
       const classDocument = await this.foundryClient.query<FoundryItemDocumentBase | null>(
-        'foundry-mcp-bridge.getCompendiumDocumentFull',
+        'maeinomatic-foundry-mcp.getCompendiumDocumentFull',
         {
           packId: parsedClassUuid.packId,
           documentId: parsedClassUuid.documentId,
@@ -625,7 +625,7 @@ export class CharacterTools {
     }
 
     return this.foundryClient.query<FoundryCreateActorEmbeddedItemResponse>(
-      'foundry-mcp-bridge.createActorEmbeddedItem',
+      'maeinomatic-foundry-mcp.createActorEmbeddedItem',
       {
         actorIdentifier: params.characterIdentifier,
         sourceUuid: params.classUuid,
@@ -682,7 +682,7 @@ export class CharacterTools {
     const actorResult =
       mutation.actorUpdates && Object.keys(mutation.actorUpdates).length > 0
         ? await this.foundryClient.query<FoundryUpdateActorResponse>(
-            'foundry-mcp-bridge.updateActor',
+            'maeinomatic-foundry-mcp.updateActor',
             {
               identifier: actorIdentifier,
               updates: mutation.actorUpdates,
@@ -694,7 +694,7 @@ export class CharacterTools {
     const itemResult =
       mutation.embeddedItemUpdates && mutation.embeddedItemUpdates.length > 0
         ? await this.foundryClient.query<FoundryBatchUpdateActorEmbeddedItemsResponse>(
-            'foundry-mcp-bridge.batchUpdateActorEmbeddedItems',
+            'maeinomatic-foundry-mcp.batchUpdateActorEmbeddedItems',
             {
               actorIdentifier,
               updates: mutation.embeddedItemUpdates,
@@ -1003,7 +1003,7 @@ export class CharacterTools {
 
       try {
         await this.foundryClient.query<FoundryUpdateActorResponse>(
-          'foundry-mcp-bridge.updateActor',
+          'maeinomatic-foundry-mcp.updateActor',
           {
             identifier: rollback.identifier,
             updates: rollback.updates,
@@ -1040,7 +1040,7 @@ export class CharacterTools {
     }
 
     const groups = await this.foundryClient.query<ActorListEntry[]>(
-      'foundry-mcp-bridge.listActors',
+      'maeinomatic-foundry-mcp.listActors',
       {
         type: 'group',
       }
@@ -1325,7 +1325,7 @@ export class CharacterTools {
     }
 
     await this.foundryClient.query<FoundryBatchUpdateActorEmbeddedItemsResponse>(
-      'foundry-mcp-bridge.batchUpdateActorEmbeddedItems',
+      'maeinomatic-foundry-mcp.batchUpdateActorEmbeddedItems',
       {
         actorIdentifier: params.actorIdentifier,
         updates: params.assignments.map(assignment => ({
@@ -1352,7 +1352,7 @@ export class CharacterTools {
     }
 
     await this.foundryClient.query<FoundryBatchUpdateActorEmbeddedItemsResponse>(
-      'foundry-mcp-bridge.batchUpdateActorEmbeddedItems',
+      'maeinomatic-foundry-mcp.batchUpdateActorEmbeddedItems',
       {
         actorIdentifier: params.actorIdentifier,
         updates: params.updates.map(update => ({
@@ -3213,7 +3213,7 @@ export class CharacterTools {
 
     try {
       const characterData = await this.foundryClient.query<CharacterInfoResponse>(
-        'foundry-mcp-bridge.getCharacterInfo',
+        'maeinomatic-foundry-mcp.getCharacterInfo',
         {
           identifier,
         }
@@ -3245,7 +3245,7 @@ export class CharacterTools {
 
     try {
       const characterData = await this.foundryClient.query<CharacterInfoResponse>(
-        'foundry-mcp-bridge.getCharacterInfo',
+        'maeinomatic-foundry-mcp.getCharacterInfo',
         {
           identifier: characterIdentifier,
         }
@@ -3315,7 +3315,7 @@ export class CharacterTools {
 
     try {
       const actors = await this.foundryClient.query<ActorListEntry[]>(
-        'foundry-mcp-bridge.listActors',
+        'maeinomatic-foundry-mcp.listActors',
         {
           type,
         }
@@ -3365,7 +3365,7 @@ export class CharacterTools {
     });
 
     try {
-      const result = await this.foundryClient.query<UseItemResponse>('foundry-mcp-bridge.useItem', {
+      const result = await this.foundryClient.query<UseItemResponse>('maeinomatic-foundry-mcp.useItem', {
         actorIdentifier,
         itemIdentifier,
         targets,
@@ -3418,7 +3418,7 @@ export class CharacterTools {
         ...(category !== undefined ? { category } : {}),
         limit: limit ?? 20,
       };
-      const result = await this.foundryClient.query('foundry-mcp-bridge.searchCharacterItems', {
+      const result = await this.foundryClient.query('maeinomatic-foundry-mcp.searchCharacterItems', {
         ...request,
       });
 
@@ -3451,7 +3451,7 @@ export class CharacterTools {
     });
 
     const result = await this.foundryClient.query<FoundryUpdateActorResponse>(
-      'foundry-mcp-bridge.updateActor',
+      'maeinomatic-foundry-mcp.updateActor',
       {
         identifier: parsed.actorIdentifier,
         updates: parsed.updates,
@@ -3705,7 +3705,7 @@ export class CharacterTools {
     };
 
     const result = await this.foundryClient.query<FoundryBatchUpdateActorEmbeddedItemsResponse>(
-      'foundry-mcp-bridge.batchUpdateActorEmbeddedItems',
+      'maeinomatic-foundry-mcp.batchUpdateActorEmbeddedItems',
       request
     );
 
@@ -3826,7 +3826,7 @@ export class CharacterTools {
     };
 
     const result = await this.foundryClient.query<FoundryApplyCharacterPatchTransactionResponse>(
-      'foundry-mcp-bridge.applyCharacterPatchTransaction',
+      'maeinomatic-foundry-mcp.applyCharacterPatchTransaction',
       request
     );
 
@@ -4041,7 +4041,7 @@ export class CharacterTools {
     };
 
     const result = await this.foundryClient.query<FoundryCreateActorEmbeddedItemResponse>(
-      'foundry-mcp-bridge.createActorEmbeddedItem',
+      'maeinomatic-foundry-mcp.createActorEmbeddedItem',
       request
     );
 
@@ -4249,7 +4249,7 @@ export class CharacterTools {
       spellbookRecord.success === true && spellbookRecord.workflowStatus === 'completed';
 
     const buildValidation = await this.foundryClient.query<FoundryValidateCharacterBuildResponse>(
-      'foundry-mcp-bridge.validateCharacterBuild',
+      'maeinomatic-foundry-mcp.validateCharacterBuild',
       {
         actorIdentifier: parsed.characterIdentifier,
       } satisfies FoundryValidateCharacterBuildRequest
@@ -4357,7 +4357,7 @@ export class CharacterTools {
     };
 
     const result = await this.foundryClient.query<FoundryUpdateActorEmbeddedItemResponse>(
-      'foundry-mcp-bridge.updateActorEmbeddedItem',
+      'maeinomatic-foundry-mcp.updateActorEmbeddedItem',
       request
     );
 
@@ -4401,7 +4401,7 @@ export class CharacterTools {
     };
 
     const result = await this.foundryClient.query<FoundryDeleteActorEmbeddedItemResponse>(
-      'foundry-mcp-bridge.deleteActorEmbeddedItem',
+      'maeinomatic-foundry-mcp.deleteActorEmbeddedItem',
       request
     );
 
@@ -4440,7 +4440,7 @@ export class CharacterTools {
     const characterData =
       parsed.sourceClass !== undefined
         ? await this.foundryClient.query<CharacterInfoResponse>(
-            'foundry-mcp-bridge.getCharacterInfo',
+            'maeinomatic-foundry-mcp.getCharacterInfo',
             {
               identifier: parsed.actorIdentifier,
             }
@@ -4467,7 +4467,7 @@ export class CharacterTools {
     };
 
     const result = await this.foundryClient.query<FoundryCreateActorEmbeddedItemResponse>(
-      'foundry-mcp-bridge.createActorEmbeddedItem',
+      'maeinomatic-foundry-mcp.createActorEmbeddedItem',
       request
     );
 
@@ -4520,7 +4520,7 @@ export class CharacterTools {
     };
 
     const result = await this.foundryClient.query<FoundryUpdateActorEmbeddedItemResponse>(
-      'foundry-mcp-bridge.updateActorEmbeddedItem',
+      'maeinomatic-foundry-mcp.updateActorEmbeddedItem',
       request
     );
 
@@ -4562,7 +4562,7 @@ export class CharacterTools {
     };
 
     const result = await this.foundryClient.query<FoundryDeleteActorEmbeddedItemResponse>(
-      'foundry-mcp-bridge.deleteActorEmbeddedItem',
+      'maeinomatic-foundry-mcp.deleteActorEmbeddedItem',
       request
     );
 
@@ -4628,7 +4628,7 @@ export class CharacterTools {
     };
 
     const result = await this.foundryClient.query<FoundryUpdateActorResponse>(
-      'foundry-mcp-bridge.updateActor',
+      'maeinomatic-foundry-mcp.updateActor',
       request
     );
 
@@ -4663,7 +4663,7 @@ export class CharacterTools {
     }
 
     const characterData = await this.foundryClient.query<CharacterInfoResponse>(
-      'foundry-mcp-bridge.getCharacterInfo',
+      'maeinomatic-foundry-mcp.getCharacterInfo',
       {
         identifier: parsed.actorIdentifier,
       }
@@ -4681,7 +4681,7 @@ export class CharacterTools {
     };
 
     const result = await this.foundryClient.query<FoundryUpdateActorEmbeddedItemResponse>(
-      'foundry-mcp-bridge.updateActorEmbeddedItem',
+      'maeinomatic-foundry-mcp.updateActorEmbeddedItem',
       request
     );
 
@@ -4755,7 +4755,7 @@ export class CharacterTools {
     }
 
     const result = await this.foundryClient.query<FoundryValidateCharacterBuildResponse>(
-      'foundry-mcp-bridge.validateCharacterBuild',
+      'maeinomatic-foundry-mcp.validateCharacterBuild',
       {
         actorIdentifier: parsed.actorIdentifier,
       } satisfies FoundryValidateCharacterBuildRequest
@@ -4800,7 +4800,7 @@ export class CharacterTools {
     }
 
     const characterData = await this.foundryClient.query<CharacterInfoResponse>(
-      'foundry-mcp-bridge.getCharacterInfo',
+      'maeinomatic-foundry-mcp.getCharacterInfo',
       {
         identifier: parsed.actorIdentifier,
       }
@@ -4827,7 +4827,7 @@ export class CharacterTools {
     };
 
     const result = await this.foundryClient.query<FoundryBatchUpdateActorEmbeddedItemsResponse>(
-      'foundry-mcp-bridge.batchUpdateActorEmbeddedItems',
+      'maeinomatic-foundry-mcp.batchUpdateActorEmbeddedItems',
       batchRequest
     );
 
@@ -4875,7 +4875,7 @@ export class CharacterTools {
     }
 
     const characterData = await this.foundryClient.query<CharacterInfoResponse>(
-      'foundry-mcp-bridge.getCharacterInfo',
+      'maeinomatic-foundry-mcp.getCharacterInfo',
       {
         identifier: parsed.actorIdentifier,
       }
@@ -4952,7 +4952,7 @@ export class CharacterTools {
     };
 
     const result = await this.foundryClient.query<FoundryBatchUpdateActorEmbeddedItemsResponse>(
-      'foundry-mcp-bridge.batchUpdateActorEmbeddedItems',
+      'maeinomatic-foundry-mcp.batchUpdateActorEmbeddedItems',
       batchRequest
     );
 
@@ -5024,7 +5024,7 @@ export class CharacterTools {
     const workflowMetadata = this.createDnD5eWorkflowMetadata('run-dnd5e-rest-workflow');
 
     const restResult = await this.foundryClient.query<FoundryRunCharacterRestWorkflowResponse>(
-      'foundry-mcp-bridge.runCharacterRestWorkflow',
+      'maeinomatic-foundry-mcp.runCharacterRestWorkflow',
       {
         actorIdentifier: parsed.actorIdentifier,
         restType: parsed.restType,
@@ -5162,7 +5162,7 @@ export class CharacterTools {
     const recipients =
       parsed.restTarget === 'party-characters'
         ? this.normalizeNamedEntities(
-            await this.foundryClient.query<unknown[]>('foundry-mcp-bridge.getPartyCharacters', {})
+            await this.foundryClient.query<unknown[]>('maeinomatic-foundry-mcp.getPartyCharacters', {})
           )
         : parsed.characterIdentifiers!.map(identifier => ({
             id: identifier,
@@ -5427,7 +5427,7 @@ export class CharacterTools {
       let updateResult: FoundryUpdateActorResponse | null = null;
       if (Object.keys(stagedMutation.updates).length > 0) {
         updateResult = await this.foundryClient.query<FoundryUpdateActorResponse>(
-          'foundry-mcp-bridge.updateActor',
+          'maeinomatic-foundry-mcp.updateActor',
           {
             identifier: partyGroup.id,
             updates: stagedMutation.updates,
@@ -5489,7 +5489,7 @@ export class CharacterTools {
     const recipients =
       parsed.awardTarget === 'party-characters'
         ? this.normalizeNamedEntities(
-            await this.foundryClient.query<unknown[]>('foundry-mcp-bridge.getPartyCharacters', {})
+            await this.foundryClient.query<unknown[]>('maeinomatic-foundry-mcp.getPartyCharacters', {})
           )
         : parsed.characterIdentifiers!.map(identifier => ({
             id: identifier,
@@ -5742,7 +5742,7 @@ export class CharacterTools {
         let updateResult: FoundryUpdateActorResponse | null = null;
         if (Object.keys(recipientMutation.updates).length > 0) {
           updateResult = await this.foundryClient.query<FoundryUpdateActorResponse>(
-            'foundry-mcp-bridge.updateActor',
+            'maeinomatic-foundry-mcp.updateActor',
             {
               identifier: recipient.id,
               updates: recipientMutation.updates,
@@ -5762,7 +5762,7 @@ export class CharacterTools {
         const validation =
           parsed.validateCharacterBuilds && recipientMutation.experienceSummary
             ? await this.foundryClient.query<FoundryValidateCharacterBuildResponse>(
-                'foundry-mcp-bridge.validateCharacterBuild',
+                'maeinomatic-foundry-mcp.validateCharacterBuild',
                 {
                   actorIdentifier: recipient.id,
                 } satisfies FoundryValidateCharacterBuildRequest
@@ -5845,7 +5845,7 @@ export class CharacterTools {
     ) {
       try {
         partyGroupUpdateResult = await this.foundryClient.query<FoundryUpdateActorResponse>(
-          'foundry-mcp-bridge.updateActor',
+          'maeinomatic-foundry-mcp.updateActor',
           {
             identifier: partyGroupSummary.id,
             updates: partyGroupUpdates,
@@ -5971,7 +5971,7 @@ export class CharacterTools {
     const workflowMetadata = this.createDnD5eWorkflowMetadata('run-dnd5e-summon-activity');
 
     const result = await this.foundryClient.query<FoundryRunDnD5eSummonActivityResponse>(
-      'foundry-mcp-bridge.runDnD5eSummonActivity',
+      'maeinomatic-foundry-mcp.runDnD5eSummonActivity',
       {
         actorIdentifier: parsed.actorIdentifier,
         itemIdentifier: parsed.itemIdentifier,
@@ -6095,7 +6095,7 @@ export class CharacterTools {
     );
 
     const result = await this.foundryClient.query<FoundryRunDnD5eTransformActivityResponse>(
-      'foundry-mcp-bridge.runDnD5eTransformActivity',
+      'maeinomatic-foundry-mcp.runDnD5eTransformActivity',
       {
         actorIdentifier: parsed.actorIdentifier,
         itemIdentifier: parsed.itemIdentifier,
@@ -6532,7 +6532,7 @@ export class CharacterTools {
           }
         : undefined;
     const result = await this.foundryClient.query<FoundryCreateCharacterCompanionResponse>(
-      'foundry-mcp-bridge.createCharacterCompanion',
+      'maeinomatic-foundry-mcp.createCharacterCompanion',
       {
         ownerActorIdentifier: parsed.ownerActorIdentifier,
         role: parsed.role,
@@ -6577,7 +6577,7 @@ export class CharacterTools {
 
     const parsed = schema.parse(args);
     const result = await this.foundryClient.query<FoundryListCharacterCompanionsResponse>(
-      'foundry-mcp-bridge.listCharacterCompanions',
+      'maeinomatic-foundry-mcp.listCharacterCompanions',
       {
         ownerActorIdentifier: parsed.ownerActorIdentifier,
         ...(parsed.role !== undefined ? { role: parsed.role } : {}),
@@ -6614,7 +6614,7 @@ export class CharacterTools {
 
     const parsed = schema.parse(args);
     const result = await this.foundryClient.query<FoundrySummonCharacterCompanionResponse>(
-      'foundry-mcp-bridge.summonCharacterCompanion',
+      'maeinomatic-foundry-mcp.summonCharacterCompanion',
       {
         ownerActorIdentifier: parsed.ownerActorIdentifier,
         companionIdentifier: parsed.companionIdentifier,
@@ -6653,7 +6653,7 @@ export class CharacterTools {
 
     const parsed = schema.parse(args);
     const result = await this.foundryClient.query<FoundryDismissCharacterCompanionResponse>(
-      'foundry-mcp-bridge.dismissCharacterCompanion',
+      'maeinomatic-foundry-mcp.dismissCharacterCompanion',
       {
         ownerActorIdentifier: parsed.ownerActorIdentifier,
         ...(parsed.companionIdentifier !== undefined
@@ -6712,7 +6712,7 @@ export class CharacterTools {
           }
         : undefined;
     const result = await this.foundryClient.query<FoundryUpdateCharacterCompanionLinkResponse>(
-      'foundry-mcp-bridge.updateCharacterCompanionLink',
+      'maeinomatic-foundry-mcp.updateCharacterCompanionLink',
       {
         ownerActorIdentifier: parsed.ownerActorIdentifier,
         companionIdentifier: parsed.companionIdentifier,
@@ -6764,7 +6764,7 @@ export class CharacterTools {
 
     const parsed = schema.parse(args);
     const result = await this.foundryClient.query<FoundryConfigureCharacterCompanionSummonResponse>(
-      'foundry-mcp-bridge.configureCharacterCompanionSummon',
+      'maeinomatic-foundry-mcp.configureCharacterCompanionSummon',
       {
         ownerActorIdentifier: parsed.ownerActorIdentifier,
         companionIdentifier: parsed.companionIdentifier,
@@ -6799,7 +6799,7 @@ export class CharacterTools {
 
     const parsed = schema.parse(args);
     const result = await this.foundryClient.query<FoundryUnlinkCharacterCompanionResponse>(
-      'foundry-mcp-bridge.unlinkCharacterCompanion',
+      'maeinomatic-foundry-mcp.unlinkCharacterCompanion',
       {
         ownerActorIdentifier: parsed.ownerActorIdentifier,
         companionIdentifier: parsed.companionIdentifier,
@@ -6830,7 +6830,7 @@ export class CharacterTools {
 
     const parsed = schema.parse(args);
     const result = await this.foundryClient.query<FoundryDeleteCharacterCompanionResponse>(
-      'foundry-mcp-bridge.deleteCharacterCompanion',
+      'maeinomatic-foundry-mcp.deleteCharacterCompanion',
       {
         ownerActorIdentifier: parsed.ownerActorIdentifier,
         companionIdentifier: parsed.companionIdentifier,
@@ -6870,7 +6870,7 @@ export class CharacterTools {
 
     const parsed = schema.parse(args);
     const result = await this.foundryClient.query<FoundrySyncCharacterCompanionProgressionResponse>(
-      'foundry-mcp-bridge.syncCharacterCompanionProgression',
+      'maeinomatic-foundry-mcp.syncCharacterCompanionProgression',
       {
         ownerActorIdentifier: parsed.ownerActorIdentifier,
         companionIdentifier: parsed.companionIdentifier,
@@ -6945,7 +6945,7 @@ export class CharacterTools {
     };
 
     const result = await this.foundryClient.query<FoundryGetCharacterAdvancementOptionsResponse>(
-      'foundry-mcp-bridge.getCharacterAdvancementOptions',
+      'maeinomatic-foundry-mcp.getCharacterAdvancementOptions',
       request
     );
 
@@ -6996,7 +6996,7 @@ export class CharacterTools {
     };
 
     const result = await this.foundryClient.query<FoundryApplyCharacterAdvancementChoiceResponse>(
-      'foundry-mcp-bridge.applyCharacterAdvancementChoice',
+      'maeinomatic-foundry-mcp.applyCharacterAdvancementChoice',
       request
     );
 
@@ -7171,7 +7171,7 @@ export class CharacterTools {
       previewResult.prepared
     );
     const validation = await this.foundryClient.query<FoundryValidateCharacterBuildResponse>(
-      'foundry-mcp-bridge.validateCharacterBuild',
+      'maeinomatic-foundry-mcp.validateCharacterBuild',
       {
         actorIdentifier: parsed.characterIdentifier,
       } satisfies FoundryValidateCharacterBuildRequest
@@ -7276,7 +7276,7 @@ export class CharacterTools {
     request: FoundryPreviewCharacterProgressionRequest
   ): Promise<FoundryPreviewCharacterProgressionResponse> {
     return this.foundryClient.query<FoundryPreviewCharacterProgressionResponse>(
-      'foundry-mcp-bridge.previewCharacterProgression',
+      'maeinomatic-foundry-mcp.previewCharacterProgression',
       request
     );
   }
@@ -7342,7 +7342,7 @@ export class CharacterTools {
       };
 
       const result = await this.foundryClient.query<FoundryApplyCharacterAdvancementChoiceResponse>(
-        'foundry-mcp-bridge.applyCharacterAdvancementChoice',
+        'maeinomatic-foundry-mcp.applyCharacterAdvancementChoice',
         request
       );
 
@@ -7459,7 +7459,7 @@ export class CharacterTools {
       try {
         const response =
           await this.foundryClient.query<FoundryGetCharacterAdvancementOptionsResponse>(
-            'foundry-mcp-bridge.getCharacterAdvancementOptions',
+            'maeinomatic-foundry-mcp.getCharacterAdvancementOptions',
             {
               actorIdentifier: parsed.characterIdentifier,
               targetLevel: parsed.targetLevel,
@@ -7707,7 +7707,7 @@ export class CharacterTools {
     warnings: string[];
   }> {
     const characterData = await this.foundryClient.query<CharacterInfoResponse>(
-      'foundry-mcp-bridge.getCharacterInfo',
+      'maeinomatic-foundry-mcp.getCharacterInfo',
       {
         identifier: parsed.characterIdentifier,
       }
@@ -7870,7 +7870,7 @@ export class CharacterTools {
       };
 
       return this.foundryClient.query<FoundryUpdateActorResponse>(
-        'foundry-mcp-bridge.updateActor',
+        'maeinomatic-foundry-mcp.updateActor',
         request
       );
     }
@@ -7884,7 +7884,7 @@ export class CharacterTools {
     };
 
     return this.foundryClient.query<FoundryUpdateActorEmbeddedItemResponse>(
-      'foundry-mcp-bridge.updateActorEmbeddedItem',
+      'maeinomatic-foundry-mcp.updateActorEmbeddedItem',
       request
     );
   }

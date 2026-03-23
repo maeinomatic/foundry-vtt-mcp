@@ -13,7 +13,7 @@ const fail = (message) => {
 
 if (!fs.existsSync(distDir)) {
   fail(
-    `Build output not found at ${distDir}. Run "npm -w @foundry-mcp/server run build" and re-run this test.`,
+    `Build output not found at ${distDir}. Run "npm -w @maeinomatic/foundry-mcp-server run build" and re-run this test.`,
   );
 }
 

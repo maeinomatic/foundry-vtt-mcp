@@ -146,7 +146,7 @@ npm run lint
 npx tsc --noEmit
 
 # Symlink für Foundry-Testing (bereits eingerichtet)
-# ~/.local/share/FoundryVTT/Data/modules/foundry-mcp -> ./dist
+# ~/.local/share/FoundryVTT/Data/modules/maeinomatic-foundry-mcp -> ./dist
 ```
 
 ## Git-Workflow

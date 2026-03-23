@@ -5,7 +5,7 @@ import type {
   FoundryGetCharacterAdvancementOptionsResponse,
   FoundryPreviewCharacterProgressionRequest,
   FoundryPreviewCharacterProgressionResponse,
-} from '@foundry-mcp/shared';
+} from '@maeinomatic/foundry-mcp-shared';
 
 export interface ActorProgressionActorLike {
   id?: string;
