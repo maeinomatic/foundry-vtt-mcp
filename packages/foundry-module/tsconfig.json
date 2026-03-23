@@ -3,6 +3,8 @@
   "compilerOptions": {
     "outDir": "./dist",
     "rootDir": "./src",
+    "composite": true,
+    "baseUrl": ".",
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
@@ -12,9 +14,11 @@
     "lib": ["ES2022", "DOM"],
     "types": ["@league-of-foundry-developers/foundry-vtt-types"],
     "paths": {
-      "@foundry-mcp/shared": ["../../shared/src"]
+      "@maeinomatic/foundry-mcp-shared": ["../../shared/src/index.ts"],
+      "@maeinomatic/foundry-mcp-shared/*": ["../../shared/src/*"]
     }
   },
   "include": ["src/**/*", "types/**/*"],
+  "references": [{ "path": "../../shared" }],
   "exclude": ["dist", "**/*.test.*", "**/*.spec.*"]
 }

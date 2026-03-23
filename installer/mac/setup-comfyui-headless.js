@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * Foundry MCP Server - Headless ComfyUI Setup for macOS
+ * Maeinomatic Foundry MCP Server - Headless ComfyUI Setup for macOS
  *
  * This script installs a portable/headless ComfyUI installation:
  * 1. Downloads and installs Python 3.11
@@ -19,7 +19,7 @@ const os = require('os');
 
 // Setup logging to both console and file
 const HOME = process.env.HOME || process.env.USER_HOME || '/Users/' + process.env.USER;
-const LOG_FILE = path.join(HOME, 'foundry-mcp-install.log');
+const LOG_FILE = path.join(HOME, 'maeinomatic-foundry-mcp-install.log');
 const logStream = fs.createWriteStream(LOG_FILE, { flags: 'a' });
 
 function log(message) {
@@ -36,7 +36,7 @@ function logError(message) {
   logStream.write(logMessage + '\n');
 }
 
-log('🍎 Foundry MCP Server - Headless ComfyUI Setup for Mac');
+log('🍎 Maeinomatic Foundry MCP Server - Headless ComfyUI Setup for Mac');
 log('========================================================\n');
 log(`📝 Install log: ${LOG_FILE}\n`);
 
@@ -66,7 +66,7 @@ log(`✅ Apple Silicon detected: ${cpuBrand}`);
 log('');
 
 // Configuration
-const INSTALL_BASE = '/Applications/FoundryMCPServer.app/Contents/Resources';
+const INSTALL_BASE = '/Applications/MaeinomaticFoundryMCPServer.app/Contents/Resources';
 const PYTHON_VERSION = '3.11.8';
 const PYTHON_PKG_URL = `https://www.python.org/ftp/python/${PYTHON_VERSION}/python-${PYTHON_VERSION}-macos11.pkg`;
 const COMFYUI_ZIP_URL = 'https://github.com/Comfy-Org/ComfyUI/archive/refs/heads/master.zip';
@@ -82,32 +82,32 @@ const MODELS = [
     name: 'YAML Config',
     url: 'https://huggingface.co/AdamDooley/dnd-battlemaps-sdxl-1.0-mirror/resolve/main/dDBattlemapsSDXL10_upscaleV10.yaml',
     path: 'configs/dDBattlemapsSDXL10_upscaleV10.yaml',
-    size: '1KB'
+    size: '1KB',
   },
   {
     name: 'SDXL Base Model',
     url: 'https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/resolve/main/sd_xl_base_1.0.safetensors',
     path: 'checkpoints/sd_xl_base_1.0.safetensors',
-    size: '6.5GB'
+    size: '6.5GB',
   },
   {
     name: 'SDXL VAE',
     url: 'https://huggingface.co/stabilityai/sdxl-vae/resolve/main/sdxl_vae.safetensors',
     path: 'vae/sdxl_vae.safetensors',
-    size: '335MB'
+    size: '335MB',
   },
   {
     name: 'D&D Battlemaps Checkpoint',
     url: 'https://huggingface.co/AdamDooley/dnd-battlemaps-sdxl-1.0-mirror/resolve/main/dDBattlemapsSDXL10_upscaleV10.safetensors',
     path: 'checkpoints/dDBattlemapsSDXL10_upscaleV10.safetensors',
-    size: '6.5GB'
+    size: '6.5GB',
   },
   {
     name: 'License File',
     url: 'https://huggingface.co/AdamDooley/dnd-battlemaps-sdxl-1.0-mirror/raw/main/license.txt',
     path: 'checkpoints/dDBattlemapsSDXL10_LICENSE.txt',
-    size: '1KB'
-  }
+    size: '1KB',
+  },
 ];
 
 // Helper: Download file with progress using curl
@@ -285,14 +285,14 @@ async function setupPythonEnvironment() {
     const pipEnv = {
       ...process.env,
       ARCHFLAGS: '-arch arm64',
-      _PYTHON_HOST_PLATFORM: 'macosx-11.0-arm64'
+      _PYTHON_HOST_PLATFORM: 'macosx-11.0-arm64',
     };
 
     execSync(`"${venvPip}" install --upgrade pip`, { stdio: 'inherit', env: pipEnv });
     execSync(`"${venvPip}" install torch torchvision torchaudio`, {
       stdio: 'inherit',
       cwd: COMFYUI_PATH,
-      env: pipEnv
+      env: pipEnv,
     });
     log('\n✅ PyTorch installed\n');
 
@@ -304,7 +304,7 @@ async function setupPythonEnvironment() {
       execSync(`"${venvPip}" install -r "${requirementsPath}"`, {
         stdio: 'inherit',
         cwd: COMFYUI_PATH,
-        env: pipEnv
+        env: pipEnv,
       });
     }
 
@@ -375,7 +375,7 @@ async function downloadModels() {
   // Create extra_model_paths.yaml in ComfyUI directory
   log('Creating ComfyUI model paths configuration...');
   const configPath = path.join(COMFYUI_PATH, 'extra_model_paths.yaml');
-  const configContent = `# Foundry MCP Server - ComfyUI Model Paths Configuration
+  const configContent = `# Maeinomatic Foundry MCP Server - ComfyUI Model Paths Configuration
 # Points to models installed in Application Support directory
 
 foundry_mcp:
@@ -404,7 +404,7 @@ function createLaunchScript() {
 
   const scriptPath = path.join(INSTALL_BASE, 'start-comfyui.sh');
   const scriptContent = `#!/bin/bash
-# Foundry MCP Server - ComfyUI Launcher
+# Maeinomatic Foundry MCP Server - ComfyUI Launcher
 
 COMFYUI_PATH="${COMFYUI_PATH}"
 PYTHON_BIN="${COMFYUI_PATH}/venv/bin/python"

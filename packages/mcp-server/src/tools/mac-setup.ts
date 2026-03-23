@@ -6,6 +6,25 @@ import { Logger } from '../logger.js';
 import { isMac } from '../utils/platform.js';
 import { MacInstaller, SetupProgress } from '../setup/mac-installer.js';
 
+const runSetupSchema = {
+  parse(args: unknown): {
+    skip_comfyui?: boolean;
+    skip_models?: boolean;
+    skip_foundry_module?: boolean;
+  } {
+    if (args === null || typeof args !== 'object') {
+      return {};
+    }
+
+    const record = args as Record<string, unknown>;
+    return {
+      skip_comfyui: record.skip_comfyui === true,
+      skip_models: record.skip_models === true,
+      skip_foundry_module: record.skip_foundry_module === true,
+    };
+  },
+};
+
 export class MacSetupTools {
   private logger: Logger;
   private installer: MacInstaller;
@@ -17,74 +36,77 @@ export class MacSetupTools {
     this.installer = new MacInstaller(logger);
 
     // Set up progress callback
-    this.installer.setProgressCallback((progress) => {
+    this.installer.setProgressCallback(progress => {
       this.lastProgress = progress;
       this.logger.info('Setup progress update', progress);
     });
   }
 
-  getTools() {
+  getTools(): Array<Record<string, unknown>> {
     return [
       {
         name: 'check-mac-setup-status',
-        description: 'Check if ComfyUI and AI models are installed on Mac (Apple Silicon only). Returns installation status and whether system can run AI map generation.',
+        description:
+          'Check if ComfyUI and AI models are installed on Mac (Apple Silicon only). Returns installation status and whether system can run AI map generation.',
         inputSchema: {
           type: 'object',
           properties: {},
-          required: []
-        }
+          required: [],
+        },
       },
       {
         name: 'run-mac-setup',
-        description: 'Auto-install ComfyUI Desktop and SDXL model on Mac (Apple Silicon only). Downloads ~2.7GB total. Use this when user wants to enable AI map generation on Mac.',
+        description:
+          'Auto-install ComfyUI Desktop and SDXL model on Mac (Apple Silicon only). Downloads ~2.7GB total. Use this when user wants to enable AI map generation on Mac.',
         inputSchema: {
           type: 'object',
           properties: {
             skip_comfyui: {
               type: 'boolean',
-              description: 'Skip ComfyUI installation (if already installed manually)'
+              description: 'Skip ComfyUI installation (if already installed manually)',
             },
             skip_model: {
               type: 'boolean',
-              description: 'Skip model download (if already downloaded)'
-            }
+              description: 'Skip model download (if already downloaded)',
+            },
           },
-          required: []
-        }
+          required: [],
+        },
       },
       {
         name: 'get-mac-setup-progress',
-        description: 'Get current progress of Mac setup (if running). Shows download progress, installation stage, and any errors.',
+        description:
+          'Get current progress of Mac setup (if running). Shows download progress, installation stage, and any errors.',
         inputSchema: {
           type: 'object',
           properties: {},
-          required: []
-        }
-      }
+          required: [],
+        },
+      },
     ];
   }
 
-  async handleToolCall(toolName: string, args: any): Promise<any> {
+  async handleToolCall(toolName: string, args: unknown): Promise<unknown> {
     switch (toolName) {
       case 'check-mac-setup-status':
-        return await this.checkSetupStatus();
+        return this.checkSetupStatus();
 
       case 'run-mac-setup':
-        return await this.runSetup(args);
+        return this.runSetup(args);
 
       case 'get-mac-setup-progress':
-        return await this.getSetupProgress();
+        return this.getSetupProgress();
 
       default:
         throw new Error(`Unknown tool: ${toolName}`);
     }
   }
 
-  private async checkSetupStatus(): Promise<any> {
+  private checkSetupStatus(): Record<string, unknown> {
     if (!isMac()) {
       return {
         platform: process.platform,
-        message: 'Mac-specific setup tools are only available on macOS'
+        message: 'Mac-specific setup tools are only available on macOS',
       };
     }
 
@@ -99,13 +121,13 @@ export class MacSetupTools {
       modelsInstalled: status.modelsInstalled,
       foundryDetected: status.foundryDetected,
       ready: status.ready,
-      message: status.ready
-        ? 'AI map generation is ready'
-        : status.reason || 'Setup required'
+      message: status.ready ? 'AI map generation is ready' : (status.reason ?? 'Setup required'),
     };
   }
 
-  private async runSetup(args: any): Promise<any> {
+  private async runSetup(args: unknown): Promise<Record<string, unknown>> {
+    const parsedArgs = runSetupSchema.parse(args);
+
     if (!isMac()) {
       throw new Error('Mac setup is only available on macOS');
     }
@@ -113,7 +135,7 @@ export class MacSetupTools {
     if (this.setupInProgress) {
       return {
         error: 'Setup already in progress',
-        progress: this.lastProgress
+        progress: this.lastProgress,
       };
     }
 
@@ -126,15 +148,15 @@ export class MacSetupTools {
 
     try {
       await this.installer.runSetup({
-        skipComfyUI: args.skip_comfyui === true,
-        skipModels: args.skip_models === true,
-        skipFoundryModule: args.skip_foundry_module === true
+        skipComfyUI: parsedArgs.skip_comfyui === true,
+        skipModels: parsedArgs.skip_models === true,
+        skipFoundryModule: parsedArgs.skip_foundry_module === true,
       });
 
       return {
         success: true,
         message: 'Setup completed successfully',
-        status: this.installer.getSetupStatus()
+        status: this.installer.getSetupStatus(),
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
@@ -143,25 +165,25 @@ export class MacSetupTools {
       return {
         success: false,
         error: message,
-        progress: this.lastProgress
+        progress: this.lastProgress,
       };
     } finally {
       this.setupInProgress = false;
     }
   }
 
-  private async getSetupProgress(): Promise<any> {
+  private getSetupProgress(): Record<string, unknown> {
     if (!isMac()) {
       throw new Error('Mac setup is only available on macOS');
     }
 
     return {
       inProgress: this.setupInProgress,
-      progress: this.lastProgress || {
+      progress: this.lastProgress ?? {
         stage: 'idle',
         progress: 0,
-        message: 'No setup in progress'
-      }
+        message: 'No setup in progress',
+      },
     };
   }
 }

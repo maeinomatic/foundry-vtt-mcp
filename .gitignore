@@ -1,6 +1,6 @@
 # Development Files (Private)
 CLAUDE.md
-DISTRIBUTION.md  
+DISTRIBUTION.md
 RELEASE-PROCESS.md
 
 # Dependencies
@@ -74,8 +74,10 @@ test-*.ps1
 
 # Local Configuration
 config.local.json
-.claude/foundry-mcp-server-*.zip
-foundry-vtt-mcp.zip
+.claude/settings.local.json
+.claude/maeinomatic-foundry-mcp-server-*.zip
+maeinomatic-foundry-mcp.zip
+.tmp/
 .foundry-deploy-config
 .mcp.json
 deploy-module.sh

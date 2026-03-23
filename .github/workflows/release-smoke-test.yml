@@ -1,0 +1,203 @@
+name: Maeinomatic Release Smoke Test
+
+# This workflow does not publish anything.
+# It simulates the release packaging path so we can verify release file names,
+# manifest metadata, and artifact creation before cutting a real release.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to simulate (example: v1.2.3-rc.1)'
+        required: false
+        default: 'v0.0.0-rc.1'
+
+concurrency:
+  group: release-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      # Pull the repository state that we want to simulate a release from.
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      # Use the same Node major version as the CI and release workflows.
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: npm
+
+      # Install all workspace dependencies from the lockfile for a reproducible packaging run.
+      - name: Install dependencies
+        run: npm ci --workspaces --include-workspace-root
+
+      # Make sure version metadata is synchronized before building artifacts.
+      - name: Check version consistency
+        run: npm run version:check
+
+      # Resolve the version label that all simulated release assets should use.
+      - name: Resolve smoke version
+        id: version
+        run: |
+          VERSION_INPUT="${{ github.event.inputs.version }}"
+          if [ -z "$VERSION_INPUT" ]; then
+            VERSION_INPUT="v0.0.0-rc.1"
+          fi
+
+          if ! echo "$VERSION_INPUT" | grep -Eq '^v?[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.]+)?$'; then
+            echo "Invalid version format: '$VERSION_INPUT'"
+            echo "Expected examples: v1.2.3, v1.2.3-rc.1"
+            exit 1
+          fi
+
+          VERSION="${VERSION_INPUT#v}"
+          VERSION="v$VERSION"
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "version_no_v=${VERSION#v}" >> "$GITHUB_OUTPUT"
+          echo "Resolved smoke version: $VERSION"
+
+      # Shared declarations must exist before the module and server builds run.
+      - name: Build shared types
+        run: npm run build --workspace=shared
+
+      # Build the standalone MCP server bundle used by release ZIP packaging.
+      - name: Build MCP Server bundle
+        run: npm run build:bundle --workspace=packages/mcp-server
+
+      # Build the Foundry module output that will be zipped for distribution.
+      - name: Build Foundry Module
+        run: npm run build --workspace=packages/foundry-module
+
+      # Rewrite manifest URLs so the simulated artifact points back to this repository context.
+      - name: Prepare release manifest metadata (simulation)
+        env:
+          GH_SERVER_URL: ${{ github.server_url }}
+          GH_REPOSITORY: ${{ github.repository }}
+          GH_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          node <<'EOF'
+          const fs = require('node:fs');
+
+          const path = './packages/foundry-module/module.json';
+          const manifest = JSON.parse(fs.readFileSync(path, 'utf8'));
+
+          const serverUrl = process.env.GH_SERVER_URL;
+          const repository = process.env.GH_REPOSITORY;
+          const defaultBranch = process.env.GH_DEFAULT_BRANCH || 'master';
+
+          manifest.url = `${serverUrl}/${repository}`;
+          manifest.bugs = `${serverUrl}/${repository}/issues`;
+          manifest.changelog = `${serverUrl}/${repository}/releases`;
+          manifest.readme = `${serverUrl}/${repository}/blob/${defaultBranch}/README.md`;
+          manifest.license = `${serverUrl}/${repository}/blob/${defaultBranch}/LICENSE`;
+          manifest.manifest = `https://raw.githubusercontent.com/${repository}/${defaultBranch}/packages/foundry-module/module.json`;
+          manifest.download = `${serverUrl}/${repository}/releases/latest/download/maeinomatic-foundry-mcp.zip`;
+
+          fs.writeFileSync(path, `${JSON.stringify(manifest, null, 2)}\n`);
+          console.log('Prepared manifest metadata for smoke test context.');
+          EOF
+
+      # Create the exact Foundry ZIP shape we expect to publish in a real release.
+      - name: Create Foundry module ZIP
+        run: |
+          cd packages/foundry-module
+          zip -r ../../maeinomatic-foundry-mcp.zip . -x ".*" -x "node_modules/*"
+          cd ../..
+          test -f maeinomatic-foundry-mcp.zip
+          ls -lh maeinomatic-foundry-mcp.zip
+
+      # Create the manual-installation MCP server ZIP used outside the installers.
+      - name: Create standalone MCP server ZIP
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          VERSION_NO_V="${VERSION#v}"
+
+          mkdir -p standalone-mcp-server
+          cp packages/mcp-server/dist/index.bundle.cjs standalone-mcp-server/index.js
+
+          cat > standalone-mcp-server/package.json << EOF
+          {
+            "name": "maeinomatic-foundry-mcp-server",
+            "version": "$VERSION_NO_V",
+            "description": "Maeinomatic Foundry VTT MCP Server - Standalone Installation",
+            "main": "index.js",
+            "scripts": {
+              "start": "node index.js"
+            },
+            "engines": {
+              "node": ">=18.0.0"
+            }
+          }
+          EOF
+
+          cat > standalone-mcp-server/README.md << EOF
+          # Maeinomatic Foundry MCP Server - Manual Installation
+
+          Smoke-test package for Maeinomatic release validation.
+          Version: $VERSION
+          EOF
+
+          zip -r "maeinomatic-foundry-mcp-server-$VERSION.zip" standalone-mcp-server
+          rm -rf standalone-mcp-server
+          test -f "maeinomatic-foundry-mcp-server-$VERSION.zip"
+          ls -lh "maeinomatic-foundry-mcp-server-$VERSION.zip"
+
+      # Build the payload shape that would be sent to the Foundry package registry.
+      - name: Generate Foundry registry payload (simulation)
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          VERSION_NO_V="${VERSION#v}"
+          PACKAGE_ID=$(node -p "require('./packages/foundry-module/module.json').id")
+          MINIMUM=$(node -p "require('./packages/foundry-module/module.json').compatibility.minimum")
+          VERIFIED=$(node -p "require('./packages/foundry-module/module.json').compatibility.verified")
+          MAXIMUM=$(node -p "require('./packages/foundry-module/module.json').compatibility.maximum")
+
+          MANIFEST_URL="${{ github.server_url }}/${{ github.repository }}/releases/download/$VERSION/module.json"
+          RELEASE_NOTES_URL="${{ github.server_url }}/${{ github.repository }}/releases/tag/$VERSION"
+
+          cat > foundry-registry-payload-smoke.json << EOF
+          {
+            "id": "$PACKAGE_ID",
+            "release": {
+              "version": "$VERSION_NO_V",
+              "manifest": "$MANIFEST_URL",
+              "notes": "$RELEASE_NOTES_URL",
+              "compatibility": {
+                "minimum": "$MINIMUM",
+                "verified": "$VERIFIED",
+                "maximum": "$MAXIMUM"
+              }
+            }
+          }
+          EOF
+
+          echo "Generated foundry-registry-payload-smoke.json"
+          cat foundry-registry-payload-smoke.json
+
+      # Sanity-check the file names expected by the real release workflow.
+      - name: Validate expected release file names
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          echo "Expected GitHub release assets for this version:"
+          echo "- maeinomatic-foundry-mcp.zip"
+          echo "- maeinomatic-foundry-mcp-server-$VERSION.zip"
+          echo "- MaeinomaticFoundryMCPServer-Setup-$VERSION.exe"
+          echo "- MaeinomaticFoundryMCPServer-$VERSION.dmg"
+
+      # Preserve the smoke-test artifacts for inspection without creating a release.
+      - name: Upload smoke artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: release-smoke-${{ steps.version.outputs.version }}
+          path: |
+            maeinomatic-foundry-mcp.zip
+            maeinomatic-foundry-mcp-server-${{ steps.version.outputs.version }}.zip
+            foundry-registry-payload-smoke.json
+            packages/foundry-module/module.json
+          retention-days: 7

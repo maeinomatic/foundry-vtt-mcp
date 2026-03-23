@@ -1,12 +1,12 @@
 import { MODULE_ID } from './constants.js';
 
 export const PERMISSION_LEVELS = {
-  LOW_RISK: 'low',      // Auto-allowed
-  MEDIUM_RISK: 'medium', // Confirmation required  
-  HIGH_RISK: 'high'     // Explicit permission + safeguards
+  LOW_RISK: 'low', // Auto-allowed
+  MEDIUM_RISK: 'medium', // Confirmation required
+  HIGH_RISK: 'high', // Explicit permission + safeguards
 } as const;
 
-export type PermissionLevel = typeof PERMISSION_LEVELS[keyof typeof PERMISSION_LEVELS];
+export type PermissionLevel = (typeof PERMISSION_LEVELS)[keyof typeof PERMISSION_LEVELS];
 
 export interface WriteOperation {
   name: string;
@@ -23,6 +23,16 @@ export interface PermissionCheck {
   warnings?: string[] | undefined;
 }
 
+type OperationParameters = Record<string, unknown>;
+
+type ValidatedOperationParameters = {
+  creatureType?: string;
+  quantity?: number;
+  customNames?: string[];
+  actorIds?: string[];
+  placement?: 'random' | 'grid' | 'center';
+} & OperationParameters;
+
 export class PermissionManager {
   private moduleId: string = MODULE_ID;
 
@@ -32,6 +42,13 @@ export class PermissionManager {
       name: 'Create Actor',
       level: PERMISSION_LEVELS.LOW_RISK,
       description: 'Create new actors from compendium entries',
+      settingKey: 'allowWriteOperations',
+      requiresGM: false,
+    },
+    updateActor: {
+      name: 'Update Actor',
+      level: PERMISSION_LEVELS.MEDIUM_RISK,
+      description: 'Modify actor data such as level or progression fields',
       settingKey: 'allowWriteOperations',
       requiresGM: false,
     },
@@ -68,7 +85,10 @@ export class PermissionManager {
   /**
    * Check if a write operation is allowed (GM-focused safety checks)
    */
-  checkWritePermission(operationName: string, context?: { quantity?: number; targetIds?: string[] }): PermissionCheck {
+  checkWritePermission(
+    operationName: string,
+    context?: { quantity?: number; targetIds?: string[] }
+  ): PermissionCheck {
     const operation = this.writeOperations[operationName];
     if (!operation) {
       return {
@@ -92,7 +112,10 @@ export class PermissionManager {
   /**
    * Check operation-specific rules and limits
    */
-  private checkOperationSpecifics(operation: WriteOperation, context?: { quantity?: number; targetIds?: string[] }): PermissionCheck {
+  private checkOperationSpecifics(
+    operation: WriteOperation,
+    context?: { quantity?: number; targetIds?: string[] }
+  ): PermissionCheck {
     const warnings: string[] = [];
     let requiresConfirmation = false;
 
@@ -135,36 +158,60 @@ export class PermissionManager {
   /**
    * Validate and sanitize operation parameters
    */
-  validateOperationParameters(operationName: string, parameters: any): { valid: boolean; errors: string[]; sanitized?: any } {
+  validateOperationParameters(
+    operationName: string,
+    parameters: OperationParameters
+  ): { valid: boolean; errors: string[]; sanitized?: ValidatedOperationParameters } {
     const errors: string[] = [];
-    let sanitized = { ...parameters };
+    const sanitized: ValidatedOperationParameters = { ...parameters };
 
     switch (operationName) {
       case 'createActor':
         if (!sanitized.creatureType || typeof sanitized.creatureType !== 'string') {
           errors.push('creatureType is required and must be a string');
         }
-        
-        if (sanitized.quantity) {
-          const quantity = parseInt(sanitized.quantity);
-          if (isNaN(quantity) || quantity < 1 || quantity > 10) {
+
+        if (sanitized.quantity !== undefined) {
+          const rawQuantity = sanitized.quantity;
+          const quantity =
+            typeof rawQuantity === 'number'
+              ? rawQuantity
+              : typeof rawQuantity === 'string'
+                ? Number.parseInt(rawQuantity, 10)
+                : Number.NaN;
+
+          if (Number.isNaN(quantity) || quantity < 1 || quantity > 10) {
             errors.push('quantity must be a number between 1 and 10');
           } else {
             sanitized.quantity = quantity;
           }
         }
 
-        if (sanitized.customNames && !Array.isArray(sanitized.customNames)) {
+        if (sanitized.customNames !== undefined && !Array.isArray(sanitized.customNames)) {
+          errors.push('customNames must be an array of strings');
+        } else if (
+          Array.isArray(sanitized.customNames) &&
+          sanitized.customNames.some(name => typeof name !== 'string')
+        ) {
           errors.push('customNames must be an array of strings');
         }
         break;
 
       case 'modifyScene':
-        if (!sanitized.actorIds || !Array.isArray(sanitized.actorIds) || sanitized.actorIds.length === 0) {
+        if (
+          !sanitized.actorIds ||
+          !Array.isArray(sanitized.actorIds) ||
+          sanitized.actorIds.length === 0 ||
+          sanitized.actorIds.some(id => typeof id !== 'string')
+        ) {
           errors.push('actorIds must be a non-empty array');
         }
 
-        if (sanitized.placement && !['random', 'grid', 'center'].includes(sanitized.placement)) {
+        if (
+          sanitized.placement !== undefined &&
+          (typeof sanitized.placement !== 'string' ||
+            !['random', 'grid', 'center'].includes(sanitized.placement))
+        ) {
           errors.push('placement must be one of: random, grid, center');
         }
         break;
@@ -174,25 +221,34 @@ export class PermissionManager {
         break;
     }
 
-    return {
+    const result: { valid: boolean; errors: string[]; sanitized?: ValidatedOperationParameters } = {
       valid: errors.length === 0,
       errors,
-      sanitized: errors.length === 0 ? sanitized : undefined,
     };
+
+    if (errors.length === 0) {
+      result.sanitized = sanitized;
+    }
+
+    return result;
   }
 
   /**
    * Get all available write operations and their current permission status
    */
-  getOperationStatus(): Record<string, { operation: WriteOperation; allowed: boolean; reason?: string }> {
-    const status: Record<string, any> = {};
+  getOperationStatus(): Record<
+    string,
+    { operation: WriteOperation; allowed: boolean; reason?: string }
+  > {
+    const status: Record<string, { operation: WriteOperation; allowed: boolean; reason?: string }> =
+      {};
 
     for (const [key, operation] of Object.entries(this.writeOperations)) {
       const check = this.checkWritePermission(key);
       status[key] = {
         operation,
         allowed: check.allowed,
-        reason: check.reason,
+        ...(check.reason ? { reason: check.reason } : {}),
       };
     }
 
@@ -209,7 +265,7 @@ export class PermissionManager {
   } {
     const settingKeys = Object.values(this.writeOperations).map(op => op.settingKey);
     const settings: Record<string, boolean> = {};
-    
+
     for (const key of settingKeys) {
       settings[key] = game.settings.get(this.moduleId, key) as boolean;
     }
@@ -221,8 +277,8 @@ export class PermissionManager {
 
     return {
       user: {
-        name: game.user?.name || 'Unknown',
-        isGM: game.user?.isGM || false,
+        name: game.user?.name ?? 'Unknown',
+        isGM: game.user?.isGM ?? false,
       },
       settings,
       operations,
@@ -232,11 +288,14 @@ export class PermissionManager {
   /**
    * Log permission check for audit purposes
    */
-  auditPermissionCheck(_operationName: string, _result: PermissionCheck, _parameters?: any): void {
+  auditPermissionCheck(
+    _operationName: string,
+    _result: PermissionCheck,
+    _parameters?: OperationParameters
+  ): void {
     // Permission audit logging removed for production release
     // Previously logged permission checks for security auditing
   }
-
 }
 
 // Export singleton instance

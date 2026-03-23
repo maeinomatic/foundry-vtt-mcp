@@ -5,7 +5,43 @@ import { Logger } from '../logger.js';
 export interface MapGenerationToolsOptions {
   foundryClient: FoundryClient;
   logger: Logger;
-  backendComfyUIHandlers?: any; // Access to backend ComfyUI service
+  backendComfyUIHandlers?: unknown; // Access to backend ComfyUI service
+}
+
+type UnknownRecord = Record<string, unknown>;
+
+interface MapGenerationResult {
+  generation_time_ms?: number;
+}
+
+interface MapGenerationJob {
+  status?: string;
+  current_stage?: string;
+  progress_percent?: number;
+  result?: MapGenerationResult;
+  error?: string;
+}
+
+interface MapGenerationResponse {
+  error?: string;
+  message?: string;
+  jobId?: string;
+  estimatedTime?: string;
+  job?: MapGenerationJob;
+  status?: string;
+  success?: boolean;
+}
+
+interface SceneListResponse {
+  success?: boolean;
+  error?: string;
+  scenes?: unknown[];
+}
+
+interface SwitchSceneResponse {
+  success?: boolean;
+  error?: string;
+  message?: string;
 }
 
 interface JobData {
@@ -16,7 +52,7 @@ interface JobData {
   completed_at?: number;
   progress_percent: number;
   current_stage: string;
-  result?: any;
+  result?: unknown;
   error?: string;
   attempts: number;
   max_attempts: number;
@@ -31,7 +67,7 @@ interface JobData {
 export class MapGenerationTools {
   private foundryClient: FoundryClient;
   private logger: Logger;
-  private backendComfyUIHandlers: any;
+  private backendComfyUIHandlers: unknown;
   private jobs = new Map<string, JobData>(); // Simple in-memory job storage
   private jobStartTimes = new Map<string, number>();
   private lastStatusCheck = new Map<string, number>();
@@ -41,6 +77,14 @@ export class MapGenerationTools {
     this.foundryClient = options.foundryClient;
     this.logger = options.logger.child({ component: 'MapGenerationTools' });
     this.backendComfyUIHandlers = options.backendComfyUIHandlers;
+  }
+
+  private asRecord(value: unknown): UnknownRecord {
+    return value !== null && typeof value === 'object' ? (value as UnknownRecord) : {};
+  }
+
+  private getErrorMessage(error: unknown): string {
+    return error instanceof Error ? error.message : 'Unknown error';
   }
 
   getToolDefinitions(): Tool[] {
@@ -53,40 +97,43 @@ export class MapGenerationTools {
           properties: {
             prompt: {
               type: 'string',
-              description: 'Map description (will be enhanced with "2d DnD battlemap" trigger and perspective)'
+              description:
+                'Map description (will be enhanced with "2d DnD battlemap" trigger and perspective)',
             },
             scene_name: {
               type: 'string',
-              description: 'Short, creative name for the Foundry scene (e.g., "Harbor District", "Moonlit Tavern", "Crystal Caverns"). Be creative and evocative!'
+              description:
+                'Short, creative name for the Foundry scene (e.g., "Harbor District", "Moonlit Tavern", "Crystal Caverns"). Be creative and evocative!',
             },
             size: {
               type: 'string',
               enum: ['small', 'medium', 'large'],
               default: 'medium',
-              description: 'Map size (small=1024px, medium=1536px, large=2048px)'
+              description: 'Map size (small=1024px, medium=1536px, large=2048px)',
             },
             grid_size: {
               type: 'number',
               default: 70,
-              description: 'Pixels per 5ft square for Foundry scene setup'
-            }
+              description: 'Pixels per 5ft square for Foundry scene setup',
+            },
           },
-          required: ['prompt', 'scene_name']
-        }
+          required: ['prompt', 'scene_name'],
+        },
       },
       {
         name: 'check-map-status',
-        description: 'Check status of map generation job. Progress updates appear automatically in Foundry VTT. DO NOT check frequently - this wastes tokens. Only check if user explicitly asks for status.',
+        description:
+          'Check status of map generation job. Progress updates appear automatically in Foundry VTT. DO NOT check frequently - this wastes tokens. Only check if user explicitly asks for status.',
         inputSchema: {
           type: 'object',
           properties: {
             job_id: {
               type: 'string',
-              description: 'Job ID to check status for'
-            }
+              description: 'Job ID to check status for',
+            },
           },
-          required: ['job_id']
-        }
+          required: ['job_id'],
+        },
       },
       {
         name: 'cancel-map-job',
@@ -96,11 +143,11 @@ export class MapGenerationTools {
           properties: {
             job_id: {
               type: 'string',
-              description: 'Job ID to cancel'
-            }
+              description: 'Job ID to cancel',
+            },
           },
-          required: ['job_id']
-        }
+          required: ['job_id'],
+        },
       },
       {
         name: 'list-scenes',
@@ -111,15 +158,15 @@ export class MapGenerationTools {
             filter: {
               type: 'string',
               description: 'Optional filter to search scene names (case-insensitive)',
-              default: ''
+              default: '',
             },
             include_active_only: {
               type: 'boolean',
               description: 'Only return the currently active scene',
-              default: false
-            }
-          }
-        }
+              default: false,
+            },
+          },
+        },
       },
       {
         name: 'switch-scene',
@@ -129,38 +176,45 @@ export class MapGenerationTools {
           properties: {
             scene_identifier: {
               type: 'string',
-              description: 'Scene name or ID to switch to'
+              description: 'Scene name or ID to switch to',
             },
             optimize_view: {
               type: 'boolean',
               description: 'Automatically optimize the view for the scene',
-              default: true
-            }
+              default: true,
+            },
           },
-          required: ['scene_identifier']
-        }
-      }
+          required: ['scene_identifier'],
+        },
+      },
     ];
   }
 
-  async listScenes(input: any): Promise<any> {
-    const safeInput = input ?? {};
+  async listScenes(input: unknown): Promise<UnknownRecord | SceneListResponse> {
+    const safeInput = this.asRecord(input);
     try {
       const params = {
         filter: typeof safeInput.filter === 'string' ? safeInput.filter : undefined,
         include_active_only: Boolean(safeInput.include_active_only),
       };
-      return await this.foundryClient.query('foundry-mcp-bridge.list-scenes', params);
-    } catch (error: any) {
+      const response = await this.foundryClient.query<SceneListResponse>(
+        'maeinomatic-foundry-mcp.list-scenes',
+        params
+      );
+      return response;
+    } catch (error: unknown) {
       this.logger.error('List scenes failed', { error, input: safeInput });
-      return { success: false, error: error?.message ?? 'Unknown error' };
+      return { success: false, error: this.getErrorMessage(error) };
     }
   }
 
-  async switchScene(input: any): Promise<any> {
-    const safeInput = input ?? {};
+  async switchScene(input: unknown): Promise<UnknownRecord | SwitchSceneResponse> {
+    const safeInput = this.asRecord(input);
     try {
-      const sceneIdentifier = typeof safeInput.scene_identifier === 'string' ? safeInput.scene_identifier : safeInput.sceneId;
+      const sceneIdentifier =
+        typeof safeInput.scene_identifier === 'string'
+          ? safeInput.scene_identifier
+          : safeInput.sceneId;
       if (!sceneIdentifier || typeof sceneIdentifier !== 'string' || !sceneIdentifier.trim()) {
         return { success: false, error: 'scene_identifier is required' };
       }
@@ -170,15 +224,19 @@ export class MapGenerationTools {
         optimize_view: safeInput.optimize_view !== false,
       };
 
-      return await this.foundryClient.query('foundry-mcp-bridge.switch-scene', params);
-    } catch (error: any) {
+      const response = await this.foundryClient.query<SwitchSceneResponse>(
+        'maeinomatic-foundry-mcp.switch-scene',
+        params
+      );
+      return response;
+    } catch (error: unknown) {
       this.logger.error('Switch scene failed', { error, input: safeInput });
-      return { success: false, error: error?.message ?? 'Unknown error' };
+      return { success: false, error: this.getErrorMessage(error) };
     }
   }
 
-  async generateMap(input: any): Promise<any> {
-    const safeInput = input ?? {};
+  async generateMap(input: unknown): Promise<string> {
+    const safeInput = this.asRecord(input);
     try {
       this.logger.info('Map generation requested via MCP', { input: safeInput });
 
@@ -193,7 +251,8 @@ export class MapGenerationTools {
       }
 
       const size = typeof safeInput.size === 'string' ? safeInput.size : 'medium';
-      const gridSizeRaw = typeof safeInput.grid_size === 'number' ? safeInput.grid_size : Number(safeInput.grid_size);
+      const gridSizeRaw =
+        typeof safeInput.grid_size === 'number' ? safeInput.grid_size : Number(safeInput.grid_size);
       const gridSize = Number.isFinite(gridSizeRaw) ? gridSizeRaw : 70;
 
       const params = {
@@ -203,13 +262,16 @@ export class MapGenerationTools {
         grid_size: gridSize,
       } as const;
 
-      const response = await this.foundryClient.query('foundry-mcp-bridge.generate-map', params);
-      if (response?.error) {
+      const response = await this.foundryClient.query<MapGenerationResponse>(
+        'maeinomatic-foundry-mcp.generate-map',
+        params
+      );
+      if (response.error) {
         throw new Error(response.error);
       }
 
-      const jobId = response?.jobId ?? 'unknown';
-      const estimatedTime = response?.estimatedTime ?? 'varies by hardware and quality setting';
+      const jobId = response.jobId ?? 'unknown';
+      const estimatedTime = response.estimatedTime ?? 'varies by hardware and quality setting';
       const lines = [
         `Map generation started. Job ID: ${jobId}`,
         '',
@@ -225,16 +287,17 @@ export class MapGenerationTools {
       ];
 
       return lines.join('\n');
-    } catch (error: any) {
+    } catch (error: unknown) {
       this.logger.error('Map generation failed', { error, input: safeInput });
-      return `Error: ${error?.message ?? 'Unknown error'}`;
+      return `Error: ${this.getErrorMessage(error)}`;
     }
   }
 
-  async checkMapStatus(input: any): Promise<any> {
-    const safeInput = input ?? {};
+  async checkMapStatus(input: unknown): Promise<string> {
+    const safeInput = this.asRecord(input);
     try {
-      const jobIdCandidate = typeof safeInput.job_id === 'string' ? safeInput.job_id : safeInput.jobId;
+      const jobIdCandidate =
+        typeof safeInput.job_id === 'string' ? safeInput.job_id : safeInput.jobId;
       const jobId = typeof jobIdCandidate === 'string' ? jobIdCandidate.trim() : '';
       if (!jobId) {
         return 'Error: job_id is required.';
@@ -242,13 +305,18 @@ export class MapGenerationTools {
 
       this.logger.info('Map status check requested via MCP', { jobId, input: safeInput });
 
-      const response = await this.foundryClient.query('foundry-mcp-bridge.check-map-status', { job_id: jobId });
-      if (response?.error) {
-        const message = response?.message ?? response?.error ?? 'Failed to check job status';
+      const response = await this.foundryClient.query<MapGenerationResponse>(
+        'maeinomatic-foundry-mcp.check-map-status',
+        {
+          job_id: jobId,
+        }
+      );
+      if (response.error) {
+        const message = response.message ?? response.error ?? 'Failed to check job status';
         return `Error: ${message}`;
       }
 
-      const job = response?.job;
+      const job = response.job;
       if (!job) {
         return `Job ${jobId} not found. It may have expired or been cleaned up.`;
       }
@@ -261,7 +329,10 @@ export class MapGenerationTools {
           return `Job ${jobId} in progress. Stage: ${job.current_stage ?? 'Processing'}. Progress: ${job.progress_percent ?? 0}%`;
         case 'complete': {
           const duration = job.result?.generation_time_ms;
-          const durationText = typeof duration === 'number' ? ` Generation time: ${Math.round(duration / 1000)}s.` : '';
+          const durationText =
+            typeof duration === 'number'
+              ? ` Generation time: ${Math.round(duration / 1000)}s.`
+              : '';
           return `Job ${jobId} completed successfully.${durationText}`;
         }
         case 'failed':
@@ -271,16 +342,17 @@ export class MapGenerationTools {
         default:
           return `Job ${jobId} returned status "${job.status}".`;
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       this.logger.error('Status check failed', { error, input: safeInput });
-      return `Error checking status: ${error?.message ?? 'Unknown error'}`;
+      return `Error checking status: ${this.getErrorMessage(error)}`;
     }
   }
 
-  async cancelMapJob(input: any): Promise<any> {
-    const safeInput = input ?? {};
+  async cancelMapJob(input: unknown): Promise<string> {
+    const safeInput = this.asRecord(input);
     try {
-      const jobIdCandidate = typeof safeInput.job_id === 'string' ? safeInput.job_id : safeInput.jobId;
+      const jobIdCandidate =
+        typeof safeInput.job_id === 'string' ? safeInput.job_id : safeInput.jobId;
       const jobId = typeof jobIdCandidate === 'string' ? jobIdCandidate.trim() : '';
       if (!jobId) {
         return 'Error: job_id is required.';
@@ -288,18 +360,28 @@ export class MapGenerationTools {
 
       this.logger.info('Map job cancellation requested via MCP', { jobId, input: safeInput });
 
-      const response = await this.foundryClient.query('foundry-mcp-bridge.cancel-map-job', { job_id: jobId });
-      if (response?.error) {
-        const message = response?.message ?? response?.error ?? 'Failed to cancel map job';
+      const response = await this.foundryClient.query<MapGenerationResponse>(
+        'maeinomatic-foundry-mcp.cancel-map-job',
+        {
+          job_id: jobId,
+        }
+      );
+      if (response.error) {
+        const message = response.message ?? response.error ?? 'Failed to cancel map job';
         return `Error: ${message}`;
       }
 
-      const status = typeof response?.status === 'string' ? response.status : (response?.success ? 'success' : 'unknown');
-      const message = response?.message ?? 'Map generation job cancelled.';
+      const status =
+        typeof response.status === 'string'
+          ? response.status
+          : response.success
+            ? 'success'
+            : 'unknown';
+      const message = response.message ?? 'Map generation job cancelled.';
       return `${message} (status: ${status})`;
-    } catch (error: any) {
+    } catch (error: unknown) {
       this.logger.error('Map job cancellation failed', { error, input: safeInput });
-      return `Error cancelling job: ${error?.message ?? 'Unknown error'}`;
+      return `Error cancelling job: ${this.getErrorMessage(error)}`;
     }
   }
 
@@ -323,9 +405,7 @@ export class MapGenerationTools {
     return `job_${timestamp}_${counter}_${random}`;
   }
 
-  async shutdown(): Promise<void> {
+  shutdown(): void {
     this.logger.info('MapGenerationTools shutdown complete');
   }
 }
-
-

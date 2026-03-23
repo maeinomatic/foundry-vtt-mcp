@@ -7,6 +7,58 @@ export interface SceneToolsOptions {
   logger: Logger;
 }
 
+interface SceneNote {
+  id: string;
+  text?: string;
+  x: number;
+  y: number;
+}
+
+interface SceneToken {
+  id: string;
+  name: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  actorId?: string;
+  disposition: number;
+  hidden: boolean;
+  img?: string;
+}
+
+interface ActiveSceneData {
+  id: string;
+  name: string;
+  active: boolean;
+  width: number;
+  height: number;
+  padding?: number;
+  background?: unknown;
+  navigation?: boolean;
+  walls?: number;
+  lights?: number;
+  sounds?: number;
+  notes?: SceneNote[];
+  tokens?: SceneToken[];
+}
+
+interface WorldUser {
+  id: string;
+  name: string;
+  active: boolean;
+  isGM: boolean;
+}
+
+interface WorldInfoData {
+  id: string;
+  title: string;
+  system: string;
+  systemVersion?: string;
+  foundryVersion?: string;
+  users?: WorldUser[];
+}
+
 export class SceneTools {
   private foundryClient: FoundryClient;
   private logger: Logger;
@@ -19,11 +71,16 @@ export class SceneTools {
   /**
    * Tool definitions for scene operations
    */
-  getToolDefinitions() {
+  getToolDefinitions(): Array<{
+    name: string;
+    description: string;
+    inputSchema: Record<string, unknown>;
+  }> {
     return [
       {
         name: 'get-current-scene',
-        description: 'Get information about the currently active scene, including tokens and layout',
+        description:
+          'Get information about the currently active scene, including tokens and layout',
         inputSchema: {
           type: 'object',
           properties: {
@@ -51,7 +108,9 @@ export class SceneTools {
     ];
   }
 
-  async handleGetCurrentScene(args: any): Promise<any> {
+  async handleGetCurrentScene(
+    args: unknown
+  ): Promise<ReturnType<SceneTools['formatSceneResponse']>> {
     const schema = z.object({
       includeTokens: z.boolean().default(true),
       includeHidden: z.boolean().default(false),
@@ -62,27 +121,32 @@ export class SceneTools {
     this.logger.info('Getting current scene information', { includeTokens, includeHidden });
 
     try {
-      const sceneData = await this.foundryClient.query('foundry-mcp-bridge.getActiveScene');
+      const sceneData = await this.foundryClient.query<ActiveSceneData>(
+        'maeinomatic-foundry-mcp.getActiveScene'
+      );
 
       this.logger.debug('Successfully retrieved scene data', {
         sceneId: sceneData.id,
         sceneName: sceneData.name,
-        tokenCount: sceneData.tokens?.length || 0,
+        tokenCount: sceneData.tokens?.length ?? 0,
       });
 
       return this.formatSceneResponse(sceneData, includeTokens, includeHidden);
-
     } catch (error) {
       this.logger.error('Failed to get current scene', error);
-      throw new Error(`Failed to get current scene: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw new Error(
+        `Failed to get current scene: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
     }
   }
 
-  async handleGetWorldInfo(_args: any): Promise<any> {
+  async handleGetWorldInfo(_args: unknown): Promise<ReturnType<SceneTools['formatWorldResponse']>> {
     this.logger.info('Getting world information');
 
     try {
-      const worldData = await this.foundryClient.query('foundry-mcp-bridge.getWorldInfo');
+      const worldData = await this.foundryClient.query<WorldInfoData>(
+        'maeinomatic-foundry-mcp.getWorldInfo'
+      );
 
       this.logger.debug('Successfully retrieved world data', {
         worldId: worldData.id,
@@ -90,30 +154,85 @@ export class SceneTools {
       });
 
       return this.formatWorldResponse(worldData);
-
     } catch (error) {
       this.logger.error('Failed to get world information', error);
-      throw new Error(`Failed to get world information: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw new Error(
+        `Failed to get world information: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
     }
   }
 
-  private formatSceneResponse(sceneData: any, includeTokens: boolean, includeHidden: boolean): any {
-    const response: any = {
+  private formatSceneResponse(
+    sceneData: ActiveSceneData,
+    includeTokens: boolean,
+    includeHidden: boolean
+  ): {
+    id: string;
+    name: string;
+    active: boolean;
+    dimensions: { width: number; height: number; padding?: number };
+    hasBackground: boolean;
+    navigation: boolean;
+    elements: { walls: number; lights: number; sounds: number; notes: number };
+    tokens?: Array<{
+      id: string;
+      name: string;
+      position: { x: number; y: number };
+      size: { width: number; height: number };
+      actorId?: string;
+      disposition: string;
+      hidden: boolean;
+      hasImage: boolean;
+    }>;
+    tokenSummary?: {
+      total: number;
+      byDisposition: { friendly: number; neutral: number; hostile: number; unknown: number };
+      hasActors: number;
+      withoutActors: number;
+    };
+    notes?: Array<{ id: string; text: string; position: { x: number; y: number } }>;
+  } {
+    const response: {
+      id: string;
+      name: string;
+      active: boolean;
+      dimensions: { width: number; height: number; padding?: number };
+      hasBackground: boolean;
+      navigation: boolean;
+      elements: { walls: number; lights: number; sounds: number; notes: number };
+      tokens?: Array<{
+        id: string;
+        name: string;
+        position: { x: number; y: number };
+        size: { width: number; height: number };
+        actorId?: string;
+        disposition: string;
+        hidden: boolean;
+        hasImage: boolean;
+      }>;
+      tokenSummary?: {
+        total: number;
+        byDisposition: { friendly: number; neutral: number; hostile: number; unknown: number };
+        hasActors: number;
+        withoutActors: number;
+      };
+      notes?: Array<{ id: string; text: string; position: { x: number; y: number } }>;
+    } = {
       id: sceneData.id,
       name: sceneData.name,
       active: sceneData.active,
       dimensions: {
         width: sceneData.width,
         height: sceneData.height,
-        padding: sceneData.padding,
+        ...(sceneData.padding !== undefined ? { padding: sceneData.padding } : {}),
       },
       hasBackground: !!sceneData.background,
-      navigation: sceneData.navigation,
+      navigation: sceneData.navigation ?? false,
       elements: {
-        walls: sceneData.walls || 0,
-        lights: sceneData.lights || 0,
-        sounds: sceneData.sounds || 0,
-        notes: sceneData.notes?.length || 0,
+        walls: sceneData.walls ?? 0,
+        lights: sceneData.lights ?? 0,
+        sounds: sceneData.sounds ?? 0,
+        notes: sceneData.notes?.length ?? 0,
       },
     };
 
@@ -123,9 +242,9 @@ export class SceneTools {
     }
 
     if (sceneData.notes && sceneData.notes.length > 0) {
-      response.notes = sceneData.notes.map((note: any) => ({
+      response.notes = sceneData.notes.map(note => ({
         id: note.id,
-        text: this.truncateText(note.text, 100),
+        text: this.truncateText(note.text ?? '', 100),
         position: { x: note.x, y: note.y },
       }));
     }
@@ -133,7 +252,19 @@ export class SceneTools {
     return response;
   }
 
-  private formatTokens(tokens: any[], includeHidden: boolean): any[] {
+  private formatTokens(
+    tokens: SceneToken[],
+    includeHidden: boolean
+  ): Array<{
+    id: string;
+    name: string;
+    position: { x: number; y: number };
+    size: { width: number; height: number };
+    actorId?: string;
+    disposition: string;
+    hidden: boolean;
+    hasImage: boolean;
+  }> {
     return tokens
       .filter(token => includeHidden || !token.hidden)
       .map(token => ({
@@ -147,16 +278,24 @@ export class SceneTools {
           width: token.width,
           height: token.height,
         },
-        actorId: token.actorId,
+        ...(token.actorId ? { actorId: token.actorId } : {}),
         disposition: this.getDispositionName(token.disposition),
         hidden: token.hidden,
         hasImage: !!token.img,
       }));
   }
 
-  private createTokenSummary(tokens: any[], includeHidden: boolean): any {
+  private createTokenSummary(
+    tokens: SceneToken[],
+    includeHidden: boolean
+  ): {
+    total: number;
+    byDisposition: { friendly: number; neutral: number; hostile: number; unknown: number };
+    hasActors: number;
+    withoutActors: number;
+  } {
     const visibleTokens = includeHidden ? tokens : tokens.filter(t => !t.hidden);
-    
+
     const summary = {
       total: visibleTokens.length,
       byDisposition: {
@@ -189,7 +328,7 @@ export class SceneTools {
     return summary;
   }
 
-  private formatWorldResponse(worldData: any): any {
+  private formatWorldResponse(worldData: WorldInfoData): Record<string, unknown> {
     return {
       id: worldData.id,
       title: worldData.title,
@@ -201,18 +340,19 @@ export class SceneTools {
         version: worldData.foundryVersion,
       },
       users: {
-        total: worldData.users?.length || 0,
-        active: worldData.users?.filter((u: any) => u.active).length || 0,
-        gms: worldData.users?.filter((u: any) => u.isGM).length || 0,
-        players: worldData.users?.filter((u: any) => !u.isGM).length || 0,
+        total: worldData.users?.length ?? 0,
+        active: worldData.users?.filter(u => u.active).length ?? 0,
+        gms: worldData.users?.filter(u => u.isGM).length ?? 0,
+        players: worldData.users?.filter(u => !u.isGM).length ?? 0,
       },
-      activeUsers: worldData.users
-        ?.filter((u: any) => u.active)
-        .map((u: any) => ({
-          id: u.id,
-          name: u.name,
-          isGM: u.isGM,
-        })) || [],
+      activeUsers:
+        worldData.users
+          ?.filter(u => u.active)
+          .map(u => ({
+            id: u.id,
+            name: u.name,
+            isGM: u.isGM,
+          })) ?? [],
     };
   }
 
@@ -230,9 +370,9 @@ export class SceneTools {
   }
 
   private truncateText(text: string, maxLength: number): string {
-    if (!text || text.length <= maxLength) {
+    if (text.length <= maxLength) {
       return text;
     }
-    return text.substring(0, maxLength - 3) + '...';
+    return `${text.substring(0, maxLength - 3)}...`;
   }
 }

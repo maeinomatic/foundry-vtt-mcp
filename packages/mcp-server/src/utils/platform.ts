@@ -4,6 +4,10 @@
 
 export type Platform = 'win32' | 'darwin' | 'linux';
 
+function assertNever(_value: never): never {
+  throw new Error('Unsupported platform');
+}
+
 export function getPlatform(): Platform {
   return process.platform as Platform;
 }
@@ -39,7 +43,7 @@ export function getClaudeConfigDir(): string {
       return `${process.env.HOME}/.config/Claude`;
 
     default:
-      throw new Error(`Unsupported platform: ${platform}`);
+      return assertNever(platform);
   }
 }
 
@@ -62,7 +66,7 @@ export function getFoundryDataDir(): string {
       return `${process.env.HOME}/.local/share/FoundryVTT/Data`;
 
     default:
-      throw new Error(`Unsupported platform: ${platform}`);
+      return assertNever(platform);
   }
 }
 
@@ -75,17 +79,17 @@ export function getAppDataDir(): string {
   switch (platform) {
     case 'win32':
       return process.env.LOCALAPPDATA
-        ? `${process.env.LOCALAPPDATA}\\FoundryMCPServer`
-        : 'C:\\Users\\Default\\AppData\\Local\\FoundryMCPServer';
+        ? `${process.env.LOCALAPPDATA}\\MaeinomaticFoundryMCPServer`
+        : 'C:\\Users\\Default\\AppData\\Local\\MaeinomaticFoundryMCPServer';
 
     case 'darwin':
-      return `${process.env.HOME}/Library/Application Support/FoundryMCPServer`;
+      return `${process.env.HOME}/Library/Application Support/MaeinomaticFoundryMCPServer`;
 
     case 'linux':
-      return `${process.env.HOME}/.local/share/FoundryMCPServer`;
+      return `${process.env.HOME}/.local/share/MaeinomaticFoundryMCPServer`;
 
     default:
-      throw new Error(`Unsupported platform: ${platform}`);
+      return assertNever(platform);
   }
 }
 
@@ -113,13 +117,13 @@ export function getHiddenProcessSpawnOptions(): {
     return {
       detached: false,
       stdio: 'ignore',
-      windowsHide: true
+      windowsHide: true,
     };
   } else {
     // Mac and Linux: detached + ignore stdio to prevent terminal window
     return {
       detached: true,
-      stdio: 'ignore'
+      stdio: 'ignore',
     };
   }
 }

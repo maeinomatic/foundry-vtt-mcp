@@ -1,7 +1,7 @@
 {
-  "name": "foundry-mcp-integration",
+  "name": "maeinomatic-foundry-mcp",
   "version": "0.6.3",
-  "description": "MCP server that bridges Foundry VTT game data with Claude Desktop",
+  "description": "Independently maintained MCP bridge for Foundry VTT with workflow-first automation and multi-system support",
   "private": true,
   "workspaces": [
     "packages/*",
@@ -9,7 +9,7 @@
   ],
   "scripts": {
     "dev": "npm run dev --workspace=packages/mcp-server",
-    "build": "npm run build --workspaces --if-present",
+    "build": "npm run build --workspace=shared && npm run build --workspace=packages/foundry-module && npm run build --workspace=packages/mcp-server",
     "build:foundry": "npm run build --workspace=packages/foundry-module",
     "build:server": "npm run build --workspace=packages/mcp-server",
     "build:shared": "npm run build --workspace=shared",
@@ -17,14 +17,19 @@
     "build:release": "npm run build:shared && npm run build:server && npm run bundle:server && npm run build:foundry",
     "installer:stage": "node installer/build-nsis.js --skip-download --skip-nsis",
     "test": "npm run test --workspaces --if-present",
-    "lint": "eslint . --ext .ts,.js",
-    "lint:fix": "eslint . --ext .ts,.js --fix",
+    "lint": "eslint . --ext .ts",
+    "lint:fix": "eslint . --ext .ts --fix",
+    "lint:strict": "npm run lint -- --max-warnings=0",
     "format": "prettier --write \"**/*.{ts,js,json,md}\"",
     "format:check": "prettier --check \"**/*.{ts,js,json,md}\"",
-    "typecheck": "npm run typecheck --workspaces --if-present",
+    "typecheck": "npm run build --workspace=shared && npm run typecheck --workspace=shared && npm run typecheck --workspace=packages/foundry-module && npm run typecheck --workspace=packages/mcp-server",
+    "quality": "npm run format:check && npm run lint:strict && npm run typecheck && npm run test",
+    "version:sync": "node scripts/sync-versions.mjs",
+    "version:check": "node scripts/verify-versions.mjs",
     "setup-comfyui": "node scripts/setup-comfyui.js",
     "test:mcp:schema": "node scripts/mcp-schema-smoke-test.mjs",
     "audit:deps": "npm audit && npm run audit --workspaces --if-present",
+    "audit:prod": "node scripts/audit-production.mjs",
     "audit:unused": "npx knip",
     "audit:circular": "npx madge --circular --extensions ts packages/mcp-server/src packages/foundry-module/src shared/src",
     "size:analyze": "npm run bundle:server && npx esbuild-analyzer packages/mcp-server/dist/backend.bundle.cjs"
@@ -48,11 +53,11 @@
     "node": ">=18.0.0",
     "npm": ">=9.0.0"
   },
-  "author": "Adam Dooley",
+  "author": "maeinomatic",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/adambdooley/foundry-vtt-mcp.git"
+    "url": "https://github.com/maeinomatic/foundry-vtt-mcp.git"
   },
   "keywords": [
     "foundry-vtt",
@@ -65,5 +70,8 @@
   "dependencies": {
     "@primno/dpapi": "^2.0.1",
     "binary-cookies": "^0.1.1"
+  },
+  "overrides": {
+    "socket.io-parser": "4.2.6"
   }
 }

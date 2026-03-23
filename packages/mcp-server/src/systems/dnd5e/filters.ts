@@ -23,44 +23,75 @@ export const DnD5eCreatureTypes = [
   'monstrosity',
   'ooze',
   'plant',
-  'undead'
+  'undead',
 ] as const;
 
-export type DnD5eCreatureType = typeof DnD5eCreatureTypes[number];
+export type DnD5eCreatureType = (typeof DnD5eCreatureTypes)[number];
 
 /**
  * Common creature sizes
  */
 export const CreatureSizes = ['tiny', 'small', 'medium', 'large', 'huge', 'gargantuan'] as const;
-export type CreatureSize = typeof CreatureSizes[number];
+export type CreatureSize = (typeof CreatureSizes)[number];
 
 /**
  * D&D 5e filter schema
  */
-export const DnD5eFiltersSchema = z.object({
-  challengeRating: z.union([
-    z.number(),
-    z.object({
-      min: z.number().optional(),
-      max: z.number().optional()
-    })
-  ]).optional(),
-  creatureType: z.enum(DnD5eCreatureTypes).optional(),
-  size: z.enum(CreatureSizes).optional(),
-  alignment: z.string().optional(),
-  hasLegendaryActions: z.boolean().optional(),
-  spellcaster: z.boolean().optional()
-});
+export const DnD5eFiltersSchema = z
+  .object({
+    challengeRating: z
+      .union([
+        z.number(),
+        z.object({
+          min: z.number().optional(),
+          max: z.number().optional(),
+        }),
+      ])
+      .optional(),
+    creatureType: z.enum(DnD5eCreatureTypes).optional(),
+    size: z.enum(CreatureSizes).optional(),
+    alignment: z.string().optional(),
+    hasLegendaryActions: z.boolean().optional(),
+    spellcaster: z.boolean().optional(),
+  })
+  .strict();
 
 export type DnD5eFilters = z.infer<typeof DnD5eFiltersSchema>;
+
+const asRecord = (value: unknown): Record<string, unknown> | undefined => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return undefined;
+  }
+  return value as Record<string, unknown>;
+};
+
+const getSystemData = (creature: unknown): Record<string, unknown> | undefined => {
+  const record = asRecord(creature);
+  return asRecord(record?.systemData);
+};
+
+const toStringValue = (value: unknown): string | undefined =>
+  typeof value === 'string' ? value : undefined;
+
+const toNumber = (value: unknown): number | undefined => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  return undefined;
+};
+
+const toBoolean = (value: unknown): boolean | undefined =>
+  typeof value === 'boolean' ? value : undefined;
 
 /**
  * Check if a creature matches D&D 5e filters
  */
-export function matchesDnD5eFilters(creature: any, filters: DnD5eFilters): boolean {
+export function matchesDnD5eFilters(creature: unknown, filters: DnD5eFilters): boolean {
+  const systemData = getSystemData(creature);
+
   // Challenge Rating filter
   if (filters.challengeRating !== undefined) {
-    const cr = creature.systemData?.challengeRating;
+    const cr = toNumber(systemData?.challengeRating);
     if (cr === undefined) return false;
 
     if (typeof filters.challengeRating === 'number') {
@@ -74,7 +105,7 @@ export function matchesDnD5eFilters(creature: any, filters: DnD5eFilters): boole
 
   // Creature Type filter
   if (filters.creatureType) {
-    const creatureType = creature.systemData?.creatureType;
+    const creatureType = toStringValue(systemData?.creatureType);
     if (!creatureType || creatureType.toLowerCase() !== filters.creatureType.toLowerCase()) {
       return false;
     }
@@ -82,7 +113,7 @@ export function matchesDnD5eFilters(creature: any, filters: DnD5eFilters): boole
 
   // Size filter
   if (filters.size) {
-    const size = creature.systemData?.size;
+    const size = toStringValue(systemData?.size);
     if (!size || size.toLowerCase() !== filters.size.toLowerCase()) {
       return false;
     }
@@ -90,15 +121,15 @@ export function matchesDnD5eFilters(creature: any, filters: DnD5eFilters): boole
 
   // Alignment filter
   if (filters.alignment) {
-    const alignment = creature.systemData?.alignment;
-    if (!alignment || !alignment.toLowerCase().includes(filters.alignment.toLowerCase())) {
+    const alignment = toStringValue(systemData?.alignment);
+    if (!alignment?.toLowerCase().includes(filters.alignment.toLowerCase())) {
       return false;
     }
   }
 
   // Legendary Actions filter
   if (filters.hasLegendaryActions !== undefined) {
-    const hasLegendary = creature.systemData?.hasLegendaryActions || false;
+    const hasLegendary = toBoolean(systemData?.hasLegendaryActions) ?? false;
     if (hasLegendary !== filters.hasLegendaryActions) {
       return false;
     }
@@ -106,7 +137,7 @@ export function matchesDnD5eFilters(creature: any, filters: DnD5eFilters): boole
 
   // Spellcaster filter
   if (filters.spellcaster !== undefined) {
-    const hasSpells = creature.systemData?.hasSpellcasting || false;
+    const hasSpells = toBoolean(systemData?.hasSpellcasting) ?? false;
     if (hasSpells !== filters.spellcaster) {
       return false;
     }

@@ -1,4 +1,13 @@
-import { MODULE_ID, CONNECTION_STATES } from './constants.js';
+import { CONNECTION_STATES } from './constants.js';
+import { debugGM } from './gm-notifications.js';
+
+type IncomingWebRTCMessage = {
+  type: string;
+  id?: string;
+  [key: string]: unknown;
+};
+
+type OutgoingWebRTCMessage = Record<string, unknown>;
 
 export interface WebRTCConfig {
   serverHost: string;
@@ -18,13 +27,19 @@ export class WebRTCConnection {
   private peerConnection: RTCPeerConnection | null = null;
   private dataChannel: RTCDataChannel | null = null;
   private connectionState: string = CONNECTION_STATES.DISCONNECTED;
-  private messageHandler: ((message: any) => Promise<void>) | null = null;
+  private messageHandler: ((message: IncomingWebRTCMessage) => Promise<void>) | null = null;
 
   constructor(private config: WebRTCConfig) {}
 
-  async connect(onMessage: (message: any) => Promise<void>): Promise<void> {
-    if (this.connectionState === CONNECTION_STATES.CONNECTED ||
-        this.connectionState === CONNECTION_STATES.CONNECTING) {
+  private errorMessage(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
+  }
+
+  async connect(onMessage: (message: IncomingWebRTCMessage) => Promise<void>): Promise<void> {
+    if (
+      this.connectionState === CONNECTION_STATES.CONNECTED ||
+      this.connectionState === CONNECTION_STATES.CONNECTING
+    ) {
       return;
     }
 
@@ -35,13 +50,13 @@ export class WebRTCConnection {
     try {
       // Step 1: Create WebRTC peer connection
       this.peerConnection = new RTCPeerConnection({
-        iceServers: this.config.stunServers.map(url => ({ urls: url }))
+        iceServers: this.config.stunServers.map(url => ({ urls: url })),
       });
 
       // Step 2: Create data channel
-      this.dataChannel = this.peerConnection.createDataChannel('foundry-mcp', {
+      this.dataChannel = this.peerConnection.createDataChannel('maeinomatic-foundry-mcp', {
         ordered: true,
-        maxRetransmits: 10
+        maxRetransmits: 10,
       });
 
       this.setupDataChannelHandlers();
@@ -58,9 +73,8 @@ export class WebRTCConnection {
       await this.sendSignalingOffer(this.peerConnection.localDescription!);
 
       this.log('WebRTC connection initiated');
-
     } catch (error) {
-      this.log(`WebRTC connection failed: ${error}`);
+      this.log(`WebRTC connection failed: ${this.errorMessage(error)}`);
       this.connectionState = CONNECTION_STATES.DISCONNECTED;
       throw error;
     }
@@ -69,28 +83,47 @@ export class WebRTCConnection {
   private setupDataChannelHandlers(): void {
     if (!this.dataChannel) return;
 
-    this.dataChannel.onopen = () => {
+    this.dataChannel.onopen = (): void => {
       this.log('WebRTC data channel opened');
       this.connectionState = CONNECTION_STATES.CONNECTED;
     };
 
-    this.dataChannel.onclose = () => {
+    this.dataChannel.onclose = (): void => {
       this.log('WebRTC data channel closed');
       this.connectionState = CONNECTION_STATES.DISCONNECTED;
     };
 
-    this.dataChannel.onerror = (error) => {
-      this.log(`WebRTC data channel error: ${error}`);
+    this.dataChannel.onerror = (error: Event): void => {
+      this.log(`WebRTC data channel error: ${String(error.type)}`);
     };
 
-    this.dataChannel.onmessage = async (event) => {
+    this.dataChannel.onmessage = async (
+      event: MessageEvent<string | ArrayBuffer | Blob>
+    ): Promise<void> => {
       try {
-        const message = JSON.parse(event.data);
+        const rawData = event.data;
+        if (typeof rawData !== 'string') {
+          this.log('Skipping non-string WebRTC message payload');
+          return;
+        }
+
+        const parsed = JSON.parse(rawData) as unknown;
+        if (!parsed || typeof parsed !== 'object') {
+          this.log('Skipping invalid WebRTC message payload');
+          return;
+        }
+
+        if (typeof (parsed as { type?: unknown }).type !== 'string') {
+          this.log('Skipping WebRTC message without string type');
+          return;
+        }
+
+        const message = parsed as IncomingWebRTCMessage;
         if (this.messageHandler) {
           await this.messageHandler(message);
         }
       } catch (error) {
-        this.log(`Failed to parse WebRTC message: ${error}`);
+        this.log(`Failed to parse WebRTC message: ${this.errorMessage(error)}`);
       }
     };
   }
@@ -98,18 +131,18 @@ export class WebRTCConnection {
   private setupPeerConnectionHandlers(): void {
     if (!this.peerConnection) return;
 
-    this.peerConnection.oniceconnectionstatechange = () => {
+    this.peerConnection.oniceconnectionstatechange = (): void => {
       const state = this.peerConnection?.iceConnectionState;
-      this.log(`ICE connection state: ${state}`);
+      this.log(`ICE connection state: ${state ?? 'unknown'}`);
 
       if (state === 'failed' || state === 'disconnected' || state === 'closed') {
         this.connectionState = CONNECTION_STATES.DISCONNECTED;
       }
     };
 
-    this.peerConnection.onconnectionstatechange = () => {
+    this.peerConnection.onconnectionstatechange = (): void => {
       const state = this.peerConnection?.connectionState;
-      this.log(`Peer connection state: ${state}`);
+      this.log(`Peer connection state: ${state ?? 'unknown'}`);
     };
   }
 
@@ -125,7 +158,7 @@ export class WebRTCConnection {
         return;
       }
 
-      this.peerConnection!.onicegatheringstatechange = () => {
+      this.peerConnection!.onicegatheringstatechange = (): void => {
         if (this.peerConnection?.iceGatheringState === 'complete') {
           clearTimeout(timeout);
           resolve();
@@ -153,7 +186,7 @@ export class WebRTCConnection {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ offer }),
-        signal: AbortSignal.timeout(this.config.connectionTimeout * 1000)
+        signal: AbortSignal.timeout(this.config.connectionTimeout * 1000),
       });
 
       if (!response.ok) {
@@ -161,19 +194,25 @@ export class WebRTCConnection {
         throw new Error(`HTTP ${response.status}: ${errorText}`);
       }
 
-      const { answer } = await response.json();
+      const responsePayload = (await response.json()) as unknown;
+      const payloadRecord =
+        responsePayload && typeof responsePayload === 'object'
+          ? (responsePayload as Record<string, unknown>)
+          : null;
+      const answerCandidate = payloadRecord?.answer;
+      const answer =
+        answerCandidate && typeof answerCandidate === 'object'
+          ? (answerCandidate as RTCSessionDescriptionInit)
+          : null;
 
       if (!answer) {
         throw new Error('No answer received from server');
       }
 
       this.log('Received WebRTC answer from server via HTTP');
-      await this.peerConnection?.setRemoteDescription(
-        new RTCSessionDescription(answer)
-      );
-
+      await this.peerConnection?.setRemoteDescription(answer);
     } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
+      const errorMsg = this.errorMessage(error);
       this.log(`Signaling via HTTP failed: ${errorMsg}`);
       throw error; // Re-throw original error instead of wrapping
     }
@@ -194,7 +233,7 @@ export class WebRTCConnection {
     this.log('WebRTC connection closed');
   }
 
-  sendMessage(message: any): void {
+  sendMessage(message: OutgoingWebRTCMessage): void {
     if (!this.dataChannel || this.dataChannel.readyState !== 'open') {
       this.log('Cannot send message - data channel not open');
       return;
@@ -206,14 +245,18 @@ export class WebRTCConnection {
 
       // WebRTC SCTP constants (keep in sync with server config.ts WEBRTC_CONSTANTS)
       const MAX_MESSAGE_SIZE = 65536; // 64KB - SCTP hard limit
-      const CHUNK_SIZE = 50 * 1024;    // 50KB - safe threshold for chunking
+      const CHUNK_SIZE = 50 * 1024; // 50KB - safe threshold for chunking
 
       if (size > CHUNK_SIZE) {
         // Split large message into chunks
         const totalChunks = Math.ceil(json.length / CHUNK_SIZE);
-        const chunkId = `chunk-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        const chunkId = `chunk-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+        const messageType = typeof message.type === 'string' ? message.type : 'unknown';
+        const messageId = typeof message.id === 'string' ? message.id : '';
 
-        this.log(`Chunking large message: ${size} bytes → ${totalChunks} chunks (type: ${message.type})`);
+        this.log(
+          `Chunking large message: ${size} bytes -> ${totalChunks} chunks (type: ${messageType})`
+        );
 
         for (let i = 0; i < totalChunks; i++) {
           const start = i * CHUNK_SIZE;
@@ -222,12 +265,12 @@ export class WebRTCConnection {
 
           const chunkMessage = {
             type: 'chunked-message',
-            chunkId: chunkId,
+            chunkId,
             chunkIndex: i,
-            totalChunks: totalChunks,
-            chunk: chunk,
-            originalType: message.type,
-            originalId: message.id
+            totalChunks,
+            chunk,
+            originalType: messageType,
+            originalId: messageId,
           };
 
           const chunkJson = JSON.stringify(chunkMessage);
@@ -236,8 +279,8 @@ export class WebRTCConnection {
           if (chunkJson.length > MAX_MESSAGE_SIZE) {
             throw new Error(
               `Chunk ${i + 1}/${totalChunks} size ${chunkJson.length} exceeds ` +
-              `SCTP maxMessageSize of ${MAX_MESSAGE_SIZE} bytes. ` +
-              `Original message may be too large to chunk safely.`
+                `SCTP maxMessageSize of ${MAX_MESSAGE_SIZE} bytes. ` +
+                `Original message may be too large to chunk safely.`
             );
           }
 
@@ -245,14 +288,15 @@ export class WebRTCConnection {
           this.log(`Sent chunk ${i + 1}/${totalChunks} (${chunkJson.length} bytes)`);
         }
 
-        this.log(`Successfully sent all ${totalChunks} chunks for ${message.type}`);
+        this.log(`Successfully sent all ${totalChunks} chunks for ${messageType}`);
       } else {
         // Send as single message
         this.dataChannel.send(json);
-        this.log(`Sent WebRTC message: ${message.type} (${size} bytes)`);
+        const messageType = typeof message.type === 'string' ? message.type : 'unknown';
+        this.log(`Sent WebRTC message: ${messageType} (${size} bytes)`);
       }
     } catch (error) {
-      this.log(`Failed to send WebRTC message: ${error}`);
+      this.log(`Failed to send WebRTC message: ${this.errorMessage(error)}`);
       throw error; // Re-throw so caller knows send failed
     }
   }
@@ -267,7 +311,7 @@ export class WebRTCConnection {
 
   private log(message: string): void {
     if (this.config.debugLogging) {
-      console.log(`[${MODULE_ID}] WebRTC: ${message}`);
+      debugGM(`WebRTC: ${message}`);
     }
   }
 }

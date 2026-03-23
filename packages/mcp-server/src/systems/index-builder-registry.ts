@@ -21,10 +21,9 @@ export class IndexBuilderRegistry {
   register(builder: IndexBuilder): void {
     const systemId = builder.getSystemId();
     if (this.builders.has(systemId)) {
-      console.warn(`Index builder already registered: ${systemId}. Overwriting.`);
+      // Overwrite existing registration for this system.
     }
     this.builders.set(systemId, builder);
-    console.log(`Registered index builder for system: ${systemId}`);
   }
 
   /**
@@ -68,7 +67,6 @@ export class IndexBuilderRegistry {
    */
   clear(): void {
     this.builders.clear();
-    console.log('Cleared all index builders');
   }
 }
 

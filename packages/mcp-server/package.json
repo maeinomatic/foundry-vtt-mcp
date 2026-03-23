@@ -1,12 +1,12 @@
 {
-  "name": "@foundry-mcp/server",
+  "name": "@maeinomatic/foundry-mcp-server",
   "version": "0.6.3",
-  "description": "MCP server for Foundry VTT integration with Claude Desktop",
+  "description": "MCP server for the independently maintained Foundry VTT MCP bridge",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
-    "build": "npm -w @foundry-mcp/shared run build && tsc",
+    "build": "npm -w @maeinomatic/foundry-mcp-shared run build && tsc",
     "build:bundle": "tsc && esbuild dist/index.js --bundle --platform=node --target=node18 --outfile=dist/index.bundle.cjs --format=cjs --define:import.meta.url='\"bundled\"' && esbuild dist/backend.js --bundle --platform=node --target=node18 --outfile=dist/backend.bundle.cjs --format=cjs --define:import.meta.url='\"bundled\"'",
     "dev": "tsc --watch",
     "start": "node dist/index.js",
@@ -19,13 +19,13 @@
     "lint:fix": "eslint src --ext .ts --fix"
   },
   "dependencies": {
-    "@foundry-mcp/shared": "*",
-    "@modelcontextprotocol/sdk": "^1.7.0",
-    "axios": "^1.6.0",
+    "@maeinomatic/foundry-mcp-shared": "*",
+    "@modelcontextprotocol/sdk": "^1.27.1",
+    "axios": "^1.13.6",
     "better-sqlite3": "^11.0.0",
     "dotenv": "^16.3.0",
     "ws": "^8.14.0",
-    "werift": "^0.17.0",
+    "werift": "^0.22.9",
     "winston": "^3.11.0",
     "zod": "^3.22.0"
   },
@@ -33,7 +33,7 @@
     "@types/node": "^20.0.0",
     "@types/ws": "^8.5.0",
     "@vitest/coverage-v8": "^3.2.4",
-    "esbuild": "^0.19.0",
+    "esbuild": "^0.27.4",
     "typescript": "^5.0.0",
     "vitest": "^3.2.4"
   },

@@ -15,11 +15,13 @@
     "resolveJsonModule": true,
     "outDir": "./dist",
     "rootDir": "./src",
-    "composite": true
+    "composite": true,
+    "paths": {
+      "@maeinomatic/foundry-mcp-shared": ["../../shared/src/index.ts"],
+      "@maeinomatic/foundry-mcp-shared/*": ["../../shared/src/*"]
+    }
   },
   "include": ["src/**/*"],
-  "references": [
-    { "path": "../../shared" }
-  ],
+  "references": [{ "path": "../../shared" }],
   "exclude": ["dist", "**/*.test.*", "**/*.spec.*"]
 }

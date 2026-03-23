@@ -6,6 +6,26 @@
  */
 
 import { z } from 'zod';
+import type {
+  FoundryActorAttributesBase,
+  FoundryActorDocumentBase,
+  FoundryActorSystemBase,
+  FoundryBatchUpdateActorEmbeddedItemsRequest,
+  FoundryCharacterInfo,
+  FoundryCompendiumDocumentBase,
+  FoundryCompendiumPackSummary,
+  FoundryCompendiumSearchResult,
+  FoundryDescriptionField,
+  FoundryItemDocumentBase,
+  FoundryItemSystemBase,
+  FoundryResourceField,
+  FoundryTraitsData,
+  FoundryValueField,
+  FoundryCharacterAction,
+  FoundrySpellInfo,
+  FoundrySpellcastingEntry,
+  UnknownRecord,
+} from '../foundry-types.js';
 
 /**
  * Supported game system identifiers
@@ -45,8 +65,285 @@ export interface SystemCreatureIndex {
 
   // System-specific metadata
   system: SystemId;
-  systemData: any; // System-specific fields (D&D 5e CR, PF2e level, etc.)
+  systemData: UnknownRecord; // System-specific fields (D&D 5e CR, PF2e level, etc.)
 }
+
+export interface SystemCharacterAction extends FoundryCharacterAction {}
+
+export interface SystemSpellData extends FoundrySpellInfo {}
+
+export interface SystemSpellcastingEntry extends FoundrySpellcastingEntry {}
+
+export interface CharacterProgressionUpdateRequest {
+  targetLevel?: number;
+  experiencePoints?: number;
+  experienceSpent?: number;
+  classIdentifier?: string;
+}
+
+export type PreparedCharacterProgressionTarget =
+  | { kind: 'actor' }
+  | { kind: 'embedded-item'; itemIdentifier: string; itemType?: string };
+
+export function createActorProgressionTarget(): PreparedCharacterProgressionTarget {
+  return { kind: 'actor' };
+}
+
+export interface PreparedCharacterProgressionUpdate {
+  target: PreparedCharacterProgressionTarget;
+  updates: UnknownRecord;
+  summary: Record<string, unknown>;
+  warnings?: string[];
+}
+
+export interface PreparedCharacterWriteMutation {
+  actorUpdates?: UnknownRecord;
+  embeddedItemUpdates?: FoundryBatchUpdateActorEmbeddedItemsRequest['updates'];
+  summary?: Record<string, unknown>;
+  warnings?: string[];
+}
+
+export interface CharacterHitPointUpdateRequest {
+  current?: number;
+  max?: number;
+  temp?: number;
+}
+
+export interface CharacterResourceUpdateRequest {
+  hitPoints?: CharacterHitPointUpdateRequest;
+  inspiration?: boolean;
+  exhaustion?: number;
+  deathSaves?: {
+    success?: number;
+    failure?: number;
+  };
+  currency?: Record<string, number>;
+  hitDice?: Array<{
+    classIdentifier: string;
+    used: number;
+  }>;
+}
+
+export interface CharacterAbilityScoreUpdateRequest {
+  scores: Record<string, number>;
+}
+
+export interface CharacterSkillProficiencyUpdateRequest {
+  skills: Array<{
+    skill: string;
+    proficiency: number;
+  }>;
+}
+
+export interface CharacterProficiencyCollectionUpdate {
+  values?: string[];
+  custom?: string;
+}
+
+export interface CharacterToolProficiencyUpdate {
+  tool: string;
+  proficiency: number;
+}
+
+export interface CharacterSystemProficiencyUpdateRequest {
+  languages?: CharacterProficiencyCollectionUpdate;
+  weaponProficiencies?: CharacterProficiencyCollectionUpdate;
+  armorProficiencies?: CharacterProficiencyCollectionUpdate;
+  toolProficiencies?: CharacterToolProficiencyUpdate[];
+  savingThrowProficiencies?: string[];
+}
+
+export interface SystemSpellbookValidationIssue extends UnknownRecord {
+  severity: 'info' | 'warning' | 'error';
+  code: string;
+  message: string;
+}
+
+export interface SystemSpellbookValidationResult {
+  summary: Record<string, unknown>;
+  issues: SystemSpellbookValidationIssue[];
+  recommendations?: string[];
+}
+
+export type SystemCharacterInfo = FoundryCharacterInfo<
+  FoundryActorSystemBase,
+  FoundryItemSystemBase,
+  UnknownRecord
+>;
+
+export type SystemCompendiumCreatureEntity =
+  | FoundryCompendiumDocumentBase<UnknownRecord, UnknownRecord, UnknownRecord>
+  | FoundryCompendiumSearchResult<UnknownRecord>;
+
+export interface DnD5eAbilityData extends UnknownRecord {
+  value?: number;
+  mod?: number;
+  proficient?: number;
+}
+
+export interface DnD5eSkillData extends UnknownRecord {
+  value?: number;
+  total?: number;
+  mod?: number;
+  proficient?: number;
+}
+
+export interface DnD5eActorSystemData extends FoundryActorSystemBase {
+  attributes?: FoundryActorAttributesBase & {
+    hp?: FoundryResourceField<number>;
+    ac?: FoundryValueField<number> | number;
+    spellcasting?: UnknownRecord;
+  };
+  details?: FoundryActorSystemBase['details'] & {
+    cr?: number | string | FoundryValueField<number>;
+    type?: string | FoundryValueField<string> | { value?: string };
+    alignment?: string | FoundryValueField<string>;
+    level?: number | FoundryValueField<number>;
+    class?: string;
+    race?: string;
+  };
+  traits?: FoundryTraitsData;
+  abilities?: Record<string, DnD5eAbilityData>;
+  skills?: Record<string, DnD5eSkillData>;
+  resources?: UnknownRecord & {
+    legact?: FoundryResourceField<number>;
+    legres?: FoundryResourceField<number>;
+  };
+  spells?: UnknownRecord;
+}
+
+export interface DnD5eItemSystemData extends FoundryItemSystemBase {
+  description?: FoundryDescriptionField | string;
+  quantity?: number;
+  equipped?: boolean;
+  levels?: number;
+  attunement?: number | string;
+  actionType?: string | FoundryValueField<string>;
+  actions?: number | FoundryValueField<number>;
+  advancement?: unknown[];
+}
+
+export type DnD5eActorDocument = FoundryActorDocumentBase<
+  DnD5eActorSystemData,
+  DnD5eItemSystemData
+>;
+export type DnD5eItemDocument = FoundryItemDocumentBase<DnD5eItemSystemData>;
+export type DnD5eCompendiumDocument = FoundryCompendiumDocumentBase<
+  DnD5eActorSystemData,
+  DnD5eItemSystemData
+>;
+
+export interface PF2eAbilityData extends UnknownRecord {
+  value?: number;
+  mod?: number;
+}
+
+export interface PF2eSkillData extends UnknownRecord {
+  value?: number;
+  mod?: number;
+  rank?: number;
+}
+
+export interface PF2eActorSystemData extends FoundryActorSystemBase {
+  attributes?: FoundryActorAttributesBase & {
+    hp?: FoundryResourceField<number>;
+    ac?: FoundryValueField<number> | number;
+    spellcasting?: UnknownRecord;
+  };
+  details?: FoundryActorSystemBase['details'] & {
+    level?: number | FoundryValueField<number>;
+    alignment?: string | FoundryValueField<string>;
+    ancestry?: string;
+    class?: string;
+  };
+  traits?: FoundryTraitsData;
+  abilities?: Record<string, PF2eAbilityData>;
+  skills?: Record<string, PF2eSkillData>;
+  perception?: UnknownRecord & {
+    value?: number;
+    mod?: number;
+    rank?: number;
+  };
+  saves?: Record<
+    string,
+    UnknownRecord & {
+      value?: number;
+      mod?: number;
+      rank?: number;
+    }
+  >;
+  spellcasting?: UnknownRecord;
+}
+
+export interface PF2eItemSystemData extends FoundryItemSystemBase {
+  description?: FoundryDescriptionField | string;
+  quantity?: number;
+  equipped?: boolean;
+  traits?: FoundryTraitsData;
+  level?: number | FoundryValueField<number>;
+  actionType?: string | FoundryValueField<string>;
+  actions?: number | FoundryValueField<number>;
+}
+
+export type PF2eActorDocument = FoundryActorDocumentBase<PF2eActorSystemData, PF2eItemSystemData>;
+export type PF2eItemDocument = FoundryItemDocumentBase<PF2eItemSystemData>;
+export type PF2eCompendiumDocument = FoundryCompendiumDocumentBase<
+  PF2eActorSystemData,
+  PF2eItemSystemData
+>;
+
+export interface DSA5CharacteristicData extends UnknownRecord {
+  value?: number;
+  initial?: number;
+}
+
+export interface DSA5ActorSystemData extends FoundryActorSystemBase {
+  details?: FoundryActorSystemBase['details'] & {
+    species?: FoundryValueField<string>;
+    culture?: FoundryValueField<string>;
+    career?: FoundryValueField<string>;
+    experience?: {
+      total?: number;
+      spent?: number;
+    };
+  };
+  status?: UnknownRecord & {
+    wounds?: {
+      current?: number;
+      value?: number;
+      max?: number;
+    };
+    astralenergy?: FoundryResourceField<number>;
+    karmaenergy?: FoundryResourceField<number>;
+    speed?: number | FoundryValueField<number>;
+    initiative?: number | FoundryValueField<number>;
+    dodge?: number | FoundryValueField<number>;
+    armour?: number | FoundryValueField<number>;
+    armor?: number | FoundryValueField<number>;
+    size?: number | FoundryValueField<number>;
+  };
+  characteristics?: Record<string, DSA5CharacteristicData>;
+  tradition?: UnknownRecord & {
+    magical?: boolean | UnknownRecord;
+    clerical?: boolean | UnknownRecord;
+  };
+}
+
+export interface DSA5ItemSystemData extends FoundryItemSystemBase {
+  description?: FoundryDescriptionField | string;
+  quantity?: number;
+  equipped?: boolean;
+  level?: number | FoundryValueField<number>;
+  actionType?: string | FoundryValueField<string>;
+  actions?: number | FoundryValueField<number>;
+}
+
+export type DSA5ActorDocument = FoundryActorDocumentBase<DSA5ActorSystemData, DSA5ItemSystemData>;
+export type DSA5ItemDocument = FoundryItemDocumentBase<DSA5ItemSystemData>;
+export type DSA5CompendiumDocument = FoundryCompendiumDocumentBase<
+  DSA5ActorSystemData,
+  DSA5ItemSystemData
+>;
 
 /**
  * System Adapter Interface
@@ -74,8 +371,8 @@ export interface SystemAdapter {
    * @returns Creature data or null if not a valid creature
    */
   extractCreatureData(
-    doc: any,
-    pack: any
+    doc: FoundryActorDocumentBase,
+    pack: FoundryCompendiumPackSummary
   ): { creature: SystemCreatureIndex; errors: number } | null;
 
   /**
@@ -89,7 +386,7 @@ export interface SystemAdapter {
    * @param creature - Indexed creature data
    * @param filters - User-provided filter criteria
    */
-  matchesFilters(creature: SystemCreatureIndex, filters: Record<string, any>): boolean;
+  matchesFilters(creature: SystemCreatureIndex, filters: Record<string, unknown>): boolean;
 
   /**
    * Get system-specific data paths for actor properties
@@ -101,19 +398,31 @@ export interface SystemAdapter {
    * Format creature data for list display
    * Used in search results and creature lists
    */
-  formatCreatureForList(creature: SystemCreatureIndex): any;
+  formatCreatureForList(creature: SystemCreatureIndex): Record<string, unknown>;
 
   /**
    * Format creature data for detailed display
    * Used when showing full creature information
    */
-  formatCreatureForDetails(creature: SystemCreatureIndex): any;
+  formatCreatureForDetails(creature: SystemCreatureIndex): Record<string, unknown>;
 
   /**
    * Generate human-readable description of filters
    * @param filters - Filter criteria to describe
    */
-  describeFilters(filters: Record<string, any>): string;
+  describeFilters(filters: Record<string, unknown>): string;
+
+  /**
+   * Format raw compendium creature entity data for MCP responses.
+   * `mode=search` is used by search-compendium output.
+   * `mode=criteria` is used by list-creatures-by-criteria output.
+   * `mode=compact` is used by get-compendium-item compact actor responses.
+   * `mode=details` is used by get-compendium-item full actor responses.
+   */
+  formatRawCompendiumCreature(
+    entity: SystemCompendiumCreatureEntity,
+    mode: 'search' | 'criteria' | 'compact' | 'details'
+  ): Record<string, unknown>;
 
   /**
    * Get normalized power level for a creature
@@ -129,7 +438,82 @@ export interface SystemAdapter {
    * Used by get-character and list-characters tools
    * @param actorData - Raw Foundry actor data
    */
-  extractCharacterStats(actorData: any): any;
+  extractCharacterStats(actorData: SystemCharacterInfo): Record<string, unknown>;
+
+  /**
+   * Format basic character info for compact character responses.
+   * Used by get-character for system-specific basic info shaping.
+   */
+  formatCharacterBasicInfo(actorData: SystemCharacterInfo): Record<string, unknown>;
+
+  /**
+   * Format a character item for compact list responses.
+   * Used by get-character item listings to keep core tools system-agnostic.
+   */
+  formatCharacterItemForList(item: FoundryItemDocumentBase): Record<string, unknown>;
+
+  /**
+   * Format a character item for detailed entity responses.
+   * Used by get-character-entity to keep system-specific item semantics out of core tools.
+   */
+  formatCharacterItemForDetails(item: FoundryItemDocumentBase): Record<string, unknown>;
+
+  /**
+   * Format a character action for compact list responses.
+   */
+  formatCharacterActionForList(action: SystemCharacterAction): Record<string, unknown>;
+
+  /**
+   * Format a spellcasting entry for compact list responses.
+   */
+  formatSpellcastingEntryForList(entry: SystemSpellcastingEntry): Record<string, unknown>;
+
+  /**
+   * Prepare a system-safe actor update payload for character progression changes.
+   * This should only use public Document.update-compatible differential data.
+   */
+  prepareCharacterProgressionUpdate(
+    actorData: SystemCharacterInfo,
+    request: CharacterProgressionUpdateRequest
+  ): PreparedCharacterProgressionUpdate;
+
+  /**
+   * Prepare system-safe actor update payloads for base ability score changes.
+   */
+  prepareAbilityScoreUpdates?(
+    actorData: SystemCharacterInfo,
+    request: CharacterAbilityScoreUpdateRequest
+  ): PreparedCharacterWriteMutation;
+
+  /**
+   * Prepare system-safe actor update payloads for skill proficiency changes.
+   */
+  prepareSkillProficiencyUpdates?(
+    actorData: SystemCharacterInfo,
+    request: CharacterSkillProficiencyUpdateRequest
+  ): PreparedCharacterWriteMutation;
+
+  /**
+   * Prepare system-safe actor and item updates for common resource bookkeeping.
+   */
+  prepareResourceUpdates?(
+    actorData: SystemCharacterInfo,
+    request: CharacterResourceUpdateRequest
+  ): PreparedCharacterWriteMutation;
+
+  /**
+   * Prepare system-safe direct proficiency updates when a system supports them.
+   */
+  prepareSystemProficiencyUpdates?(
+    actorData: SystemCharacterInfo,
+    request: CharacterSystemProficiencyUpdateRequest
+  ): PreparedCharacterWriteMutation;
+
+  /**
+   * Validate spellbook organization and spell-state consistency using
+   * system-specific semantics.
+   */
+  validateSpellbook?(actorData: SystemCharacterInfo): SystemSpellbookValidationResult;
 }
 
 /**
@@ -151,14 +535,14 @@ export interface IndexBuilder {
    * @param force - Force rebuild even if cache exists
    * @returns Array of indexed creatures
    */
-  buildIndex(packs: any[], force?: boolean): Promise<SystemCreatureIndex[]>;
+  buildIndex(packs: unknown[], force?: boolean): Promise<SystemCreatureIndex[]>;
 
   /**
    * Extract creature data from a single compendium pack
    * @param pack - Compendium pack to process
    * @returns Creatures and error count
    */
-  extractDataFromPack(pack: any): Promise<{ creatures: SystemCreatureIndex[]; errors: number }>;
+  extractDataFromPack(pack: unknown): Promise<{ creatures: SystemCreatureIndex[]; errors: number }>;
 }
 
 /**
@@ -226,10 +610,14 @@ export interface DSA5CreatureIndex extends SystemCreatureIndex {
  */
 export interface GenericCreatureIndex extends SystemCreatureIndex {
   system: 'other';
-  systemData: Record<string, any>;
+  systemData: Record<string, unknown>;
 }
 
 /**
  * Union type of all creature index types
  */
-export type AnyCreatureIndex = DnD5eCreatureIndex | PF2eCreatureIndex | DSA5CreatureIndex | GenericCreatureIndex;
+export type AnyCreatureIndex =
+  | DnD5eCreatureIndex
+  | PF2eCreatureIndex
+  | DSA5CreatureIndex
+  | GenericCreatureIndex;

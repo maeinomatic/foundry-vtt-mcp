@@ -10,7 +10,80 @@
 import type { IndexBuilder, PF2eCreatureIndex } from '../types.js';
 
 // Foundry browser globals (unavailable in Node.js TypeScript compilation)
-declare const ui: any;
+declare const ui:
+  | {
+      notifications?: {
+        info(message: string): unknown;
+        warn(message: string): unknown;
+        error(message: string): unknown;
+        remove?(notification: unknown): void;
+      };
+    }
+  | undefined;
+
+type UnknownRecord = Record<string, unknown>;
+
+interface FoundryPack {
+  metadata: {
+    type?: string;
+    label: string;
+    id: string;
+  };
+  indexed?: boolean;
+  getIndex(options: UnknownRecord): Promise<unknown>;
+  getDocuments(): Promise<FoundryDoc[]>;
+}
+
+interface FoundryDoc {
+  _id: string;
+  name: string;
+  type: string;
+  img?: string;
+  system?: unknown;
+}
+
+function asRecord(value: unknown): UnknownRecord | undefined {
+  return typeof value === 'object' && value !== null ? (value as UnknownRecord) : undefined;
+}
+
+function getNestedValue(source: UnknownRecord | undefined, path: string[]): unknown {
+  let current: unknown = source;
+  for (const segment of path) {
+    const currentRecord = asRecord(current);
+    if (!currentRecord) {
+      return undefined;
+    }
+    current = currentRecord[segment];
+  }
+  return current;
+}
+
+function toNumber(value: unknown): number | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+
+  return undefined;
+}
+
+function toStringValue(value: unknown): string | undefined {
+  return typeof value === 'string' ? value : undefined;
+}
+
+function toStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map(entry => toStringValue(entry))
+    .filter((entry): entry is string => entry !== undefined);
+}
 
 /**
  * PF2e implementation of IndexBuilder
@@ -18,39 +91,36 @@ declare const ui: any;
 export class PF2eIndexBuilder implements IndexBuilder {
   private moduleId: string;
 
-  constructor(moduleId: string = 'foundry-mcp-bridge') {
+  constructor(moduleId: string = 'maeinomatic-foundry-mcp') {
     this.moduleId = moduleId;
   }
 
-  getSystemId() {
+  getSystemId(): 'pf2e' {
     return 'pf2e' as const;
   }
 
   /**
    * Build enhanced creature index from compendium packs
    */
-  async buildIndex(packs: any[], force = false): Promise<PF2eCreatureIndex[]> {
+  async buildIndex(packs: FoundryPack[], _force = false): Promise<PF2eCreatureIndex[]> {
     const startTime = Date.now();
-    let progressNotification: any = null;
+    let progressNotification: unknown = null;
     let totalErrors = 0;
 
     try {
       const actorPacks = packs.filter(pack => pack.metadata.type === 'Actor');
       const enhancedCreatures: PF2eCreatureIndex[] = [];
 
-      console.log(`[${this.moduleId}] Starting PF2e creature index build from ${actorPacks.length} packs...`);
-      if (typeof ui !== 'undefined' && ui.notifications) {
-        ui.notifications.info(`Starting PF2e creature index build from ${actorPacks.length} packs...`);
-      }
+      ui?.notifications?.info(
+        `Starting PF2e creature index build from ${actorPacks.length} packs...`
+      );
 
       let currentPack = 0;
       for (const pack of actorPacks) {
         currentPack++;
 
-        if (progressNotification && typeof ui !== 'undefined') {
-          progressNotification.remove();
-        }
-        if (typeof ui !== 'undefined' && ui.notifications) {
+        this.clearNotification(progressNotification);
+        if (ui?.notifications) {
           progressNotification = ui.notifications.info(
             `Building PF2e index: Pack ${currentPack}/${actorPacks.length} (${pack.metadata.label})...`
           );
@@ -61,34 +131,23 @@ export class PF2eIndexBuilder implements IndexBuilder {
         totalErrors += result.errors;
       }
 
-      if (progressNotification && typeof ui !== 'undefined') {
-        progressNotification.remove();
-      }
-      if (typeof ui !== 'undefined' && ui.notifications) {
-        ui.notifications.info(`Saving PF2e index to world database... (${enhancedCreatures.length} creatures)`);
-      }
+      this.clearNotification(progressNotification);
+      ui?.notifications?.info(
+        `Saving PF2e index to world database... (${enhancedCreatures.length} creatures)`
+      );
 
       const buildTimeSeconds = Math.round((Date.now() - startTime) / 1000);
       const errorText = totalErrors > 0 ? ` (${totalErrors} extraction errors)` : '';
       const successMessage = `PF2e creature index complete! ${enhancedCreatures.length} creatures indexed from ${actorPacks.length} packs in ${buildTimeSeconds}s${errorText}`;
 
-      console.log(`[${this.moduleId}] ${successMessage}`);
-      if (typeof ui !== 'undefined' && ui.notifications) {
-        ui.notifications.info(successMessage);
-      }
+      ui?.notifications?.info(successMessage);
 
       return enhancedCreatures;
-
     } catch (error) {
-      if (progressNotification && typeof ui !== 'undefined') {
-        progressNotification.remove();
-      }
+      this.clearNotification(progressNotification);
 
       const errorMessage = `Failed to build PF2e creature index: ${error instanceof Error ? error.message : 'Unknown error'}`;
-      console.error(`[${this.moduleId}] ${errorMessage}`);
-      if (typeof ui !== 'undefined' && ui.notifications) {
-        ui.notifications.error(errorMessage);
-      }
+      ui?.notifications?.error(errorMessage);
 
       throw error;
     }
@@ -97,7 +156,9 @@ export class PF2eIndexBuilder implements IndexBuilder {
   /**
    * Extract creature data from a single compendium pack
    */
-  async extractDataFromPack(pack: any): Promise<{ creatures: PF2eCreatureIndex[]; errors: number }> {
+  async extractDataFromPack(
+    pack: FoundryPack
+  ): Promise<{ creatures: PF2eCreatureIndex[]; errors: number }> {
     const creatures: PF2eCreatureIndex[] = [];
     let errors = 0;
 
@@ -115,15 +176,11 @@ export class PF2eIndexBuilder implements IndexBuilder {
             creatures.push(result.creature);
             errors += result.errors;
           }
-
-        } catch (error) {
-          console.warn(`[${this.moduleId}] Failed to extract PF2e data from ${doc.name} in ${pack.metadata.label}:`, error);
+        } catch (_error) {
           errors++;
         }
       }
-
-    } catch (error) {
-      console.warn(`[${this.moduleId}] Failed to load documents from ${pack.metadata.label}:`, error);
+    } catch (_error) {
       errors++;
     }
 
@@ -133,58 +190,70 @@ export class PF2eIndexBuilder implements IndexBuilder {
   /**
    * Extract Pathfinder 2e creature data from a single document
    */
-  extractCreatureData(doc: any, pack: any): { creature: PF2eCreatureIndex; errors: number } | null {
+  extractCreatureData(
+    doc: FoundryDoc,
+    pack: FoundryPack
+  ): { creature: PF2eCreatureIndex; errors: number } | null {
     try {
-      const system = doc.system || {};
+      const system = asRecord(doc.system);
 
       // Level extraction (PF2e primary power metric)
-      let level = system.details?.level?.value ?? 0;
-      level = Number(level) || 0;
+      const level = toNumber(getNestedValue(system, ['details', 'level', 'value'])) ?? 0;
 
       // Traits extraction (PF2e uses array of traits)
-      const traitsValue = system.traits?.value || [];
-      const traits = Array.isArray(traitsValue) ? traitsValue : [];
+      const traits = toStringArray(getNestedValue(system, ['traits', 'value']));
 
       // Extract primary creature type from traits
-      const creatureTraits = ['aberration', 'animal', 'beast', 'celestial',
-                              'construct', 'dragon', 'elemental', 'fey',
-                              'fiend', 'fungus', 'humanoid', 'monitor',
-                              'ooze', 'plant', 'undead'];
-      const creatureType = traits.find((t: string) =>
-        creatureTraits.includes(t.toLowerCase())
-      )?.toLowerCase() || 'unknown';
+      const creatureTraits = [
+        'aberration',
+        'animal',
+        'beast',
+        'celestial',
+        'construct',
+        'dragon',
+        'elemental',
+        'fey',
+        'fiend',
+        'fungus',
+        'humanoid',
+        'monitor',
+        'ooze',
+        'plant',
+        'undead',
+      ];
+      const _creatureType =
+        traits.find((t: string) => creatureTraits.includes(t.toLowerCase()))?.toLowerCase() ??
+        'unknown';
 
       // Rarity extraction (PF2e specific)
-      const rarity = system.traits?.rarity || 'common';
+      const rarity = toStringValue(getNestedValue(system, ['traits', 'rarity'])) ?? 'common';
 
       // Size extraction
-      let size = system.traits?.size?.value || 'med';
+      const rawSize = toStringValue(getNestedValue(system, ['traits', 'size', 'value'])) ?? 'med';
       // Normalize PF2e size values (tiny, sm, med, lg, huge, grg)
       const sizeMap: Record<string, string> = {
-        'tiny': 'tiny',
-        'sm': 'small',
-        'med': 'medium',
-        'lg': 'large',
-        'huge': 'huge',
-        'grg': 'gargantuan'
+        tiny: 'tiny',
+        sm: 'small',
+        med: 'medium',
+        lg: 'large',
+        huge: 'huge',
+        grg: 'gargantuan',
       };
-      size = sizeMap[size.toLowerCase()] || 'medium';
+      const size = sizeMap[rawSize.toLowerCase()] || 'medium';
 
       // Hit Points
-      const hitPoints = system.attributes?.hp?.max || 0;
+      const hitPoints = toNumber(getNestedValue(system, ['attributes', 'hp', 'max'])) ?? 0;
 
       // Armor Class
-      const armorClass = system.attributes?.ac?.value || 10;
+      const armorClass = toNumber(getNestedValue(system, ['attributes', 'ac', 'value'])) ?? 10;
 
       // Spellcasting detection (PF2e uses spellcasting entries)
-      const spellcasting = system.spellcasting || {};
+      const spellcasting = asRecord(getNestedValue(system, ['spellcasting'])) ?? {};
       const hasSpellcasting = Object.keys(spellcasting).length > 0;
 
       // Alignment
-      let alignment = system.details?.alignment?.value || 'N';
-      if (typeof alignment !== 'string') {
-        alignment = String(alignment || 'N');
-      }
+      const alignment =
+        toStringValue(getNestedValue(system, ['details', 'alignment', 'value'])) ?? 'N';
 
       return {
         creature: {
@@ -193,7 +262,7 @@ export class PF2eIndexBuilder implements IndexBuilder {
           type: doc.type,
           packName: pack.metadata.id,
           packLabel: pack.metadata.label,
-          img: doc.img,
+          ...(doc.img ? { img: doc.img } : {}),
           system: 'pf2e',
           systemData: {
             level,
@@ -203,15 +272,12 @@ export class PF2eIndexBuilder implements IndexBuilder {
             rarity,
             hasSpellcasting,
             hitPoints,
-            armorClass
-          }
+            armorClass,
+          },
         },
-        errors: 0
+        errors: 0,
       };
-
-    } catch (error) {
-      console.warn(`[${this.moduleId}] Failed to extract PF2e data from ${doc.name}:`, error);
-
+    } catch (_error) {
       // Fallback with error count
       return {
         creature: {
@@ -220,7 +286,7 @@ export class PF2eIndexBuilder implements IndexBuilder {
           type: doc.type,
           packName: pack.metadata.id,
           packLabel: pack.metadata.label,
-          img: doc.img || '',
+          ...(doc.img ? { img: doc.img } : {}),
           system: 'pf2e',
           systemData: {
             level: 0,
@@ -230,11 +296,27 @@ export class PF2eIndexBuilder implements IndexBuilder {
             rarity: 'common',
             hasSpellcasting: false,
             hitPoints: 1,
-            armorClass: 10
-          }
+            armorClass: 10,
+          },
         },
-        errors: 1
+        errors: 1,
       };
+    }
+  }
+
+  private clearNotification(notification: unknown): void {
+    if (!notification) {
+      return;
+    }
+
+    if (ui?.notifications?.remove) {
+      ui.notifications.remove(notification);
+      return;
+    }
+
+    const removeFn = asRecord(notification)?.remove;
+    if (typeof removeFn === 'function') {
+      removeFn();
     }
   }
 }

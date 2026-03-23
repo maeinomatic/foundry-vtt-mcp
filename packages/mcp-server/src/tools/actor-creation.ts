@@ -1,5 +1,13 @@
 import { z } from 'zod';
 import { FoundryClient } from '../foundry-client.js';
+import type {
+  FoundryActorCreationResult,
+  FoundryCreateActorFromCompendiumRequest,
+  FoundryCompendiumEntryFull,
+  FoundryDocumentBase,
+  FoundryGetCompendiumDocumentRequest,
+  UnknownRecord,
+} from '../foundry-types.js';
 import { Logger } from '../logger.js';
 import { ErrorHandler } from '../utils/error-handler.js';
 
@@ -8,6 +16,7 @@ export interface ActorCreationToolsOptions {
   logger: Logger;
 }
 
+type NamedEntity = Pick<FoundryDocumentBase, 'name'>;
 
 export class ActorCreationTools {
   private foundryClient: FoundryClient;
@@ -23,26 +32,30 @@ export class ActorCreationTools {
   /**
    * Tool definitions for actor creation operations
    */
-  getToolDefinitions() {
+  getToolDefinitions(): UnknownRecord[] {
     return [
       {
         name: 'create-actor-from-compendium',
-        description: 'Create one or more actors from a specific compendium entry with custom names. Use search-compendium first to find the exact creature you want, then use this tool with the packId and itemId from the search results.',
+        description:
+          'Create one or more actors from a specific compendium entry with custom names. Use search-compendium first to find the exact creature you want, then use this tool with the packId and itemId from the search results.',
         inputSchema: {
           type: 'object',
           properties: {
             packId: {
               type: 'string',
-              description: 'ID of the compendium pack containing the creature (e.g., "dnd5e.monsters")',
+              description:
+                'ID of the compendium pack containing the creature (e.g., "dnd5e.monsters")',
             },
             itemId: {
-              type: 'string', 
-              description: 'ID of the specific creature entry within the pack (get this from search-compendium results)',
+              type: 'string',
+              description:
+                'ID of the specific creature entry within the pack (get this from search-compendium results)',
             },
             names: {
               type: 'array',
               items: { type: 'string' },
-              description: 'Custom names for the created actors (e.g., ["Flameheart", "Sneak", "Peek"])',
+              description:
+                'Custom names for the created actors (e.g., ["Flameheart", "Sneak", "Peek"])',
               minItems: 1,
             },
             quantity: {
@@ -76,7 +89,8 @@ export class ActorCreationTools {
                     },
                     required: ['x', 'y'],
                   },
-                  description: 'Specific coordinates for each token (required when type is "coordinates")',
+                  description:
+                    'Specific coordinates for each token (required when type is "coordinates")',
                 },
               },
               required: ['type'],
@@ -87,7 +101,8 @@ export class ActorCreationTools {
       },
       {
         name: 'get-compendium-entry-full',
-        description: 'Retrieve complete stat block data including items, spells, and abilities for actor creation',
+        description:
+          'Retrieve complete stat block data including items, spells, and abilities for actor creation',
         inputSchema: {
           type: 'object',
           properties: {
@@ -109,24 +124,30 @@ export class ActorCreationTools {
   /**
    * Handle actor creation from specific compendium entry
    */
-  async handleCreateActorFromCompendium(args: any): Promise<any> {
+  async handleCreateActorFromCompendium(args: unknown): Promise<UnknownRecord> {
     const schema = z.object({
       packId: z.string().min(1, 'Pack ID cannot be empty'),
       itemId: z.string().min(1, 'Item ID cannot be empty'),
       names: z.array(z.string().min(1)).min(1, 'At least one name is required'),
       quantity: z.number().min(1).max(10).optional(),
       addToScene: z.boolean().default(false),
-      placement: z.object({
-        type: z.enum(['random', 'grid', 'center', 'coordinates']).default('grid'),
-        coordinates: z.array(z.object({
-          x: z.number(),
-          y: z.number(),
-        })).optional(),
-      }).optional(),
+      placement: z
+        .object({
+          type: z.enum(['random', 'grid', 'center', 'coordinates']).default('grid'),
+          coordinates: z
+            .array(
+              z.object({
+                x: z.number(),
+                y: z.number(),
+              })
+            )
+            .optional(),
+        })
+        .optional(),
     });
 
     const { packId, itemId, names, quantity, addToScene, placement } = schema.parse(args);
-    const finalQuantity = quantity || names.length;
+    const finalQuantity = quantity ?? names.length;
 
     this.logger.info('Creating actors from specific compendium entry', {
       packId,
@@ -140,42 +161,59 @@ export class ActorCreationTools {
       // Ensure we have enough names for the quantity
       const customNames = [...names];
       while (customNames.length < finalQuantity) {
-        const baseName = names[0] || 'Unnamed';
+        const baseName = names[0] ?? 'Unnamed';
         customNames.push(`${baseName} ${customNames.length + 1}`);
       }
 
-      // Create the actors via Foundry module using exact pack/item IDs
-      const result = await this.foundryClient.query('foundry-mcp-bridge.createActorFromCompendium', {
+      const request: FoundryCreateActorFromCompendiumRequest = {
         packId,
         itemId,
         customNames: customNames.slice(0, finalQuantity),
         quantity: finalQuantity,
         addToScene,
-        placement: placement ? {
-          type: placement.type,
-          coordinates: placement.coordinates,
-        } : undefined,
-      });
+        ...(placement
+          ? {
+              placement: {
+                type: placement.type,
+                ...(placement.coordinates ? { coordinates: placement.coordinates } : {}),
+              },
+            }
+          : {}),
+      };
+
+      // Create the actors via Foundry module using exact pack/item IDs
+      const result = await this.foundryClient.query(
+        'maeinomatic-foundry-mcp.createActorFromCompendium',
+        request
+      );
 
       this.logger.info('Actor creation completed', {
-        totalCreated: result.totalCreated,
-        totalRequested: result.totalRequested,
-        tokensPlaced: result.tokensPlaced || 0,
-        hasErrors: !!result.errors,
+        totalCreated: result.totalCreated ?? 0,
+        totalRequested: result.totalRequested ?? 0,
+        tokensPlaced: result.tokensPlaced ?? 0,
+        hasErrors: Boolean(result.errors?.length),
       });
 
       // Format response for Claude
-      return this.formatSimpleActorCreationResponse(result, packId, itemId, customNames.slice(0, finalQuantity));
-
+      return this.formatSimpleActorCreationResponse(
+        result,
+        packId,
+        itemId,
+        customNames.slice(0, finalQuantity)
+      );
     } catch (error) {
-      this.errorHandler.handleToolError(error, 'create-actor-from-compendium', 'actor creation');
+      return this.errorHandler.handleToolError(
+        error,
+        'create-actor-from-compendium',
+        'actor creation'
+      );
     }
   }
 
   /**
    * Handle getting full compendium entry data
    */
-  async handleGetCompendiumEntryFull(args: any): Promise<any> {
+  async handleGetCompendiumEntryFull(args: unknown): Promise<UnknownRecord> {
     const schema = z.object({
       packId: z.string().min(1, 'Pack ID cannot be empty'),
       entryId: z.string().min(1, 'Entry ID cannot be empty'),
@@ -186,88 +224,105 @@ export class ActorCreationTools {
     this.logger.info('Getting full compendium entry', { packId, entryId });
 
     try {
-      const fullEntry = await this.foundryClient.query('foundry-mcp-bridge.getCompendiumDocumentFull', {
+      const request: FoundryGetCompendiumDocumentRequest = {
         packId,
         documentId: entryId,
-      });
+      };
+      const fullEntry = await this.foundryClient.query(
+        'maeinomatic-foundry-mcp.getCompendiumDocumentFull',
+        request
+      );
+
+      if (!fullEntry) {
+        throw new Error(`Compendium entry ${entryId} not found in pack ${packId}`);
+      }
 
       this.logger.debug('Successfully retrieved full compendium entry', {
         packId,
         entryId,
-        name: fullEntry.name,
-        hasItems: !!fullEntry.items?.length,
-        hasEffects: !!fullEntry.effects?.length,
+        name: fullEntry.name ?? 'Unknown',
+        hasItems: Boolean(fullEntry.items?.length),
+        hasEffects: Boolean(fullEntry.effects?.length),
       });
 
       return this.formatCompendiumEntryResponse(fullEntry);
-
     } catch (error) {
-      this.errorHandler.handleToolError(error, 'get-compendium-entry-full', 'compendium retrieval');
+      return this.errorHandler.handleToolError(
+        error,
+        'get-compendium-entry-full',
+        'compendium retrieval'
+      );
     }
   }
-
-
-
-
-
-
-
 
   /**
    * Format compendium entry response
    */
-  private formatCompendiumEntryResponse(entry: any): any {
-    const itemsInfo = entry.items?.length > 0 
-      ? `\n📦 Items: ${entry.items.map((item: any) => item.name).join(', ')}`
-      : '';
-    
-    const effectsInfo = entry.effects?.length > 0
-      ? `\n✨ Effects: ${entry.effects.map((effect: any) => effect.name).join(', ')}`
-      : '';
+  private formatCompendiumEntryResponse(entry: FoundryCompendiumEntryFull): UnknownRecord {
+    const items = entry.items ?? [];
+    const effects = entry.effects ?? [];
+
+    const itemsInfo =
+      items.length > 0
+        ? `\n📦 Items: ${items.map((item: NamedEntity) => item.name ?? 'Unknown').join(', ')}`
+        : '';
+
+    const effectsInfo =
+      effects.length > 0
+        ? `\n✨ Effects: ${effects.map((effect: NamedEntity) => effect.name ?? 'Unknown').join(', ')}`
+        : '';
 
     return {
-      name: entry.name,
-      type: entry.type,
-      pack: entry.packLabel,
+      name: entry.name ?? 'Unknown',
+      type: entry.type ?? 'unknown',
+      pack: entry.packLabel ?? 'unknown',
       system: entry.system,
       fullData: entry.fullData,
-      items: entry.items || [],
-      effects: entry.effects || [],
-      summary: `📊 **${entry.name}** (${entry.type} from ${entry.packLabel})${itemsInfo}${effectsInfo}`,
+      items,
+      effects,
+      summary: `📊 **${entry.name ?? 'Unknown'}** (${entry.type ?? 'unknown'} from ${entry.packLabel ?? 'unknown'})${itemsInfo}${effectsInfo}`,
     };
   }
 
   /**
    * Format simplified actor creation response
    */
-  private formatSimpleActorCreationResponse(result: any, packId: string, itemId: string, customNames: string[]): any {
-    const summary = `✅ Created ${result.totalCreated} of ${result.totalRequested} requested actors`;
-    
-    const details = result.actors.map((actor: any) => 
-      `• **${actor.name}** (from ${packId})`
-    ).join('\n');
+  private formatSimpleActorCreationResponse(
+    result: FoundryActorCreationResult,
+    packId: string,
+    itemId: string,
+    customNames: string[]
+  ): UnknownRecord {
+    const totalCreated = result.totalCreated ?? 0;
+    const totalRequested = result.totalRequested ?? customNames.length;
+    const actors = result.actors ?? [];
+    const tokensPlaced = result.tokensPlaced ?? 0;
+    const errors = result.errors ?? [];
 
-    const sceneInfo = result.tokensPlaced > 0 
-      ? `\n🎯 Added ${result.tokensPlaced} tokens to the current scene`
-      : '';
+    const summary = `✅ Created ${totalCreated} of ${totalRequested} requested actors`;
 
-    const errorInfo = result.errors?.length > 0
-      ? `\n⚠️ Issues: ${result.errors.join(', ')}`
-      : '';
+    const details = actors
+      .map(actor => `• **${actor.name ?? 'Unnamed'}** (from ${packId})`)
+      .join('\n');
+
+    const sceneInfo =
+      tokensPlaced > 0 ? `\n🎯 Added ${tokensPlaced} tokens to the current scene` : '';
+
+    const errorInfo = errors.length > 0 ? `\n⚠️ Issues: ${errors.join(', ')}` : '';
 
     return {
       summary,
-      success: result.success,
+      success: result.success ?? errors.length === 0,
       details: {
-        actors: result.actors,
+        actors,
         sourceEntry: {
           packId,
           itemId,
         },
-        tokensPlaced: result.tokensPlaced || 0,
-        errors: result.errors,
+        tokensPlaced,
+        errors,
       },
-      message: summary + '\n\n' + details + sceneInfo + errorInfo,
+      message: `${summary}\n\n${details}${sceneInfo}${errorInfo}`,
     };
   }
 }

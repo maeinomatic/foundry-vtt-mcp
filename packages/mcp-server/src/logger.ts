@@ -1,5 +1,18 @@
 import winston from 'winston';
 
+const toLogString = (value: unknown): string => {
+  if (typeof value === 'string') {
+    return value;
+  }
+  if (typeof value === 'number' || typeof value === 'boolean' || value === null) {
+    return String(value);
+  }
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+  return '[non-string]';
+};
+
 export interface LoggerConfig {
   level: string;
   format?: 'json' | 'simple';
@@ -13,13 +26,13 @@ export class Logger {
 
   constructor(config: LoggerConfig) {
     const formats = [];
-    
+
     // Add timestamp to all logs
     formats.push(winston.format.timestamp());
-    
+
     // Add error stack traces
     formats.push(winston.format.errors({ stack: true }));
-    
+
     // Choose output format
     if (config.format === 'json') {
       formats.push(winston.format.json());
@@ -37,7 +50,7 @@ export class Logger {
             winston.format.colorize(),
             winston.format.printf(({ timestamp, level, message, ...meta }) => {
               const metaStr = Object.keys(meta).length ? ` ${JSON.stringify(meta)}` : '';
-              return `${timestamp} [${level}]: ${message}${metaStr}`;
+              return `${toLogString(timestamp)} [${toLogString(level)}]: ${toLogString(message)}${metaStr}`;
             })
           ),
         })
@@ -61,15 +74,15 @@ export class Logger {
     });
   }
 
-  info(message: string, meta?: any): void {
+  info(message: string, meta?: unknown): void {
     this.logger.info(message, meta);
   }
 
-  warn(message: string, meta?: any): void {
+  warn(message: string, meta?: unknown): void {
     this.logger.warn(message, meta);
   }
 
-  error(message: string, error?: Error | any): void {
+  error(message: string, error?: unknown): void {
     if (error instanceof Error) {
       this.logger.error(message, { error: error.message, stack: error.stack });
     } else if (error) {
@@ -79,20 +92,24 @@ export class Logger {
     }
   }
 
-  debug(message: string, meta?: any): void {
+  debug(message: string, meta?: unknown): void {
     this.logger.debug(message, meta);
   }
 
-  child(defaultMeta: any): Logger {
+  private setInternalLogger(logger: winston.Logger): void {
+    this.logger = logger;
+  }
+
+  child(defaultMeta: Record<string, unknown>): Logger {
     const childLogger = this.logger.child(defaultMeta);
     const childInstance = new Logger({
       level: 'info', // This will be overridden by the child logger
       enableConsole: false, // Child doesn't need its own transports
     });
-    
+
     // Replace the logger instance
-    (childInstance as any).logger = childLogger;
-    
+    childInstance.setInternalLogger(childLogger);
+
     return childInstance;
   }
 }

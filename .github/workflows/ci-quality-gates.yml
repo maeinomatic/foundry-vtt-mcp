@@ -1,0 +1,75 @@
+name: Maeinomatic CI Quality Gates
+
+# This workflow is the fast, repeatable quality gate for normal development.
+# It validates code health for the shared contract package, the MCP server,
+# and the Foundry module, but it does not publish release artifacts.
+on:
+  pull_request:
+    branches:
+      - master
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+concurrency:
+  group: ci-quality-gates-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  quality-gates:
+    name: Validate Monorepo Quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      # Get the repository contents for this workflow run.
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      # Use a current Node LTS/runtime line for all workspaces and enable npm cache reuse.
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: npm
+
+      # Install the full monorepo exactly as locked so CI matches local reproducible installs.
+      - name: Install dependencies
+        run: npm ci --workspaces --include-workspace-root
+
+      # Catch accidental version drift between root and workspace manifests early.
+      - name: Check version consistency
+        run: npm run version:check
+
+      # Build shared declarations first because both the Foundry module and MCP server depend on them.
+      - name: Build shared workspace
+        run: npm run build --workspace=shared
+
+      # Compile all workspaces without emitting JS to catch type-contract regressions.
+      - name: Typecheck
+        run: npm run typecheck
+
+      # Keep the repository warning-free so new issues do not blend into old noise.
+      - name: Lint (no warnings)
+        run: npm run lint:strict
+
+      # Enforce consistent formatting across the monorepo.
+      - name: Format check
+        run: npm run format:check
+
+      # Run automated tests for the MCP server workspace.
+      - name: Run MCP server tests
+        run: npm -w @maeinomatic/foundry-mcp-server test -- --run
+
+      # Verify all workspaces can produce their normal build outputs.
+      - name: Build
+        run: npm run build
+
+      # Audit only shipped production dependencies.
+      # Dev-only typing/tooling packages are handled separately from release risk.
+      - name: Audit high/critical production vulnerabilities
+        run: npm run audit:prod

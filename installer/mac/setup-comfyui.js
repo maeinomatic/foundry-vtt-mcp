@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * Foundry MCP Server - ComfyUI Setup Script for Mac
+ * Maeinomatic Foundry MCP Server - ComfyUI Setup Script for Mac
  *
  * This script downloads and installs:
  * - ComfyUI Desktop (200MB)
@@ -22,7 +22,7 @@ const { URL } = require('url');
 const { execSync } = require('child_process');
 
 // Setup logging to both console and file
-const LOG_FILE = path.join(process.env.HOME || '/tmp', 'foundry-mcp-install.log');
+const LOG_FILE = path.join(process.env.HOME || '/tmp', 'maeinomatic-foundry-mcp-install.log');
 const logStream = fs.createWriteStream(LOG_FILE, { flags: 'a' });
 
 function log(message) {
@@ -39,7 +39,7 @@ function logError(message) {
   logStream.write(logMessage + '\n');
 }
 
-log('🍎 Foundry MCP Server - ComfyUI Setup for Mac');
+log('🍎 Maeinomatic Foundry MCP Server - ComfyUI Setup for Mac');
 log('==============================================\n');
 log(`📝 Install log: ${LOG_FILE}\n`);
 
@@ -83,32 +83,32 @@ const MODELS = [
     name: 'YAML Config',
     url: 'https://huggingface.co/AdamDooley/dnd-battlemaps-sdxl-1.0-mirror/resolve/main/dDBattlemapsSDXL10_upscaleV10.yaml',
     path: 'configs/dDBattlemapsSDXL10_upscaleV10.yaml',
-    size: '1KB'
+    size: '1KB',
   },
   {
     name: 'SDXL Base Model',
     url: 'https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/resolve/main/sd_xl_base_1.0.safetensors',
     path: 'checkpoints/sd_xl_base_1.0.safetensors',
-    size: '6.5GB'
+    size: '6.5GB',
   },
   {
     name: 'SDXL VAE',
     url: 'https://huggingface.co/stabilityai/sdxl-vae/resolve/main/sdxl_vae.safetensors',
     path: 'vae/sdxl_vae.safetensors',
-    size: '335MB'
+    size: '335MB',
   },
   {
     name: 'D&D Battlemaps Checkpoint',
     url: 'https://huggingface.co/AdamDooley/dnd-battlemaps-sdxl-1.0-mirror/resolve/main/dDBattlemapsSDXL10_upscaleV10.safetensors',
     path: 'checkpoints/dDBattlemapsSDXL10_upscaleV10.safetensors',
-    size: '6.5GB'
+    size: '6.5GB',
   },
   {
     name: 'License File',
     url: 'https://huggingface.co/AdamDooley/dnd-battlemaps-sdxl-1.0-mirror/raw/main/license.txt',
     path: 'checkpoints/dDBattlemapsSDXL10_LICENSE.txt',
-    size: '1KB'
-  }
+    size: '1KB',
+  },
 ];
 
 // Helper: Download file with progress using curl (much more reliable than Node.js https)
@@ -182,7 +182,9 @@ async function installComfyUI() {
 
     // Mount DMG
     log('   Mounting DMG image...');
-    const mountOutput = execSync(`hdiutil attach "${dmgPath}" -nobrowse -noverify`, { encoding: 'utf8' });
+    const mountOutput = execSync(`hdiutil attach "${dmgPath}" -nobrowse -noverify`, {
+      encoding: 'utf8',
+    });
     const volumeMatch = mountOutput.match(/\/Volumes\/([^\n]+)/);
 
     if (!volumeMatch) {
@@ -282,7 +284,7 @@ async function downloadModels() {
   // Create extra_models_config.yaml to point ComfyUI to our models
   log('Creating ComfyUI configuration...');
   const configPath = path.join(COMFYUI_CONFIG_DIR, 'extra_models_config.yaml');
-  const configContent = `# Foundry MCP Server - Custom Models Configuration
+  const configContent = `# Maeinomatic Foundry MCP Server - Custom Models Configuration
 comfyui:
   base_path: ${COMFYUI_MODELS_BASE}
   checkpoints: checkpoints/
@@ -316,7 +318,7 @@ function installFoundryModule() {
   const possiblePaths = [
     `${home}/Library/Application Support/FoundryVTT/Data/modules`,
     `${home}/FoundryVTT/Data/modules`,
-    '/Applications/FoundryVTT/Data/modules'
+    '/Applications/FoundryVTT/Data/modules',
   ];
 
   let foundryPath = null;
@@ -336,7 +338,7 @@ function installFoundryModule() {
 
   log(`✅ Foundry VTT detected at ${foundryPath}`);
 
-  const modulePath = path.join(foundryPath, 'foundry-mcp-bridge');
+  const modulePath = path.join(foundryPath, 'maeinomatic-foundry-mcp');
   if (fs.existsSync(path.join(modulePath, 'module.json'))) {
     log('✅ Module already installed\n');
     return true;
@@ -397,7 +399,7 @@ async function main() {
   log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
   log('Next steps:');
   log('1. Restart Claude Desktop');
-  log('2. Open Foundry VTT and enable "Foundry MCP Bridge" module');
+  log('2. Open Foundry VTT and enable "Maeinomatic Foundry MCP Bridge" module');
   log('3. In Claude, you can now generate AI battlemaps!');
   log('');
   log('To test: Ask Claude to "generate a forest clearing battlemap"');
@@ -409,7 +411,7 @@ async function main() {
   logStream.end();
 }
 
-main().catch((error) => {
+main().catch(error => {
   logError('\n❌ Unexpected error:', error.message);
   logStream.end();
   process.exit(1);
