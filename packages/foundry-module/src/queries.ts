@@ -44,6 +44,8 @@ import type {
   FoundryPreviewCharacterProgressionResponse,
   FoundryRunDnD5eSummonActivityRequest,
   FoundryRunDnD5eSummonActivityResponse,
+  FoundryRunDnD5eTransformActivityRequest,
+  FoundryRunDnD5eTransformActivityResponse,
   FoundrySearchCharacterItemsRequest,
   FoundrySummonCharacterCompanionRequest,
   FoundrySummonCharacterCompanionResponse,
@@ -225,6 +227,8 @@ export class QueryHandlers {
       this.handleRunCharacterRestWorkflow.bind(this);
     CONFIG.queries[`${modulePrefix}.runDnD5eSummonActivity`] =
       this.handleRunDnD5eSummonActivity.bind(this);
+    CONFIG.queries[`${modulePrefix}.runDnD5eTransformActivity`] =
+      this.handleRunDnD5eTransformActivity.bind(this);
     CONFIG.queries[`${modulePrefix}.updateActor`] = this.handleUpdateActor.bind(this);
     CONFIG.queries[`${modulePrefix}.createActorEmbeddedItem`] =
       this.handleCreateActorEmbeddedItem.bind(this);
@@ -863,6 +867,44 @@ export class QueryHandlers {
     } catch (error) {
       throw new Error(
         `Failed to run DnD5e summon activity: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+    }
+  }
+
+  /**
+   * Handle DnD5e transform activity workflow request
+   */
+  private async handleRunDnD5eTransformActivity(
+    data: FoundryRunDnD5eTransformActivityRequest
+  ): Promise<FoundryRunDnD5eTransformActivityResponse | QueryErrorResult> {
+    try {
+      const gmCheck = this.validateGMAccess();
+      if (!gmCheck.allowed) {
+        return { error: 'Access denied', success: false };
+      }
+
+      this.dataAccess.validateFoundryState();
+
+      const permissionCheck = await this.dataAccess.validateWritePermissions('updateActor');
+      if (!permissionCheck.allowed) {
+        return {
+          error: permissionCheck.reason ?? 'Actor update not allowed',
+          success: false,
+        };
+      }
+
+      if (!data.actorIdentifier) {
+        throw new Error('actorIdentifier is required');
+      }
+
+      if (!data.itemIdentifier) {
+        throw new Error('itemIdentifier is required');
+      }
+
+      return await this.dataAccess.runDnD5eTransformActivity(data);
+    } catch (error) {
+      throw new Error(
+        `Failed to run DnD5e transform activity: ${error instanceof Error ? error.message : 'Unknown error'}`
       );
     }
   }

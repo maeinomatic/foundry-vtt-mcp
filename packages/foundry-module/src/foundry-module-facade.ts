@@ -19,6 +19,7 @@ import { FoundryCharacterService } from './services/character-service.js';
 import { FoundryCompanionService } from './services/companion-service.js';
 import { FoundryCompendiumService } from './services/compendium-service.js';
 import { FoundryDnD5eSummonActivityWorkflowService } from './services/dnd5e-summon-activity-workflow-service.js';
+import { FoundryDnD5eTransformActivityWorkflowService } from './services/dnd5e-transform-activity-workflow-service.js';
 import { FoundryItemAuthoringService } from './services/item-authoring-service.js';
 import { FoundryJournalService } from './services/journal-service.js';
 import {
@@ -73,6 +74,8 @@ import type {
   FoundryPreviewCharacterProgressionResponse,
   FoundryRunDnD5eSummonActivityRequest,
   FoundryRunDnD5eSummonActivityResponse,
+  FoundryRunDnD5eTransformActivityRequest,
+  FoundryRunDnD5eTransformActivityResponse,
   FoundrySearchCharacterItemsRequest,
   FoundrySearchCharacterItemsResponse,
   FoundrySummonCharacterCompanionRequest,
@@ -140,6 +143,7 @@ export class FoundryModuleFacade {
   private companionService: FoundryCompanionService;
   private compendiumService: FoundryCompendiumService;
   private dnd5eSummonActivityWorkflowService: FoundryDnD5eSummonActivityWorkflowService;
+  private dnd5eTransformActivityWorkflowService: FoundryDnD5eTransformActivityWorkflowService;
   private itemAuthoringService: FoundryItemAuthoringService;
   private journalService: FoundryJournalService;
   private rollRequestService: FoundryRollRequestService;
@@ -249,6 +253,17 @@ export class FoundryModuleFacade {
       validateFoundryState: (): void => this.validateFoundryState(),
     });
     this.dnd5eSummonActivityWorkflowService = new FoundryDnD5eSummonActivityWorkflowService({
+      auditLog: (
+        action: string,
+        data: unknown,
+        status: 'success' | 'failure',
+        errorMessage?: string
+      ): void => this.auditLog(action, data, status, errorMessage),
+      findActorByIdentifier: (identifier: string): ActorLookupLike | null =>
+        this.findActorByIdentifier(identifier),
+      validateFoundryState: (): void => this.validateFoundryState(),
+    });
+    this.dnd5eTransformActivityWorkflowService = new FoundryDnD5eTransformActivityWorkflowService({
       auditLog: (
         action: string,
         data: unknown,
@@ -707,6 +722,12 @@ export class FoundryModuleFacade {
     request: FoundryRunDnD5eSummonActivityRequest
   ): Promise<FoundryRunDnD5eSummonActivityResponse> {
     return this.dnd5eSummonActivityWorkflowService.runDnD5eSummonActivity(request);
+  }
+
+  async runDnD5eTransformActivity(
+    request: FoundryRunDnD5eTransformActivityRequest
+  ): Promise<FoundryRunDnD5eTransformActivityResponse> {
+    return this.dnd5eTransformActivityWorkflowService.runDnD5eTransformActivity(request);
   }
 
   async updateActorEmbeddedItem(

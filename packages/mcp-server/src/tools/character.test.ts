@@ -2593,6 +2593,303 @@ describe('CharacterTools', () => {
     expect(result).toHaveProperty('spellPreparationUpdates');
   });
 
+  it('runs a DnD5e group rest workflow across party characters and applies per-actor post-rest spell preparation plans', async () => {
+    const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
+      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+        return Promise.resolve({ system: 'dnd5e' });
+      }
+
+      if (method === 'foundry-mcp-bridge.getPartyCharacters') {
+        expect(data).toEqual({});
+        return Promise.resolve([
+          { id: 'actor-laeral', name: 'Laeral' },
+          { id: 'actor-khelben', name: 'Khelben' },
+        ]);
+      }
+
+      if (method === 'foundry-mcp-bridge.runCharacterRestWorkflow') {
+        if ((data as Record<string, unknown>).actorIdentifier === 'actor-laeral') {
+          expect(data).toEqual({
+            actorIdentifier: 'actor-laeral',
+            restType: 'long',
+            suppressChat: true,
+            newDay: true,
+            reason: 'party rest',
+          });
+          return Promise.resolve({
+            success: true,
+            system: 'dnd5e',
+            actorId: 'actor-laeral',
+            actorName: 'Laeral',
+            actorType: 'character',
+            restType: 'long',
+            before: {},
+            after: {},
+            changes: {
+              hitPointsChanged: true,
+              inspirationChanged: false,
+              exhaustionChanged: false,
+              deathSavesChanged: false,
+              changedSpellSlots: [],
+              changedClassHitDice: [],
+            },
+          });
+        }
+
+        expect(data).toEqual({
+          actorIdentifier: 'actor-khelben',
+          restType: 'long',
+          suppressChat: true,
+          newDay: true,
+          reason: 'party rest',
+        });
+        return Promise.resolve({
+          success: true,
+          system: 'dnd5e',
+          actorId: 'actor-khelben',
+          actorName: 'Khelben',
+          actorType: 'character',
+          restType: 'long',
+          before: {},
+          after: {},
+          changes: {
+            hitPointsChanged: false,
+            inspirationChanged: false,
+            exhaustionChanged: false,
+            deathSavesChanged: false,
+            changedSpellSlots: [],
+            changedClassHitDice: [],
+          },
+        });
+      }
+
+      if (method === 'foundry-mcp-bridge.getCharacterInfo') {
+        expect(data).toEqual({ identifier: 'actor-laeral' });
+        return Promise.resolve({
+          id: 'actor-laeral',
+          name: 'Laeral',
+          type: 'character',
+          system: {},
+          items: [
+            {
+              id: 'class-wizard',
+              name: 'Wizard',
+              type: 'class',
+              system: {
+                spellcasting: {
+                  progression: 'full',
+                  type: 'prepared',
+                },
+              },
+            },
+            {
+              id: 'spell-fireball',
+              name: 'Fireball',
+              type: 'spell',
+              system: {
+                sourceClass: 'class-wizard',
+                preparation: {
+                  prepared: false,
+                },
+              },
+            },
+          ],
+          effects: [],
+        });
+      }
+
+      if (method === 'foundry-mcp-bridge.batchUpdateActorEmbeddedItems') {
+        expect(data).toEqual({
+          actorIdentifier: 'actor-laeral',
+          updates: [
+            {
+              itemIdentifier: 'spell-fireball',
+              itemType: 'spell',
+              updates: {
+                'system.preparation.prepared': true,
+              },
+            },
+          ],
+          reason: 'party rest',
+        });
+        return Promise.resolve({
+          success: true,
+          actorId: 'actor-laeral',
+          actorName: 'Laeral',
+          updatedItems: [
+            {
+              itemId: 'spell-fireball',
+              itemName: 'Fireball',
+              itemType: 'spell',
+              appliedUpdates: {
+                'system.preparation.prepared': true,
+              },
+              updatedFields: ['system.preparation.prepared'],
+            },
+          ],
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected query: ${method}`));
+    });
+
+    const tools = new CharacterTools({
+      foundryClient: { query } as unknown as FoundryClient,
+      logger: createLoggerStub(),
+    });
+
+    const result = (await tools.handleRunDnD5eGroupRestWorkflow({
+      restType: 'long',
+      newDay: true,
+      spellPreparationPlansByActor: [
+        {
+          actorIdentifier: 'Laeral',
+          spellPreparationPlans: [
+            {
+              mode: 'replace',
+              sourceClass: 'Wizard',
+              spellIdentifiers: ['Fireball'],
+            },
+          ],
+        },
+      ],
+      reason: 'party rest',
+    })) as Record<string, unknown>;
+
+    expect(result).toMatchObject({
+      success: true,
+      workflow: {
+        name: 'run-dnd5e-group-rest-workflow',
+        system: 'dnd5e',
+      },
+      workflowStatus: 'completed',
+      completed: true,
+      restTarget: 'party-characters',
+      restType: 'long',
+      actorCount: 2,
+      summary: {
+        completedActorCount: 2,
+        failedActorCount: 0,
+        restCompletedActorCount: 2,
+        hitPointsChangedActorCount: 1,
+        spellPreparationPlanCount: 1,
+      },
+      verification: {
+        verified: true,
+        targetedActorCount: 2,
+        attemptedActorCount: 2,
+        failedActorCount: 0,
+      },
+      actors: [
+        {
+          actor: {
+            id: 'actor-laeral',
+            name: 'Laeral',
+            type: 'character',
+          },
+          success: true,
+          workflowStatus: 'completed',
+          restCompleted: true,
+          spellPreparationUpdates: [
+            {
+              success: true,
+              updatedCount: 1,
+            },
+          ],
+        },
+        {
+          actor: {
+            id: 'actor-khelben',
+            name: 'Khelben',
+            type: 'character',
+          },
+          success: true,
+          workflowStatus: 'completed',
+          restCompleted: true,
+        },
+      ],
+    });
+  });
+
+  it('reports partial failure when one actor in the DnD5e group rest workflow does not complete cleanly', async () => {
+    const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
+      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+        return Promise.resolve({ system: 'dnd5e' });
+      }
+
+      if (method === 'foundry-mcp-bridge.runCharacterRestWorkflow') {
+        if ((data as Record<string, unknown>).actorIdentifier === 'Laeral') {
+          return Promise.resolve({
+            success: true,
+            system: 'dnd5e',
+            actorId: 'actor-laeral',
+            actorName: 'Laeral',
+            actorType: 'character',
+            restType: 'short',
+            before: {},
+            after: {},
+            changes: {
+              hitPointsChanged: true,
+              inspirationChanged: false,
+              exhaustionChanged: false,
+              deathSavesChanged: false,
+              changedSpellSlots: [],
+              changedClassHitDice: [],
+            },
+          });
+        }
+
+        throw new Error('Khelben could not complete the short rest.');
+      }
+
+      return Promise.reject(new Error(`Unexpected query: ${method}`));
+    });
+
+    const tools = new CharacterTools({
+      foundryClient: { query } as unknown as FoundryClient,
+      logger: createLoggerStub(),
+    });
+
+    const result = (await tools.handleRunDnD5eGroupRestWorkflow({
+      restTarget: 'explicit-characters',
+      characterIdentifiers: ['Laeral', 'Khelben'],
+      restType: 'short',
+    })) as Record<string, unknown>;
+
+    expect(result).toMatchObject({
+      success: false,
+      partialSuccess: true,
+      workflow: {
+        name: 'run-dnd5e-group-rest-workflow',
+        system: 'dnd5e',
+      },
+      workflowStatus: 'partial-failure',
+      restTarget: 'explicit-characters',
+      actorCount: 2,
+      summary: {
+        completedActorCount: 1,
+        failedActorCount: 1,
+        restCompletedActorCount: 1,
+        partialFailureActorCount: 0,
+      },
+      failedActors: [
+        {
+          actor: {
+            id: 'Khelben',
+            name: 'Khelben',
+            type: 'character',
+          },
+          success: false,
+        },
+      ],
+      verification: {
+        verified: false,
+        failedActorCount: 1,
+      },
+    });
+    expect(result.nextStep).toContain('rerun run-dnd5e-group-rest-workflow');
+  });
+
   it('exposes DnD5e progression preview as a dedicated tool response', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
       if (method === 'foundry-mcp-bridge.getCharacterInfo') {
@@ -5947,6 +6244,186 @@ describe('CharacterTools', () => {
           {
             id: 'fire-elemental',
             name: 'Fire Elemental',
+          },
+        ],
+      },
+    });
+  });
+
+  it('uses the shared run-dnd5e-transform-activity-workflow bridge request shape', async () => {
+    const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
+      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+        return Promise.resolve({ system: 'dnd5e' });
+      }
+
+      if (method === 'foundry-mcp-bridge.runDnD5eTransformActivity') {
+        expect(data).toEqual({
+          actorIdentifier: 'Laeral',
+          itemIdentifier: 'Wild Shape',
+          activityIdentifier: 'wild-shape-bear',
+          reason: 'Combat transformation workflow',
+        });
+        return Promise.resolve({
+          success: true,
+          system: 'dnd5e',
+          actorId: 'actor-laeral',
+          actorName: 'Laeral',
+          actorType: 'character',
+          itemId: 'item-wild-shape',
+          itemName: 'Wild Shape',
+          itemType: 'feat',
+          workflowStatus: 'completed',
+          activityId: 'wild-shape-bear',
+          activityName: 'Wild Shape',
+          sourceActorId: 'actor-brown-bear',
+          sourceActorName: 'Brown Bear',
+          sourceActorType: 'npc',
+          transformedActorId: 'actor-laeral',
+          transformedActorName: 'Laeral',
+          transformedActorType: 'character',
+          tokenIds: ['token-laeral-1'],
+          tokenNames: ['Laeral'],
+          message:
+            'Transform activity "Wild Shape" completed using Brown Bear as the transformation source.',
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected query: ${method}`));
+    });
+
+    const tools = new CharacterTools({
+      foundryClient: { query } as unknown as FoundryClient,
+      logger: createLoggerStub(),
+    });
+
+    const result = (await tools.handleRunDnD5eTransformActivityWorkflow({
+      actorIdentifier: 'Laeral',
+      itemIdentifier: 'Wild Shape',
+      activityIdentifier: 'wild-shape-bear',
+      reason: 'Combat transformation workflow',
+    })) as Record<string, unknown>;
+
+    expect(result).toMatchObject({
+      success: true,
+      workflow: {
+        name: 'run-dnd5e-transform-activity-workflow',
+        system: 'dnd5e',
+      },
+      workflowStatus: 'completed',
+      actor: {
+        id: 'actor-laeral',
+        name: 'Laeral',
+        type: 'character',
+      },
+      item: {
+        id: 'item-wild-shape',
+        name: 'Wild Shape',
+        type: 'feat',
+      },
+      activity: {
+        id: 'wild-shape-bear',
+        name: 'Wild Shape',
+      },
+      sourceActor: {
+        id: 'actor-brown-bear',
+        name: 'Brown Bear',
+        type: 'npc',
+      },
+      transformedActor: {
+        id: 'actor-laeral',
+        name: 'Laeral',
+        type: 'character',
+      },
+      tokenIds: ['token-laeral-1'],
+      tokenNames: ['Laeral'],
+    });
+  });
+
+  it('surfaces transform activity choices when run-dnd5e-transform-activity-workflow needs selection data', async () => {
+    const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
+      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+        return Promise.resolve({ system: 'dnd5e' });
+      }
+
+      if (method === 'foundry-mcp-bridge.runDnD5eTransformActivity') {
+        expect(data).toEqual({
+          actorIdentifier: 'Laeral',
+          itemIdentifier: 'Wild Shape',
+        });
+        return Promise.resolve({
+          success: false,
+          system: 'dnd5e',
+          actorId: 'actor-laeral',
+          actorName: 'Laeral',
+          actorType: 'character',
+          itemId: 'item-wild-shape',
+          itemName: 'Wild Shape',
+          itemType: 'feat',
+          workflowStatus: 'needs-activity',
+          requiresChoices: true,
+          availableActivities: [
+            {
+              id: 'wild-shape-bear',
+              name: 'Wild Shape Bear',
+              type: 'transform',
+            },
+            {
+              id: 'wild-shape-wolf',
+              name: 'Wild Shape Wolf',
+              type: 'transform',
+            },
+          ],
+          message:
+            'This item exposes multiple transform activities. Provide activityIdentifier to select the one to run.',
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected query: ${method}`));
+    });
+
+    const tools = new CharacterTools({
+      foundryClient: { query } as unknown as FoundryClient,
+      logger: createLoggerStub(),
+    });
+
+    const result = (await tools.handleRunDnD5eTransformActivityWorkflow({
+      actorIdentifier: 'Laeral',
+      itemIdentifier: 'Wild Shape',
+    })) as Record<string, unknown>;
+
+    expect(result).toMatchObject({
+      success: false,
+      workflow: {
+        name: 'run-dnd5e-transform-activity-workflow',
+        system: 'dnd5e',
+      },
+      workflowStatus: 'needs-activity',
+      requiresChoices: true,
+      availableActivities: [
+        {
+          id: 'wild-shape-bear',
+          name: 'Wild Shape Bear',
+          type: 'transform',
+        },
+        {
+          id: 'wild-shape-wolf',
+          name: 'Wild Shape Wolf',
+          type: 'transform',
+        },
+      ],
+      unresolved: {
+        kind: 'transform-activity',
+        requiresChoices: true,
+        availableActivities: [
+          {
+            id: 'wild-shape-bear',
+            name: 'Wild Shape Bear',
+            type: 'transform',
+          },
+          {
+            id: 'wild-shape-wolf',
+            name: 'Wild Shape Wolf',
+            type: 'transform',
           },
         ],
       },

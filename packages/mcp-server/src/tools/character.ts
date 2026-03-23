@@ -36,6 +36,8 @@ import type {
   FoundryPreviewCharacterProgressionResponse,
   FoundryRunDnD5eSummonActivityRequest,
   FoundryRunDnD5eSummonActivityResponse,
+  FoundryRunDnD5eTransformActivityRequest,
+  FoundryRunDnD5eTransformActivityResponse,
   FoundrySearchCharacterItemsResponse,
   FoundrySummonCharacterCompanionRequest,
   FoundrySummonCharacterCompanionResponse,
@@ -2333,6 +2335,75 @@ export class CharacterTools {
         },
       },
       {
+        name: 'run-dnd5e-group-rest-workflow',
+        description:
+          'DnD5e only: orchestrate short or long rests across a party or explicit character list, then optionally apply per-actor post-rest spell preparation plans and return a structured group summary.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            restTarget: {
+              type: 'string',
+              enum: ['party-characters', 'explicit-characters'],
+              description:
+                'party-characters rests the current player-owned party roster. explicit-characters only rests the listed characterIdentifiers.',
+            },
+            groupIdentifier: {
+              type: 'string',
+              description: 'Optional DnD5e group actor name or ID for workflow reporting context.',
+            },
+            characterIdentifiers: {
+              type: 'array',
+              items: { type: 'string' },
+              description:
+                'Required when restTarget is explicit-characters. Character names or IDs to include in the group rest.',
+            },
+            restType: {
+              type: 'string',
+              enum: ['short', 'long'],
+              description: 'Which DnD5e rest workflow to run for each targeted character',
+            },
+            suppressChat: {
+              type: 'boolean',
+              description:
+                'Suppress chat output where the underlying rest workflow supports it. Defaults to true for MCP.',
+            },
+            newDay: {
+              type: 'boolean',
+              description:
+                'Optional DnD5e long-rest flag for advancing to a new day when the system rest API supports it.',
+            },
+            spellPreparationPlansByActor: {
+              type: 'array',
+              description:
+                'Optional per-actor post-rest spell preparation plans keyed by actor name or ID.',
+              items: {
+                type: 'object',
+                properties: {
+                  actorIdentifier: {
+                    type: 'string',
+                    description: 'Character name or ID that should receive the preparation plans',
+                  },
+                  spellPreparationPlans: createSpellPreparationPlansInputSchema(
+                    'Post-rest spell preparation plans for this actor.'
+                  ),
+                },
+                required: ['actorIdentifier', 'spellPreparationPlans'],
+              },
+            },
+            continueOnError: {
+              type: 'boolean',
+              description:
+                'When true, continue attempting rests for the remaining characters even if one actor workflow fails. Defaults to true.',
+            },
+            reason: {
+              type: 'string',
+              description: 'Optional audit reason for the group rest workflow',
+            },
+          },
+          required: ['restType'],
+        },
+      },
+      {
         name: 'create-character-companion',
         description:
           'Create or link a persistent companion or familiar actor for a character. Supports cloning a compendium actor or linking an existing world actor, and can optionally place the companion on the current scene.',
@@ -3041,6 +3112,34 @@ export class CharacterTools {
             reason: {
               type: 'string',
               description: 'Optional audit reason for the summon workflow.',
+            },
+          },
+          required: ['actorIdentifier', 'itemIdentifier'],
+        },
+      },
+      {
+        name: 'run-dnd5e-transform-activity-workflow',
+        description:
+          'DnD5e only: run a transform activity from an owned item using the system activity workflow, surface unresolved activity choices when needed, and report the transformation outcome.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            actorIdentifier: {
+              type: 'string',
+              description: 'Character or actor name/ID that owns the transform-capable item.',
+            },
+            itemIdentifier: {
+              type: 'string',
+              description: 'Owned item name or ID that contains the DnD5e transform activity.',
+            },
+            activityIdentifier: {
+              type: 'string',
+              description:
+                'Optional transform activity name or ID when the item exposes more than one transform activity.',
+            },
+            reason: {
+              type: 'string',
+              description: 'Optional audit reason for the transform workflow.',
             },
           },
           required: ['actorIdentifier', 'itemIdentifier'],
@@ -5010,6 +5109,246 @@ export class CharacterTools {
     };
   }
 
+  async handleRunDnD5eGroupRestWorkflow(args: unknown): Promise<UnknownRecord> {
+    const spellPreparationPlanSchema = createSpellPreparationPlanSchema();
+    const schema = z
+      .object({
+        restTarget: z.enum(['party-characters', 'explicit-characters']).default('party-characters'),
+        groupIdentifier: z.string().min(1).optional(),
+        characterIdentifiers: z.array(z.string().min(1)).optional(),
+        restType: z.enum(['short', 'long']),
+        suppressChat: z.boolean().default(true),
+        newDay: z.boolean().optional(),
+        spellPreparationPlansByActor: z
+          .array(
+            z.object({
+              actorIdentifier: z.string().min(1, 'Actor identifier cannot be empty'),
+              spellPreparationPlans: z.array(spellPreparationPlanSchema).default([]),
+            })
+          )
+          .optional(),
+        continueOnError: z.boolean().default(true),
+        reason: z.string().min(1).optional(),
+      })
+      .superRefine((value, ctx) => {
+        if (
+          value.restTarget === 'explicit-characters' &&
+          (!value.characterIdentifiers || value.characterIdentifiers.length === 0)
+        ) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message:
+              'characterIdentifiers must contain at least one target when restTarget is explicit-characters.',
+            path: ['characterIdentifiers'],
+          });
+        }
+      });
+
+    const parsed = schema.parse(args);
+
+    this.logger.info('Running DnD5e group rest workflow', parsed);
+
+    const gameSystem = await this.getGameSystem();
+    if (gameSystem !== 'dnd5e') {
+      throw new Error(
+        'UNSUPPORTED_CAPABILITY: run-dnd5e-group-rest-workflow is only available when the active system is dnd5e.'
+      );
+    }
+
+    const workflowMetadata = this.createDnD5eWorkflowMetadata('run-dnd5e-group-rest-workflow');
+    const groupSummary = parsed.groupIdentifier
+      ? await this.resolvePrimaryPartyGroup({ partyIdentifier: parsed.groupIdentifier })
+      : null;
+    const recipients =
+      parsed.restTarget === 'party-characters'
+        ? this.normalizeNamedEntities(
+            await this.foundryClient.query<unknown[]>('foundry-mcp-bridge.getPartyCharacters', {})
+          )
+        : parsed.characterIdentifiers!.map(identifier => ({
+            id: identifier,
+            name: identifier,
+          }));
+
+    if (recipients.length === 0) {
+      throw new Error(
+        parsed.restTarget === 'party-characters'
+          ? 'No party characters were found to receive the DnD5e group rest workflow.'
+          : 'No explicit character targets were provided for the DnD5e group rest workflow.'
+      );
+    }
+
+    const plansByActorId = new Map<
+      string,
+      Array<{
+        mode: 'replace' | 'prepare' | 'unprepare';
+        spellIdentifiers: string[];
+        sourceClass?: string | undefined;
+        reason?: string | undefined;
+      }>
+    >();
+    for (const actorPlan of parsed.spellPreparationPlansByActor ?? []) {
+      const normalizedActorIdentifier = actorPlan.actorIdentifier.toLowerCase();
+      const recipient = recipients.find(
+        candidate =>
+          candidate.id.toLowerCase() === normalizedActorIdentifier ||
+          candidate.name.toLowerCase() === normalizedActorIdentifier
+      );
+      if (!recipient) {
+        throw new Error(
+          `Spell preparation plans were provided for "${actorPlan.actorIdentifier}", but that actor is not part of this group rest target.`
+        );
+      }
+      if (plansByActorId.has(recipient.id)) {
+        throw new Error(
+          `Spell preparation plans were provided more than once for "${recipient.name}".`
+        );
+      }
+
+      plansByActorId.set(recipient.id, actorPlan.spellPreparationPlans);
+    }
+
+    const actorResults: UnknownRecord[] = [];
+    const failedActors: UnknownRecord[] = [];
+    const warnings: string[] = [];
+
+    for (const recipient of recipients) {
+      try {
+        const actorResult = await this.handleRunDnD5eRestWorkflow({
+          actorIdentifier: recipient.id,
+          restType: parsed.restType,
+          suppressChat: parsed.suppressChat,
+          ...(parsed.newDay !== undefined ? { newDay: parsed.newDay } : {}),
+          ...(plansByActorId.has(recipient.id)
+            ? { spellPreparationPlans: plansByActorId.get(recipient.id) }
+            : {}),
+          ...(parsed.reason !== undefined ? { reason: parsed.reason } : {}),
+        });
+        const actorRecord = this.toRecord(actorResult) ?? {};
+        const actorWarnings = Array.isArray(actorRecord.warnings)
+          ? actorRecord.warnings.filter((warning): warning is string => typeof warning === 'string')
+          : [];
+        warnings.push(...actorWarnings);
+
+        const actorWorkflowResult = {
+          actor: this.toRecord(actorRecord.character) ?? {
+            id: recipient.id,
+            name: recipient.name,
+            type: 'character',
+          },
+          success: actorRecord.success === true,
+          workflowStatus:
+            typeof actorRecord.workflowStatus === 'string'
+              ? actorRecord.workflowStatus
+              : actorRecord.success === true
+                ? 'completed'
+                : 'failed',
+          restCompleted: actorRecord.restCompleted === true,
+          ...(actorRecord.rest ? { rest: actorRecord.rest } : {}),
+          ...(actorRecord.spellPreparationUpdates
+            ? { spellPreparationUpdates: actorRecord.spellPreparationUpdates }
+            : {}),
+          ...(actorRecord.verification ? { verification: actorRecord.verification } : {}),
+          ...(actorWarnings.length > 0 ? { warnings: actorWarnings } : {}),
+        } satisfies UnknownRecord;
+
+        actorResults.push(actorWorkflowResult);
+        if (actorRecord.success !== true) {
+          failedActors.push(actorWorkflowResult);
+          if (!parsed.continueOnError) {
+            break;
+          }
+        }
+      } catch (error) {
+        const failure = {
+          actor: {
+            id: recipient.id,
+            name: recipient.name,
+            type: 'character',
+          },
+          success: false,
+          workflowStatus: 'failed',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        } satisfies UnknownRecord;
+        actorResults.push(failure);
+        failedActors.push(failure);
+        if (!parsed.continueOnError) {
+          break;
+        }
+      }
+    }
+
+    const restCompletedCount = actorResults.filter(result => {
+      const record = this.toRecord(result);
+      return record?.restCompleted === true;
+    }).length;
+    const partialFailureCount = actorResults.filter(result => {
+      const record = this.toRecord(result);
+      return record?.success !== true && record?.restCompleted === true;
+    }).length;
+    const hitPointChangeCount = actorResults.filter(result => {
+      const rest = this.toRecord(this.toRecord(result)?.rest);
+      const changes = this.toRecord(rest?.changes);
+      return changes?.hitPointsChanged === true;
+    }).length;
+    const spellPreparationPlanCount = actorResults.reduce((count, result) => {
+      const record = this.toRecord(result);
+      const updates = Array.isArray(record?.spellPreparationUpdates)
+        ? record.spellPreparationUpdates
+        : [];
+      return count + updates.length;
+    }, 0);
+    const success = failedActors.length === 0;
+    const verification = {
+      verified: success,
+      targetedActorCount: recipients.length,
+      attemptedActorCount: actorResults.length,
+      failedActorCount: failedActors.length,
+      restCompletedActorCount: restCompletedCount,
+    };
+
+    return {
+      ...workflowMetadata,
+      success,
+      partialSuccess: !success && actorResults.length > 0,
+      workflowStatus: success
+        ? 'completed'
+        : actorResults.length > failedActors.length
+          ? 'partial-failure'
+          : 'failed',
+      ...(success ? { completed: true } : {}),
+      restTarget: parsed.restTarget,
+      restType: parsed.restType,
+      actorCount: recipients.length,
+      ...(groupSummary
+        ? {
+            group: {
+              id: groupSummary.id,
+              name: groupSummary.name,
+              type: 'group',
+            },
+          }
+        : {}),
+      summary: {
+        completedActorCount: actorResults.length - failedActors.length,
+        failedActorCount: failedActors.length,
+        restCompletedActorCount: restCompletedCount,
+        partialFailureActorCount: partialFailureCount,
+        hitPointsChangedActorCount: hitPointChangeCount,
+        spellPreparationPlanCount,
+      },
+      actors: actorResults,
+      ...(failedActors.length > 0 ? { failedActors } : {}),
+      verification,
+      ...(!success
+        ? {
+            nextStep:
+              'Review the failed actor rest results, then rerun run-dnd5e-group-rest-workflow for the remaining characters or resolve the actor-specific issues individually.',
+          }
+        : {}),
+      ...(warnings.length > 0 ? { warnings: this.mergeWarnings(warnings) } : {}),
+    };
+  }
+
   async handleAwardDnD5ePartyResources(args: unknown): Promise<UnknownRecord> {
     const schema = z
       .object({
@@ -5726,6 +6065,128 @@ export class CharacterTools {
         : {}),
       tokensPlaced: result.tokensPlaced ?? 0,
       tokenIds: result.tokenIds ?? [],
+      ...(result.tokenNames ? { tokenNames: result.tokenNames } : {}),
+      ...(result.message ? { message: result.message } : {}),
+      ...(result.warnings ? { warnings: result.warnings } : {}),
+    };
+  }
+
+  async handleRunDnD5eTransformActivityWorkflow(args: unknown): Promise<UnknownRecord> {
+    const schema = z.object({
+      actorIdentifier: z.string().min(1, 'Actor identifier cannot be empty'),
+      itemIdentifier: z.string().min(1, 'Item identifier cannot be empty'),
+      activityIdentifier: z.string().min(1).optional(),
+      reason: z.string().min(1).optional(),
+    });
+
+    const parsed = schema.parse(args);
+
+    this.logger.info('Running DnD5e transform activity workflow', parsed);
+
+    const gameSystem = await this.getGameSystem();
+    if (gameSystem !== 'dnd5e') {
+      throw new Error(
+        'UNSUPPORTED_CAPABILITY: run-dnd5e-transform-activity-workflow is only available when the active system is dnd5e.'
+      );
+    }
+
+    const workflowMetadata = this.createDnD5eWorkflowMetadata(
+      'run-dnd5e-transform-activity-workflow'
+    );
+
+    const result = await this.foundryClient.query<FoundryRunDnD5eTransformActivityResponse>(
+      'foundry-mcp-bridge.runDnD5eTransformActivity',
+      {
+        actorIdentifier: parsed.actorIdentifier,
+        itemIdentifier: parsed.itemIdentifier,
+        ...(parsed.activityIdentifier !== undefined
+          ? { activityIdentifier: parsed.activityIdentifier }
+          : {}),
+        ...(parsed.reason !== undefined ? { reason: parsed.reason } : {}),
+      } satisfies FoundryRunDnD5eTransformActivityRequest
+    );
+
+    const hasActivityDetails = (result.activityId ?? result.activityName) !== undefined;
+
+    if (result.workflowStatus !== 'completed') {
+      return {
+        ...workflowMetadata,
+        success: false,
+        workflowStatus: result.workflowStatus,
+        requiresChoices: result.requiresChoices ?? true,
+        actor: {
+          id: result.actorId,
+          name: result.actorName,
+          type: result.actorType,
+        },
+        item: {
+          id: result.itemId,
+          name: result.itemName,
+          type: result.itemType,
+        },
+        ...(hasActivityDetails
+          ? {
+              activity: {
+                ...(result.activityId ? { id: result.activityId } : {}),
+                ...(result.activityName ? { name: result.activityName } : {}),
+              },
+            }
+          : {}),
+        ...(result.availableActivities ? { availableActivities: result.availableActivities } : {}),
+        unresolved: {
+          kind: result.availableActivities ? 'transform-activity' : 'transform-choice',
+          requiresChoices: result.requiresChoices ?? true,
+          ...(result.availableActivities
+            ? { availableActivities: result.availableActivities }
+            : {}),
+          ...(result.message ? { message: result.message } : {}),
+        },
+        ...(result.message ? { message: result.message } : {}),
+        ...(result.warnings ? { warnings: result.warnings } : {}),
+      };
+    }
+
+    return {
+      ...workflowMetadata,
+      success: true,
+      workflowStatus: result.workflowStatus,
+      actor: {
+        id: result.actorId,
+        name: result.actorName,
+        type: result.actorType,
+      },
+      item: {
+        id: result.itemId,
+        name: result.itemName,
+        type: result.itemType,
+      },
+      ...(hasActivityDetails
+        ? {
+            activity: {
+              ...(result.activityId ? { id: result.activityId } : {}),
+              ...(result.activityName ? { name: result.activityName } : {}),
+            },
+          }
+        : {}),
+      ...((result.sourceActorId ?? result.sourceActorName)
+        ? {
+            sourceActor: {
+              ...(result.sourceActorId ? { id: result.sourceActorId } : {}),
+              ...(result.sourceActorName ? { name: result.sourceActorName } : {}),
+              ...(result.sourceActorType ? { type: result.sourceActorType } : {}),
+            },
+          }
+        : {}),
+      ...((result.transformedActorId ?? result.transformedActorName)
+        ? {
+            transformedActor: {
+              ...(result.transformedActorId ? { id: result.transformedActorId } : {}),
+              ...(result.transformedActorName ? { name: result.transformedActorName } : {}),
+              ...(result.transformedActorType ? { type: result.transformedActorType } : {}),
+            },
+          }
+        : {}),
+      ...(result.tokenIds ? { tokenIds: result.tokenIds } : {}),
       ...(result.tokenNames ? { tokenNames: result.tokenNames } : {}),
       ...(result.message ? { message: result.message } : {}),
       ...(result.warnings ? { warnings: result.warnings } : {}),

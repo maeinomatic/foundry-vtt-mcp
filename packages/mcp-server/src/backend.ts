@@ -1738,6 +1738,11 @@ async function startBackend(): Promise<void> {
 
                     break;
 
+                  case 'run-dnd5e-group-rest-workflow':
+                    result = await characterTools.handleRunDnD5eGroupRestWorkflow(args);
+
+                    break;
+
                   case 'complete-dnd5e-level-up-workflow':
                     result = await characterTools.handleCompleteDnD5eLevelUpWorkflow(args);
 
@@ -1750,6 +1755,11 @@ async function startBackend(): Promise<void> {
 
                   case 'run-dnd5e-summon-activity':
                     result = await characterTools.handleRunDnD5eSummonActivity(args);
+
+                    break;
+
+                  case 'run-dnd5e-transform-activity-workflow':
+                    result = await characterTools.handleRunDnD5eTransformActivityWorkflow(args);
 
                     break;
 

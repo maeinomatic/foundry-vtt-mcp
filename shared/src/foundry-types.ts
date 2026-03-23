@@ -838,6 +838,14 @@ export interface FoundryDnD5eSummonActivitySummary extends UnknownRecord {
   itemName?: string;
 }
 
+export interface FoundryDnD5eTransformActivitySummary extends UnknownRecord {
+  id: string;
+  name: string;
+  type: string;
+  itemId?: string;
+  itemName?: string;
+}
+
 export interface FoundryDnD5eSummonProfileSummary extends UnknownRecord {
   id: string;
   name: string;
@@ -877,6 +885,39 @@ export interface FoundryRunDnD5eSummonActivityResponse extends UnknownRecord {
   availableActivities?: FoundryDnD5eSummonActivitySummary[];
   availableProfiles?: FoundryDnD5eSummonProfileSummary[];
   tokensPlaced?: number;
+  tokenIds?: string[];
+  tokenNames?: string[];
+  warnings?: string[];
+  message?: string;
+}
+
+export interface FoundryRunDnD5eTransformActivityRequest {
+  actorIdentifier: string;
+  itemIdentifier: string;
+  activityIdentifier?: string;
+  reason?: string;
+}
+
+export interface FoundryRunDnD5eTransformActivityResponse extends UnknownRecord {
+  success: boolean;
+  system: 'dnd5e';
+  actorId: string;
+  actorName: string;
+  actorType: string;
+  itemId: string;
+  itemName: string;
+  itemType: string;
+  workflowStatus: 'completed' | 'needs-activity';
+  requiresChoices?: boolean;
+  activityId?: string;
+  activityName?: string;
+  availableActivities?: FoundryDnD5eTransformActivitySummary[];
+  sourceActorId?: string;
+  sourceActorName?: string;
+  sourceActorType?: string;
+  transformedActorId?: string;
+  transformedActorName?: string;
+  transformedActorType?: string;
   tokenIds?: string[];
   tokenNames?: string[];
   warnings?: string[];

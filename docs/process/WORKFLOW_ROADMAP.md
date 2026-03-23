@@ -90,9 +90,12 @@ References:
 The repo already has a solid first workflow phase:
 
 - `run-dnd5e-rest-workflow`
+- `run-dnd5e-group-rest-workflow`
 - `complete-dnd5e-level-up-workflow`
+- `complete-dnd5e-multiclass-entry-workflow`
 - `award-dnd5e-party-resources`
 - `run-dnd5e-summon-activity`
+- `run-dnd5e-transform-activity-workflow`
 - `organize-dnd5e-spellbook-workflow`
 
 These should now be treated as the baseline pattern for future workflow work:
@@ -164,7 +167,7 @@ Completed in the current baseline:
 - unresolved advancement choices now stop with resumable guidance instead of
   forcing the caller to rediscover the owned class item state
 
-### Priority 3: DnD5e Group Rest Workflow
+### Priority 3: DnD5e Group Rest Workflow (Completed)
 
 Proposed tool:
 
@@ -182,7 +185,18 @@ Why this belongs here:
 - DnD5e hooks explicitly mention group-rest completion boundaries
 - it fits the same "bookkeeping workflow" family as party awards
 
-### Priority 4: DnD5e Transform Activity Workflow
+Completed in the current baseline:
+
+- `run-dnd5e-group-rest-workflow` now orchestrates the existing
+  single-character DnD5e rest workflow across either the primary party target
+  or an explicit actor list
+- it returns a normalized party-level workflow result with per-actor outcomes,
+  partial-failure reporting, aggregate verification, and post-rest spell
+  preparation support per actor
+- it stays aligned with the documented DnD5e workflow boundary without
+  inventing an undocumented headless group-rest API
+
+### Priority 4: DnD5e Transform Activity Workflow (Completed)
 
 Proposed tool:
 
@@ -199,21 +213,67 @@ Why this is a workflow:
 - Transform is an official activity type, not an invented MCP concept
 - it is richer and more stateful than a simple actor update
 
-### Priority 5: Cross-System Workflow Evaluation
+Completed in the current baseline:
+
+- `run-dnd5e-transform-activity-workflow` now executes a DnD5e transform
+  activity from an owned item through the public activity API
+- it surfaces unresolved activity selection cleanly when an item exposes more
+  than one transform activity
+- it captures source actor and transformed actor details using the documented
+  DnD5e activity and transform hooks, and reports token consequences when the
+  workflow surfaces them
+
+### Priority 5: Cross-System Workflow Evaluation (Completed)
 
 Do not port DnD5e workflows blindly.
 
-Before adding PF2e or DSA5 workflow tools, explicitly check:
+Evaluation questions:
 
-1. whether the system has an equivalent documented workflow boundary
-2. whether the operation can be expressed through public APIs
-3. whether the result can be normalized without hiding system-specific meaning
+1. Does the system have an equivalent documented workflow boundary?
+2. Can the operation be expressed through public APIs?
+3. Can the result be normalized without hiding system-specific meaning?
 
-The right output of this step may be:
+Cross-system conclusion:
 
-- a new workflow tool for another system
-- a decision to keep using primitives only
-- a documented unsupported capability
+- PF2e should stay primitive-first for now.
+  The official PF2e docs strongly emphasize rule-element driven automation such
+  as `ChoiceSet`, `GrantItem`, and `Battle Form`, which is a different
+  architecture from DnD5e's explicit activity, awards, and rest workflow
+  surfaces. That suggests targeted adapter helpers and primitive orchestration
+  are the safer design, not DnD5e-style workflow tools by default.
+- DSA5 should also stay primitive-first for now.
+  The official Foundry package and public project material highlight broad
+  system automation features, but they do not expose documented public workflow
+  boundaries comparable to DnD5e's activity and rest hooks. Until the system's
+  public docs or repo expose stable workflow APIs, MCP should prefer narrow
+  primitives and explicit unsupported-capability behavior over invented
+  high-level workflows.
+- DnD5e remains the only system in this repo with strong official evidence for
+  a broader workflow layer.
+
+Recommended direction after the evaluation:
+
+- continue adding DnD5e workflows only where the official activity or hook model
+  provides a clear system boundary
+- for PF2e, improve rule-aware primitive orchestration instead of adding broad
+  workflow wrappers
+- for DSA5, focus on adapter completeness and stable low-level writes until a
+  documented workflow surface is available
+
+Sources considered for this evaluation:
+
+- Foundry public `Document` API:
+  https://foundryvtt.com/api/v13/classes/foundry.abstract.Document.html
+- DnD5e wiki home:
+  https://github-wiki-see.page/m/foundryvtt/dnd5e/wiki
+- DnD5e Hooks:
+  https://github-wiki-see.page/m/foundryvtt/dnd5e/wiki/Hooks
+- PF2e GM's Starter Guide:
+  https://github.com/foundryvtt/pf2e/wiki/GM%27s-Starter-Guide
+- PF2e Quickstart guide for rule elements:
+  https://github.com/foundryvtt/pf2e/wiki/Quickstart-guide-for-rule-elements
+- DSA5 package ecosystem pages on Foundry:
+  https://foundryvtt.com/packages/dsa5-introduction
 
 ## Things We Should Avoid
 
