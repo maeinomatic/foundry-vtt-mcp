@@ -584,9 +584,12 @@ export class CharacterTools {
   }
 
   private async getCharacterData(identifier: string): Promise<CharacterInfoResponse> {
-    return this.foundryClient.query<CharacterInfoResponse>('maeinomatic-foundry-mcp.getCharacterInfo', {
-      identifier,
-    });
+    return this.foundryClient.query<CharacterInfoResponse>(
+      'maeinomatic-foundry-mcp.getCharacterInfo',
+      {
+        identifier,
+      }
+    );
   }
 
   private async createDnD5eClassItemOnCharacter(params: {
@@ -3365,16 +3368,19 @@ export class CharacterTools {
     });
 
     try {
-      const result = await this.foundryClient.query<UseItemResponse>('maeinomatic-foundry-mcp.useItem', {
-        actorIdentifier,
-        itemIdentifier,
-        targets,
-        options: {
-          consume: consume ?? true,
-          spellLevel,
-          skipDialog: skipDialog ?? true, // Default to skipping dialogs for MCP automation
-        },
-      });
+      const result = await this.foundryClient.query<UseItemResponse>(
+        'maeinomatic-foundry-mcp.useItem',
+        {
+          actorIdentifier,
+          itemIdentifier,
+          targets,
+          options: {
+            consume: consume ?? true,
+            spellLevel,
+            skipDialog: skipDialog ?? true, // Default to skipping dialogs for MCP automation
+          },
+        }
+      );
 
       this.logger.debug('Successfully used item', {
         actorName: result.actorName,
@@ -3418,9 +3424,12 @@ export class CharacterTools {
         ...(category !== undefined ? { category } : {}),
         limit: limit ?? 20,
       };
-      const result = await this.foundryClient.query('maeinomatic-foundry-mcp.searchCharacterItems', {
-        ...request,
-      });
+      const result = await this.foundryClient.query(
+        'maeinomatic-foundry-mcp.searchCharacterItems',
+        {
+          ...request,
+        }
+      );
 
       this.logger.debug('Successfully searched character items', {
         characterName: result.characterName,
@@ -5162,7 +5171,10 @@ export class CharacterTools {
     const recipients =
       parsed.restTarget === 'party-characters'
         ? this.normalizeNamedEntities(
-            await this.foundryClient.query<unknown[]>('maeinomatic-foundry-mcp.getPartyCharacters', {})
+            await this.foundryClient.query<unknown[]>(
+              'maeinomatic-foundry-mcp.getPartyCharacters',
+              {}
+            )
           )
         : parsed.characterIdentifiers!.map(identifier => ({
             id: identifier,
@@ -5489,7 +5501,10 @@ export class CharacterTools {
     const recipients =
       parsed.awardTarget === 'party-characters'
         ? this.normalizeNamedEntities(
-            await this.foundryClient.query<unknown[]>('maeinomatic-foundry-mcp.getPartyCharacters', {})
+            await this.foundryClient.query<unknown[]>(
+              'maeinomatic-foundry-mcp.getPartyCharacters',
+              {}
+            )
           )
         : parsed.characterIdentifiers!.map(identifier => ({
             id: identifier,

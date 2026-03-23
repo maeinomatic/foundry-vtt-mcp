@@ -282,7 +282,9 @@ export class DSA5CharacterCreator {
 
     try {
       // Get all available packs or specific pack
-      const packsResult = await this.foundryClient.query('maeinomatic-foundry-mcp.getAvailablePacks');
+      const packsResult = await this.foundryClient.query(
+        'maeinomatic-foundry-mcp.getAvailablePacks'
+      );
       const packs = Array.isArray(packsResult)
         ? packsResult.filter((pack): pack is PackSummary => this.isPackSummary(pack))
         : [];

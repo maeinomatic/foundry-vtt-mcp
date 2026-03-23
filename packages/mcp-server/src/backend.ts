@@ -60,7 +60,10 @@ function getBundledPythonPath(): string {
   const execDir = path.dirname(process.execPath);
 
   // Check if we're running from an installed location
-  if (currentDir.includes('MaeinomaticFoundryMCPServer') || execDir.includes('MaeinomaticFoundryMCPServer')) {
+  if (
+    currentDir.includes('MaeinomaticFoundryMCPServer') ||
+    execDir.includes('MaeinomaticFoundryMCPServer')
+  ) {
     // Extract the installation directory
     const foundryMcpIndex = currentDir.indexOf('MaeinomaticFoundryMCPServer');
     if (foundryMcpIndex !== -1) {
@@ -68,7 +71,10 @@ function getBundledPythonPath(): string {
     } else {
       const foundryMcpExecIndex = execDir.indexOf('MaeinomaticFoundryMCPServer');
       if (foundryMcpExecIndex !== -1) {
-        installDir = execDir.substring(0, foundryMcpExecIndex + 'MaeinomaticFoundryMCPServer'.length);
+        installDir = execDir.substring(
+          0,
+          foundryMcpExecIndex + 'MaeinomaticFoundryMCPServer'.length
+        );
       }
     }
   }
@@ -150,7 +156,14 @@ function getBundledPythonPath(): string {
     ),
     path.join(process.cwd(), '..', '..', 'ComfyUI-env', 'Scripts', 'python.exe'),
     path.join(__dirname, '..', '..', '..', 'ComfyUI-env', 'Scripts', 'python.exe'),
-    path.join(os.homedir(), 'AppData', 'Local', 'MaeinomaticFoundryMCPServer', 'Python', 'python.exe'),
+    path.join(
+      os.homedir(),
+      'AppData',
+      'Local',
+      'MaeinomaticFoundryMCPServer',
+      'Python',
+      'python.exe'
+    ),
   ];
 
   for (const fallbackPath of fallbackPaths) {
@@ -382,7 +395,13 @@ function findComfyUIPath(): string {
 
   // Check for flat ComfyUI installation (unlikely but possible)
 
-  const flatPath = path.join(os.homedir(), 'AppData', 'Local', 'MaeinomaticFoundryMCPServer', 'ComfyUI');
+  const flatPath = path.join(
+    os.homedir(),
+    'AppData',
+    'Local',
+    'MaeinomaticFoundryMCPServer',
+    'ComfyUI'
+  );
 
   if (fs.existsSync(path.join(flatPath, 'main.py'))) {
     return flatPath;

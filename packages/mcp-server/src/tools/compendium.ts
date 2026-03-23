@@ -590,11 +590,14 @@ export class CompendiumTools {
     });
 
     try {
-      const rawResults = await this.foundryClient.query('maeinomatic-foundry-mcp.searchCompendium', {
-        query,
-        packType,
-        filters,
-      });
+      const rawResults = await this.foundryClient.query(
+        'maeinomatic-foundry-mcp.searchCompendium',
+        {
+          query,
+          packType,
+          filters,
+        }
+      );
 
       const results = Array.isArray(rawResults) ? rawResults.filter(isCompendiumSearchEntity) : [];
 
@@ -637,10 +640,13 @@ export class CompendiumTools {
     try {
       const gameSystem = await this.getGameSystem();
       // Use the proper document retrieval method that already exists in actor creation
-      const item = await this.foundryClient.query('maeinomatic-foundry-mcp.getCompendiumDocumentFull', {
-        packId,
-        documentId: itemId,
-      });
+      const item = await this.foundryClient.query(
+        'maeinomatic-foundry-mcp.getCompendiumDocumentFull',
+        {
+          packId,
+          documentId: itemId,
+        }
+      );
 
       if (!item) {
         throw new Error(`Item ${itemId} not found in pack ${packId}`);

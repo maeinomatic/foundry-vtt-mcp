@@ -1,5 +1,8 @@
 import { permissionManager } from '../permissions.js';
-import type { FoundryJournalEntryResponse, FoundryJournalSummary } from '@maeinomatic/foundry-mcp-shared';
+import type {
+  FoundryJournalEntryResponse,
+  FoundryJournalSummary,
+} from '@maeinomatic/foundry-mcp-shared';
 import { getOrCreateFolder } from './folder-service.js';
 
 type AuditStatus = 'success' | 'failure';

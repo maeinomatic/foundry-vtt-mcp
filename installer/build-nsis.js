@@ -186,7 +186,12 @@ function copyMcpServerFilesV2() {
     path.join(mcpServerDest, 'shared', 'package.json')
   );
 
-  const sharedPkgDst = path.join(mcpServerDest, 'node_modules', '@maeinomatic', 'foundry-mcp-shared');
+  const sharedPkgDst = path.join(
+    mcpServerDest,
+    'node_modules',
+    '@maeinomatic',
+    'foundry-mcp-shared'
+  );
   ensureDir(sharedPkgDst);
   copyRecursive(path.join(sharedSource, 'dist'), path.join(sharedPkgDst, 'dist'));
   fs.copyFileSync(path.join(sharedSource, 'package.json'), path.join(sharedPkgDst, 'package.json'));
@@ -459,7 +464,10 @@ function buildInstaller() {
   try {
     // Define paths
     const nsisScript = path.join(config.nsisDir, 'maeinomatic-foundry-mcp-server.nsi');
-    const outputPath = path.join(config.buildDir, `MaeinomaticFoundryMCPServer-Setup-${version}.exe`);
+    const outputPath = path.join(
+      config.buildDir,
+      `MaeinomaticFoundryMCPServer-Setup-${version}.exe`
+    );
 
     console.log(`   📁 NSIS script: ${nsisScript}`);
     console.log(`   📁 Output path: ${outputPath}`);

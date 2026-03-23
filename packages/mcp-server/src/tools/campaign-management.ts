@@ -6,7 +6,11 @@ import { FoundryClient } from '../foundry-client.js';
 import { ErrorHandler } from '../utils/error-handler.js';
 import { Logger } from '../logger.js';
 import { CampaignPartTypeSchema } from '@maeinomatic/foundry-mcp-shared';
-import type { CampaignStructure, CampaignPart, CampaignSubPart } from '@maeinomatic/foundry-mcp-shared';
+import type {
+  CampaignStructure,
+  CampaignPart,
+  CampaignSubPart,
+} from '@maeinomatic/foundry-mcp-shared';
 
 type CampaignTemplateType =
   | 'five-part-adventure'

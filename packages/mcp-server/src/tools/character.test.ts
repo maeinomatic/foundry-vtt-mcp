@@ -1923,7 +1923,8 @@ describe('CharacterTools', () => {
 
       if (method === 'maeinomatic-foundry-mcp.batchUpdateActorEmbeddedItems') {
         const batchCallCount = query.mock.calls.filter(
-          ([calledMethod]) => calledMethod === 'maeinomatic-foundry-mcp.batchUpdateActorEmbeddedItems'
+          ([calledMethod]) =>
+            calledMethod === 'maeinomatic-foundry-mcp.batchUpdateActorEmbeddedItems'
         ).length;
 
         if (batchCallCount === 1) {
@@ -4324,7 +4325,8 @@ describe('CharacterTools', () => {
 
       if (method === 'maeinomatic-foundry-mcp.applyCharacterAdvancementChoice') {
         const applyCallCount = query.mock.calls.filter(
-          ([calledMethod]) => calledMethod === 'maeinomatic-foundry-mcp.applyCharacterAdvancementChoice'
+          ([calledMethod]) =>
+            calledMethod === 'maeinomatic-foundry-mcp.applyCharacterAdvancementChoice'
         ).length;
 
         if (applyCallCount === 1) {
