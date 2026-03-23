@@ -13,8 +13,12 @@ import type {
   FoundryCreateActorEmbeddedItemResponse,
   FoundryCreateCharacterCompanionRequest,
   FoundryCreateCharacterCompanionResponse,
+  FoundryDeleteCharacterCompanionRequest,
+  FoundryDeleteCharacterCompanionResponse,
   FoundryDismissCharacterCompanionRequest,
   FoundryDismissCharacterCompanionResponse,
+  FoundryConfigureCharacterCompanionSummonRequest,
+  FoundryConfigureCharacterCompanionSummonResponse,
   FoundryDeleteActorEmbeddedItemRequest,
   FoundryDeleteActorEmbeddedItemResponse,
   FoundryGetCharacterAdvancementOptionsRequest,
@@ -30,10 +34,16 @@ import type {
   FoundrySearchCharacterItemsResponse,
   FoundrySummonCharacterCompanionRequest,
   FoundrySummonCharacterCompanionResponse,
+  FoundrySyncCharacterCompanionProgressionRequest,
+  FoundrySyncCharacterCompanionProgressionResponse,
+  FoundryUnlinkCharacterCompanionRequest,
+  FoundryUnlinkCharacterCompanionResponse,
   FoundryUpdateActorEmbeddedItemRequest,
   FoundryUpdateActorEmbeddedItemResponse,
   FoundryUpdateActorRequest,
   FoundryUpdateActorResponse,
+  FoundryUpdateCharacterCompanionLinkRequest,
+  FoundryUpdateCharacterCompanionLinkResponse,
   UnknownRecord,
 } from '../foundry-types.js';
 import { Logger } from '../logger.js';
@@ -1372,6 +1382,162 @@ export class CharacterTools {
             },
           },
           required: ['ownerActorIdentifier'],
+        },
+      },
+      {
+        name: 'update-character-companion-link',
+        description:
+          'Update persistent companion or familiar link metadata such as role, notes, source UUID, and sync settings.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            ownerActorIdentifier: {
+              type: 'string',
+              description: 'Character name or ID',
+            },
+            companionIdentifier: {
+              type: 'string',
+              description: 'Linked companion actor name or ID',
+            },
+            role: {
+              type: 'string',
+              enum: ['companion', 'familiar'],
+            },
+            notes: {
+              type: 'string',
+              description: 'Optional notes for the link. Empty string clears notes.',
+            },
+            sourceUuid: {
+              type: 'string',
+              description:
+                'Optional source Actor UUID used for future refresh/sync operations. Empty string clears the stored source UUID.',
+            },
+            syncSettings: {
+              type: 'object',
+              properties: {
+                syncOwnership: { type: 'boolean' },
+                refreshFromSource: { type: 'boolean' },
+                matchOwnerLevel: { type: 'boolean' },
+                levelOffset: { type: 'number' },
+              },
+            },
+          },
+          required: ['ownerActorIdentifier', 'companionIdentifier'],
+        },
+      },
+      {
+        name: 'configure-character-companion-summon',
+        description:
+          'Save default summon behavior for a linked companion or familiar, including placement, hidden state, and token reuse.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            ownerActorIdentifier: {
+              type: 'string',
+              description: 'Character name or ID',
+            },
+            companionIdentifier: {
+              type: 'string',
+              description: 'Linked companion actor name or ID',
+            },
+            placementType: {
+              type: 'string',
+              enum: ['near-owner', 'random', 'grid', 'center', 'coordinates'],
+            },
+            coordinates: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  x: { type: 'number' },
+                  y: { type: 'number' },
+                },
+                required: ['x', 'y'],
+              },
+            },
+            hidden: {
+              type: 'boolean',
+            },
+            reuseExisting: {
+              type: 'boolean',
+            },
+          },
+          required: ['ownerActorIdentifier', 'companionIdentifier'],
+        },
+      },
+      {
+        name: 'unlink-character-companion',
+        description:
+          'Remove a persistent companion or familiar link from a character without deleting the linked actor.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            ownerActorIdentifier: {
+              type: 'string',
+              description: 'Character name or ID',
+            },
+            companionIdentifier: {
+              type: 'string',
+              description: 'Linked companion actor name or ID',
+            },
+          },
+          required: ['ownerActorIdentifier', 'companionIdentifier'],
+        },
+      },
+      {
+        name: 'delete-character-companion',
+        description:
+          'Delete a linked companion or familiar actor and optionally dismiss its scene tokens as part of the same audited workflow.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            ownerActorIdentifier: {
+              type: 'string',
+              description: 'Character name or ID',
+            },
+            companionIdentifier: {
+              type: 'string',
+              description: 'Linked companion actor name or ID',
+            },
+            dismissSceneTokens: {
+              type: 'boolean',
+              description:
+                'Dismiss active scene tokens before deleting the actor. Defaults to true.',
+            },
+          },
+          required: ['ownerActorIdentifier', 'companionIdentifier'],
+        },
+      },
+      {
+        name: 'sync-character-companion-progression',
+        description:
+          'Run configured companion sync operations such as ownership sync, source refresh, or matching the owner level on systems that expose a stable level field.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            ownerActorIdentifier: {
+              type: 'string',
+              description: 'Character name or ID',
+            },
+            companionIdentifier: {
+              type: 'string',
+              description: 'Linked companion actor name or ID',
+            },
+            syncOwnership: {
+              type: 'boolean',
+            },
+            refreshFromSource: {
+              type: 'boolean',
+            },
+            matchOwnerLevel: {
+              type: 'boolean',
+            },
+            levelOffset: {
+              type: 'number',
+              description: 'Optional level offset when matchOwnerLevel is used',
+            },
+          },
+          required: ['ownerActorIdentifier', 'companionIdentifier'],
         },
       },
       {
@@ -3338,6 +3504,232 @@ export class CharacterTools {
       },
       dismissedCompanions: result.dismissedCompanions,
       dismissedTokenCount: result.dismissedTokenCount,
+      ...(result.warnings ? { warnings: result.warnings } : {}),
+    };
+  }
+
+  async handleUpdateCharacterCompanionLink(args: unknown): Promise<UnknownRecord> {
+    const schema = z.object({
+      ownerActorIdentifier: z.string().min(1, 'Owner actor identifier cannot be empty'),
+      companionIdentifier: z.string().min(1, 'Companion identifier cannot be empty'),
+      role: z.enum(['companion', 'familiar']).optional(),
+      notes: z.string().optional(),
+      sourceUuid: z.string().optional(),
+      syncSettings: z
+        .object({
+          syncOwnership: z.boolean().optional(),
+          refreshFromSource: z.boolean().optional(),
+          matchOwnerLevel: z.boolean().optional(),
+          levelOffset: z.number().optional(),
+        })
+        .optional(),
+    });
+
+    const parsed = schema.parse(args);
+    const syncSettings =
+      parsed.syncSettings !== undefined
+        ? {
+            ...(parsed.syncSettings.syncOwnership !== undefined
+              ? { syncOwnership: parsed.syncSettings.syncOwnership }
+              : {}),
+            ...(parsed.syncSettings.refreshFromSource !== undefined
+              ? { refreshFromSource: parsed.syncSettings.refreshFromSource }
+              : {}),
+            ...(parsed.syncSettings.matchOwnerLevel !== undefined
+              ? { matchOwnerLevel: parsed.syncSettings.matchOwnerLevel }
+              : {}),
+            ...(parsed.syncSettings.levelOffset !== undefined
+              ? { levelOffset: parsed.syncSettings.levelOffset }
+              : {}),
+          }
+        : undefined;
+    const result = await this.foundryClient.query<FoundryUpdateCharacterCompanionLinkResponse>(
+      'foundry-mcp-bridge.updateCharacterCompanionLink',
+      {
+        ownerActorIdentifier: parsed.ownerActorIdentifier,
+        companionIdentifier: parsed.companionIdentifier,
+        ...(parsed.role !== undefined ? { role: parsed.role } : {}),
+        ...(parsed.notes !== undefined ? { notes: parsed.notes } : {}),
+        ...(parsed.sourceUuid !== undefined ? { sourceUuid: parsed.sourceUuid } : {}),
+        ...(syncSettings && Object.keys(syncSettings).length > 0 ? { syncSettings } : {}),
+      } satisfies FoundryUpdateCharacterCompanionLinkRequest
+    );
+
+    return {
+      success: result.success,
+      owner: {
+        id: result.ownerActorId,
+        name: result.ownerActorName,
+      },
+      companion: {
+        id: result.companionActorId,
+        name: result.companionActorName,
+        type: result.companionActorType,
+        role: result.role,
+      },
+      updatedFields: result.updatedFields,
+      ...(result.notes !== undefined ? { notes: result.notes } : {}),
+      ...(result.sourceUuid ? { sourceUuid: result.sourceUuid } : {}),
+      ...(result.linkedAt ? { linkedAt: result.linkedAt } : {}),
+      ...(result.summonDefaults ? { summonDefaults: result.summonDefaults } : {}),
+      ...(result.syncSettings ? { syncSettings: result.syncSettings } : {}),
+      ...(result.warnings ? { warnings: result.warnings } : {}),
+    };
+  }
+
+  async handleConfigureCharacterCompanionSummon(args: unknown): Promise<UnknownRecord> {
+    const schema = z.object({
+      ownerActorIdentifier: z.string().min(1, 'Owner actor identifier cannot be empty'),
+      companionIdentifier: z.string().min(1, 'Companion identifier cannot be empty'),
+      placementType: z.enum(['near-owner', 'random', 'grid', 'center', 'coordinates']).optional(),
+      coordinates: z
+        .array(
+          z.object({
+            x: z.number(),
+            y: z.number(),
+          })
+        )
+        .optional(),
+      hidden: z.boolean().optional(),
+      reuseExisting: z.boolean().optional(),
+    });
+
+    const parsed = schema.parse(args);
+    const result = await this.foundryClient.query<FoundryConfigureCharacterCompanionSummonResponse>(
+      'foundry-mcp-bridge.configureCharacterCompanionSummon',
+      {
+        ownerActorIdentifier: parsed.ownerActorIdentifier,
+        companionIdentifier: parsed.companionIdentifier,
+        ...(parsed.placementType !== undefined ? { placementType: parsed.placementType } : {}),
+        ...(parsed.coordinates !== undefined ? { coordinates: parsed.coordinates } : {}),
+        ...(parsed.hidden !== undefined ? { hidden: parsed.hidden } : {}),
+        ...(parsed.reuseExisting !== undefined ? { reuseExisting: parsed.reuseExisting } : {}),
+      } satisfies FoundryConfigureCharacterCompanionSummonRequest
+    );
+
+    return {
+      success: result.success,
+      owner: {
+        id: result.ownerActorId,
+        name: result.ownerActorName,
+      },
+      companion: {
+        id: result.companionActorId,
+        name: result.companionActorName,
+        role: result.role,
+      },
+      summonDefaults: result.summonDefaults,
+      updatedFields: result.updatedFields,
+    };
+  }
+
+  async handleUnlinkCharacterCompanion(args: unknown): Promise<UnknownRecord> {
+    const schema = z.object({
+      ownerActorIdentifier: z.string().min(1, 'Owner actor identifier cannot be empty'),
+      companionIdentifier: z.string().min(1, 'Companion identifier cannot be empty'),
+    });
+
+    const parsed = schema.parse(args);
+    const result = await this.foundryClient.query<FoundryUnlinkCharacterCompanionResponse>(
+      'foundry-mcp-bridge.unlinkCharacterCompanion',
+      {
+        ownerActorIdentifier: parsed.ownerActorIdentifier,
+        companionIdentifier: parsed.companionIdentifier,
+      } satisfies FoundryUnlinkCharacterCompanionRequest
+    );
+
+    return {
+      success: result.success,
+      owner: {
+        id: result.ownerActorId,
+        name: result.ownerActorName,
+      },
+      companion: {
+        id: result.companionActorId,
+        name: result.companionActorName,
+        role: result.role,
+      },
+      unlinked: result.unlinked,
+    };
+  }
+
+  async handleDeleteCharacterCompanion(args: unknown): Promise<UnknownRecord> {
+    const schema = z.object({
+      ownerActorIdentifier: z.string().min(1, 'Owner actor identifier cannot be empty'),
+      companionIdentifier: z.string().min(1, 'Companion identifier cannot be empty'),
+      dismissSceneTokens: z.boolean().optional(),
+    });
+
+    const parsed = schema.parse(args);
+    const result = await this.foundryClient.query<FoundryDeleteCharacterCompanionResponse>(
+      'foundry-mcp-bridge.deleteCharacterCompanion',
+      {
+        ownerActorIdentifier: parsed.ownerActorIdentifier,
+        companionIdentifier: parsed.companionIdentifier,
+        ...(parsed.dismissSceneTokens !== undefined
+          ? { dismissSceneTokens: parsed.dismissSceneTokens }
+          : {}),
+      } satisfies FoundryDeleteCharacterCompanionRequest
+    );
+
+    return {
+      success: result.success,
+      owner: {
+        id: result.ownerActorId,
+        name: result.ownerActorName,
+      },
+      companion: {
+        id: result.companionActorId,
+        name: result.companionActorName,
+        role: result.role,
+      },
+      actorDeleted: result.actorDeleted,
+      dismissedTokenCount: result.dismissedTokenCount,
+      ...(result.dismissedTokenIds ? { dismissedTokenIds: result.dismissedTokenIds } : {}),
+      ...(result.warnings ? { warnings: result.warnings } : {}),
+    };
+  }
+
+  async handleSyncCharacterCompanionProgression(args: unknown): Promise<UnknownRecord> {
+    const schema = z.object({
+      ownerActorIdentifier: z.string().min(1, 'Owner actor identifier cannot be empty'),
+      companionIdentifier: z.string().min(1, 'Companion identifier cannot be empty'),
+      syncOwnership: z.boolean().optional(),
+      refreshFromSource: z.boolean().optional(),
+      matchOwnerLevel: z.boolean().optional(),
+      levelOffset: z.number().optional(),
+    });
+
+    const parsed = schema.parse(args);
+    const result = await this.foundryClient.query<FoundrySyncCharacterCompanionProgressionResponse>(
+      'foundry-mcp-bridge.syncCharacterCompanionProgression',
+      {
+        ownerActorIdentifier: parsed.ownerActorIdentifier,
+        companionIdentifier: parsed.companionIdentifier,
+        ...(parsed.syncOwnership !== undefined ? { syncOwnership: parsed.syncOwnership } : {}),
+        ...(parsed.refreshFromSource !== undefined
+          ? { refreshFromSource: parsed.refreshFromSource }
+          : {}),
+        ...(parsed.matchOwnerLevel !== undefined
+          ? { matchOwnerLevel: parsed.matchOwnerLevel }
+          : {}),
+        ...(parsed.levelOffset !== undefined ? { levelOffset: parsed.levelOffset } : {}),
+      } satisfies FoundrySyncCharacterCompanionProgressionRequest
+    );
+
+    return {
+      success: result.success,
+      owner: {
+        id: result.ownerActorId,
+        name: result.ownerActorName,
+      },
+      companion: {
+        id: result.companionActorId,
+        name: result.companionActorName,
+        role: result.role,
+      },
+      appliedOperations: result.appliedOperations,
+      updatedFields: result.updatedFields,
       ...(result.warnings ? { warnings: result.warnings } : {}),
     };
   }

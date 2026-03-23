@@ -351,4 +351,218 @@ describe('CompendiumTools', () => {
       searchMethod: 'enhanced_persistent_index',
     });
   });
+
+  it('uses the shared create-world-item bridge request shape', async () => {
+    const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
+      if (method === 'foundry-mcp-bridge.createWorldItem') {
+        expect(data).toEqual({
+          itemData: {
+            name: 'Storm Sigil',
+            type: 'feat',
+            system: {
+              description: {
+                value: '<p>Homebrew feat</p>',
+              },
+            },
+          },
+          reason: 'homebrew authoring',
+        });
+        return Promise.resolve({
+          success: true,
+          itemId: 'world-item-1',
+          itemName: 'Storm Sigil',
+          itemType: 'feat',
+          createdFrom: 'raw',
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected query: ${method}`));
+    });
+
+    const tools = new CompendiumTools({
+      foundryClient: { query } as unknown as FoundryClient,
+      logger: createLoggerStub(),
+      systemRegistry: new SystemRegistry(),
+    });
+
+    const result = (await tools.handleCreateWorldItem({
+      itemData: {
+        name: 'Storm Sigil',
+        type: 'feat',
+        system: {
+          description: {
+            value: '<p>Homebrew feat</p>',
+          },
+        },
+      },
+      reason: 'homebrew authoring',
+    })) as Record<string, unknown>;
+
+    expect(result).toMatchObject({
+      success: true,
+      item: {
+        id: 'world-item-1',
+        name: 'Storm Sigil',
+        type: 'feat',
+      },
+      createdFrom: 'raw',
+    });
+  });
+
+  it('uses the shared update-world-item bridge request shape', async () => {
+    const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
+      if (method === 'foundry-mcp-bridge.updateWorldItem') {
+        expect(data).toEqual({
+          itemIdentifier: 'Storm Sigil',
+          updates: {
+            'system.description.value': '<p>Updated feat text</p>',
+          },
+        });
+        return Promise.resolve({
+          success: true,
+          itemId: 'world-item-1',
+          itemName: 'Storm Sigil',
+          itemType: 'feat',
+          appliedUpdates: {
+            'system.description.value': '<p>Updated feat text</p>',
+          },
+          updatedFields: ['system.description.value'],
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected query: ${method}`));
+    });
+
+    const tools = new CompendiumTools({
+      foundryClient: { query } as unknown as FoundryClient,
+      logger: createLoggerStub(),
+      systemRegistry: new SystemRegistry(),
+    });
+
+    const result = (await tools.handleUpdateWorldItem({
+      itemIdentifier: 'Storm Sigil',
+      updates: {
+        'system.description.value': '<p>Updated feat text</p>',
+      },
+    })) as Record<string, unknown>;
+
+    expect(result).toMatchObject({
+      success: true,
+      item: {
+        id: 'world-item-1',
+        name: 'Storm Sigil',
+        type: 'feat',
+      },
+      updatedFields: ['system.description.value'],
+    });
+  });
+
+  it('uses the shared create-compendium-item bridge request shape', async () => {
+    const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
+      if (method === 'foundry-mcp-bridge.createCompendiumItem') {
+        expect(data).toEqual({
+          packId: 'world.homebrew-items',
+          sourceUuid: 'Compendium.dnd5e.items.wandOfMagicMissiles',
+          overrides: {
+            name: 'Wand of Tempest Bolts',
+          },
+        });
+        return Promise.resolve({
+          success: true,
+          packId: 'world.homebrew-items',
+          packLabel: 'Homebrew Items',
+          itemId: 'comp-item-1',
+          itemName: 'Wand of Tempest Bolts',
+          itemType: 'consumable',
+          createdFrom: 'uuid',
+          sourceUuid: 'Compendium.dnd5e.items.wandOfMagicMissiles',
+          appliedOverrides: {
+            name: 'Wand of Tempest Bolts',
+          },
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected query: ${method}`));
+    });
+
+    const tools = new CompendiumTools({
+      foundryClient: { query } as unknown as FoundryClient,
+      logger: createLoggerStub(),
+      systemRegistry: new SystemRegistry(),
+    });
+
+    const result = (await tools.handleCreateCompendiumItem({
+      packId: 'world.homebrew-items',
+      sourceUuid: 'Compendium.dnd5e.items.wandOfMagicMissiles',
+      overrides: {
+        name: 'Wand of Tempest Bolts',
+      },
+    })) as Record<string, unknown>;
+
+    expect(result).toMatchObject({
+      success: true,
+      pack: {
+        id: 'world.homebrew-items',
+        label: 'Homebrew Items',
+      },
+      item: {
+        id: 'comp-item-1',
+        name: 'Wand of Tempest Bolts',
+      },
+      createdFrom: 'uuid',
+    });
+  });
+
+  it('uses the shared import-item-to-compendium bridge request shape', async () => {
+    const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
+      if (method === 'foundry-mcp-bridge.importItemToCompendium') {
+        expect(data).toEqual({
+          itemIdentifier: 'Storm Sigil',
+          packId: 'world.homebrew-items',
+        });
+        return Promise.resolve({
+          success: true,
+          sourceItemId: 'world-item-1',
+          sourceItemName: 'Storm Sigil',
+          sourceItemType: 'feat',
+          packId: 'world.homebrew-items',
+          packLabel: 'Homebrew Items',
+          itemId: 'comp-item-2',
+          itemName: 'Storm Sigil',
+          itemType: 'feat',
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected query: ${method}`));
+    });
+
+    const tools = new CompendiumTools({
+      foundryClient: { query } as unknown as FoundryClient,
+      logger: createLoggerStub(),
+      systemRegistry: new SystemRegistry(),
+    });
+
+    const result = (await tools.handleImportItemToCompendium({
+      itemIdentifier: 'Storm Sigil',
+      packId: 'world.homebrew-items',
+    })) as Record<string, unknown>;
+
+    expect(result).toMatchObject({
+      success: true,
+      sourceItem: {
+        id: 'world-item-1',
+        name: 'Storm Sigil',
+        type: 'feat',
+      },
+      pack: {
+        id: 'world.homebrew-items',
+        label: 'Homebrew Items',
+      },
+      item: {
+        id: 'comp-item-2',
+        name: 'Storm Sigil',
+        type: 'feat',
+      },
+    });
+  });
 });

@@ -3928,4 +3928,265 @@ describe('CharacterTools', () => {
       ],
     });
   });
+
+  it('uses the shared update-character-companion-link bridge request shape', async () => {
+    const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
+      if (method === 'foundry-mcp-bridge.updateCharacterCompanionLink') {
+        expect(data).toEqual({
+          ownerActorIdentifier: 'Laeral',
+          companionIdentifier: 'Nimbus',
+          notes: 'Scout and messenger',
+          syncSettings: {
+            syncOwnership: true,
+            refreshFromSource: true,
+          },
+        });
+        return Promise.resolve({
+          success: true,
+          ownerActorId: 'actor-9',
+          ownerActorName: 'Laeral',
+          companionActorId: 'actor-owl',
+          companionActorName: 'Nimbus',
+          companionActorType: 'npc',
+          role: 'familiar',
+          notes: 'Scout and messenger',
+          syncSettings: {
+            syncOwnership: true,
+            refreshFromSource: true,
+          },
+          updatedFields: ['notes', 'syncSettings'],
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected query: ${method}`));
+    });
+
+    const tools = new CharacterTools({
+      foundryClient: { query } as unknown as FoundryClient,
+      logger: createLoggerStub(),
+    });
+
+    const result = (await tools.handleUpdateCharacterCompanionLink({
+      ownerActorIdentifier: 'Laeral',
+      companionIdentifier: 'Nimbus',
+      notes: 'Scout and messenger',
+      syncSettings: {
+        syncOwnership: true,
+        refreshFromSource: true,
+      },
+    })) as Record<string, unknown>;
+
+    expect(result).toMatchObject({
+      success: true,
+      companion: {
+        id: 'actor-owl',
+        name: 'Nimbus',
+        role: 'familiar',
+      },
+      updatedFields: ['notes', 'syncSettings'],
+      syncSettings: {
+        syncOwnership: true,
+        refreshFromSource: true,
+      },
+    });
+  });
+
+  it('uses the shared configure-character-companion-summon bridge request shape', async () => {
+    const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
+      if (method === 'foundry-mcp-bridge.configureCharacterCompanionSummon') {
+        expect(data).toEqual({
+          ownerActorIdentifier: 'Laeral',
+          companionIdentifier: 'Nimbus',
+          placementType: 'near-owner',
+          hidden: false,
+          reuseExisting: true,
+        });
+        return Promise.resolve({
+          success: true,
+          ownerActorId: 'actor-9',
+          ownerActorName: 'Laeral',
+          companionActorId: 'actor-owl',
+          companionActorName: 'Nimbus',
+          role: 'familiar',
+          summonDefaults: {
+            placementType: 'near-owner',
+            hidden: false,
+            reuseExisting: true,
+          },
+          updatedFields: ['summonDefaults'],
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected query: ${method}`));
+    });
+
+    const tools = new CharacterTools({
+      foundryClient: { query } as unknown as FoundryClient,
+      logger: createLoggerStub(),
+    });
+
+    const result = (await tools.handleConfigureCharacterCompanionSummon({
+      ownerActorIdentifier: 'Laeral',
+      companionIdentifier: 'Nimbus',
+      placementType: 'near-owner',
+      hidden: false,
+      reuseExisting: true,
+    })) as Record<string, unknown>;
+
+    expect(result).toMatchObject({
+      success: true,
+      companion: {
+        id: 'actor-owl',
+        name: 'Nimbus',
+        role: 'familiar',
+      },
+      summonDefaults: {
+        placementType: 'near-owner',
+        hidden: false,
+        reuseExisting: true,
+      },
+    });
+  });
+
+  it('uses the shared unlink-character-companion bridge request shape', async () => {
+    const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
+      if (method === 'foundry-mcp-bridge.unlinkCharacterCompanion') {
+        expect(data).toEqual({
+          ownerActorIdentifier: 'Laeral',
+          companionIdentifier: 'Nimbus',
+        });
+        return Promise.resolve({
+          success: true,
+          ownerActorId: 'actor-9',
+          ownerActorName: 'Laeral',
+          companionActorId: 'actor-owl',
+          companionActorName: 'Nimbus',
+          role: 'familiar',
+          unlinked: true,
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected query: ${method}`));
+    });
+
+    const tools = new CharacterTools({
+      foundryClient: { query } as unknown as FoundryClient,
+      logger: createLoggerStub(),
+    });
+
+    const result = (await tools.handleUnlinkCharacterCompanion({
+      ownerActorIdentifier: 'Laeral',
+      companionIdentifier: 'Nimbus',
+    })) as Record<string, unknown>;
+
+    expect(result).toMatchObject({
+      success: true,
+      companion: {
+        id: 'actor-owl',
+        name: 'Nimbus',
+        role: 'familiar',
+      },
+      unlinked: true,
+    });
+  });
+
+  it('uses the shared delete-character-companion bridge request shape', async () => {
+    const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
+      if (method === 'foundry-mcp-bridge.deleteCharacterCompanion') {
+        expect(data).toEqual({
+          ownerActorIdentifier: 'Laeral',
+          companionIdentifier: 'Nimbus',
+          dismissSceneTokens: true,
+        });
+        return Promise.resolve({
+          success: true,
+          ownerActorId: 'actor-9',
+          ownerActorName: 'Laeral',
+          companionActorId: 'actor-owl',
+          companionActorName: 'Nimbus',
+          role: 'familiar',
+          actorDeleted: true,
+          dismissedTokenCount: 1,
+          dismissedTokenIds: ['token-owl-1'],
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected query: ${method}`));
+    });
+
+    const tools = new CharacterTools({
+      foundryClient: { query } as unknown as FoundryClient,
+      logger: createLoggerStub(),
+    });
+
+    const result = (await tools.handleDeleteCharacterCompanion({
+      ownerActorIdentifier: 'Laeral',
+      companionIdentifier: 'Nimbus',
+      dismissSceneTokens: true,
+    })) as Record<string, unknown>;
+
+    expect(result).toMatchObject({
+      success: true,
+      companion: {
+        id: 'actor-owl',
+        name: 'Nimbus',
+        role: 'familiar',
+      },
+      actorDeleted: true,
+      dismissedTokenCount: 1,
+      dismissedTokenIds: ['token-owl-1'],
+    });
+  });
+
+  it('uses the shared sync-character-companion-progression bridge request shape', async () => {
+    const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
+      if (method === 'foundry-mcp-bridge.syncCharacterCompanionProgression') {
+        expect(data).toEqual({
+          ownerActorIdentifier: 'Laeral',
+          companionIdentifier: 'Nimbus',
+          syncOwnership: true,
+          refreshFromSource: true,
+          matchOwnerLevel: true,
+          levelOffset: 0,
+        });
+        return Promise.resolve({
+          success: true,
+          ownerActorId: 'actor-9',
+          ownerActorName: 'Laeral',
+          companionActorId: 'actor-owl',
+          companionActorName: 'Nimbus',
+          role: 'familiar',
+          appliedOperations: ['refreshFromSource', 'syncOwnership', 'matchOwnerLevel'],
+          updatedFields: ['img', 'system', 'ownership', 'system.details.level.value'],
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected query: ${method}`));
+    });
+
+    const tools = new CharacterTools({
+      foundryClient: { query } as unknown as FoundryClient,
+      logger: createLoggerStub(),
+    });
+
+    const result = (await tools.handleSyncCharacterCompanionProgression({
+      ownerActorIdentifier: 'Laeral',
+      companionIdentifier: 'Nimbus',
+      syncOwnership: true,
+      refreshFromSource: true,
+      matchOwnerLevel: true,
+      levelOffset: 0,
+    })) as Record<string, unknown>;
+
+    expect(result).toMatchObject({
+      success: true,
+      companion: {
+        id: 'actor-owl',
+        name: 'Nimbus',
+        role: 'familiar',
+      },
+      appliedOperations: ['refreshFromSource', 'syncOwnership', 'matchOwnerLevel'],
+      updatedFields: ['img', 'system', 'ownership', 'system.details.level.value'],
+    });
+  });
 });

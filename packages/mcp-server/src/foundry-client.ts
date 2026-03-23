@@ -22,16 +22,26 @@ import type {
   FoundryCreateActorEmbeddedItemResponse,
   FoundryCreateCharacterCompanionRequest,
   FoundryCreateCharacterCompanionResponse,
+  FoundryCreateCompendiumItemRequest,
+  FoundryCreateCompendiumItemResponse,
+  FoundryCreateWorldItemRequest,
+  FoundryCreateWorldItemResponse,
   FoundryCreatureSearchCriteria,
   FoundryCreatureSearchEnvelope,
+  FoundryDeleteCharacterCompanionRequest,
+  FoundryDeleteCharacterCompanionResponse,
   FoundryDeleteActorEmbeddedItemRequest,
   FoundryDeleteActorEmbeddedItemResponse,
   FoundryDismissCharacterCompanionRequest,
   FoundryDismissCharacterCompanionResponse,
+  FoundryConfigureCharacterCompanionSummonRequest,
+  FoundryConfigureCharacterCompanionSummonResponse,
   FoundryGetCharacterAdvancementOptionsRequest,
   FoundryGetCharacterAdvancementOptionsResponse,
   FoundryGetCharacterInfoRequest,
   FoundryGetCompendiumDocumentRequest,
+  FoundryImportItemToCompendiumRequest,
+  FoundryImportItemToCompendiumResponse,
   FoundryListCharacterCompanionsRequest,
   FoundryListCharacterCompanionsResponse,
   FoundryListActorsRequest,
@@ -41,10 +51,18 @@ import type {
   FoundrySearchCharacterItemsResponse,
   FoundrySummonCharacterCompanionRequest,
   FoundrySummonCharacterCompanionResponse,
+  FoundrySyncCharacterCompanionProgressionRequest,
+  FoundrySyncCharacterCompanionProgressionResponse,
+  FoundryUnlinkCharacterCompanionRequest,
+  FoundryUnlinkCharacterCompanionResponse,
   FoundryUpdateActorRequest,
   FoundryUpdateActorEmbeddedItemRequest,
   FoundryUpdateActorEmbeddedItemResponse,
   FoundryUpdateActorResponse,
+  FoundryUpdateCharacterCompanionLinkRequest,
+  FoundryUpdateCharacterCompanionLinkResponse,
+  FoundryUpdateWorldItemRequest,
+  FoundryUpdateWorldItemResponse,
   UnknownRecord,
 } from './foundry-types.js';
 
@@ -124,9 +142,17 @@ export class FoundryClient {
     data: FoundryCreateCharacterCompanionRequest
   ): Promise<FoundryCreateCharacterCompanionResponse>;
   async query(
+    method: 'foundry-mcp-bridge.updateCharacterCompanionLink',
+    data: FoundryUpdateCharacterCompanionLinkRequest
+  ): Promise<FoundryUpdateCharacterCompanionLinkResponse>;
+  async query(
     method: 'foundry-mcp-bridge.listCharacterCompanions',
     data: FoundryListCharacterCompanionsRequest
   ): Promise<FoundryListCharacterCompanionsResponse>;
+  async query(
+    method: 'foundry-mcp-bridge.configureCharacterCompanionSummon',
+    data: FoundryConfigureCharacterCompanionSummonRequest
+  ): Promise<FoundryConfigureCharacterCompanionSummonResponse>;
   async query(
     method: 'foundry-mcp-bridge.summonCharacterCompanion',
     data: FoundrySummonCharacterCompanionRequest
@@ -135,6 +161,18 @@ export class FoundryClient {
     method: 'foundry-mcp-bridge.dismissCharacterCompanion',
     data: FoundryDismissCharacterCompanionRequest
   ): Promise<FoundryDismissCharacterCompanionResponse>;
+  async query(
+    method: 'foundry-mcp-bridge.unlinkCharacterCompanion',
+    data: FoundryUnlinkCharacterCompanionRequest
+  ): Promise<FoundryUnlinkCharacterCompanionResponse>;
+  async query(
+    method: 'foundry-mcp-bridge.deleteCharacterCompanion',
+    data: FoundryDeleteCharacterCompanionRequest
+  ): Promise<FoundryDeleteCharacterCompanionResponse>;
+  async query(
+    method: 'foundry-mcp-bridge.syncCharacterCompanionProgression',
+    data: FoundrySyncCharacterCompanionProgressionRequest
+  ): Promise<FoundrySyncCharacterCompanionProgressionResponse>;
   async query(
     method: 'foundry-mcp-bridge.batchUpdateActorEmbeddedItems',
     data: FoundryBatchUpdateActorEmbeddedItemsRequest
@@ -159,6 +197,22 @@ export class FoundryClient {
     method: 'foundry-mcp-bridge.deleteActorEmbeddedItem',
     data: FoundryDeleteActorEmbeddedItemRequest
   ): Promise<FoundryDeleteActorEmbeddedItemResponse>;
+  async query(
+    method: 'foundry-mcp-bridge.createWorldItem',
+    data: FoundryCreateWorldItemRequest
+  ): Promise<FoundryCreateWorldItemResponse>;
+  async query(
+    method: 'foundry-mcp-bridge.updateWorldItem',
+    data: FoundryUpdateWorldItemRequest
+  ): Promise<FoundryUpdateWorldItemResponse>;
+  async query(
+    method: 'foundry-mcp-bridge.createCompendiumItem',
+    data: FoundryCreateCompendiumItemRequest
+  ): Promise<FoundryCreateCompendiumItemResponse>;
+  async query(
+    method: 'foundry-mcp-bridge.importItemToCompendium',
+    data: FoundryImportItemToCompendiumRequest
+  ): Promise<FoundryImportItemToCompendiumResponse>;
   async query(
     method: 'foundry-mcp-bridge.searchCompendium',
     data: FoundryCompendiumSearchRequest

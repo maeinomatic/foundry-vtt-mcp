@@ -15,6 +15,7 @@ import { FoundryActorUpdateService } from './services/actor-update-service.js';
 import { FoundryCharacterService } from './services/character-service.js';
 import { FoundryCompanionService } from './services/companion-service.js';
 import { FoundryCompendiumService } from './services/compendium-service.js';
+import { FoundryItemAuthoringService } from './services/item-authoring-service.js';
 import { FoundryJournalService } from './services/journal-service.js';
 import {
   FoundryRollRequestService,
@@ -39,15 +40,25 @@ import type {
   FoundryCreateActorEmbeddedItemResponse,
   FoundryCreateCharacterCompanionRequest,
   FoundryCreateCharacterCompanionResponse,
+  FoundryCreateCompendiumItemRequest,
+  FoundryCreateCompendiumItemResponse,
+  FoundryCreateWorldItemRequest,
+  FoundryCreateWorldItemResponse,
   FoundryCreatureSearchCriteria,
   FoundryCreatureSearchResponse,
+  FoundryDeleteCharacterCompanionRequest,
+  FoundryDeleteCharacterCompanionResponse,
   FoundryDeleteActorEmbeddedItemRequest,
   FoundryDeleteActorEmbeddedItemResponse,
   FoundryDismissCharacterCompanionRequest,
   FoundryDismissCharacterCompanionResponse,
+  FoundryConfigureCharacterCompanionSummonRequest,
+  FoundryConfigureCharacterCompanionSummonResponse,
   FoundryCompendiumEntryFull,
   FoundryGetCharacterAdvancementOptionsRequest,
   FoundryGetCharacterAdvancementOptionsResponse,
+  FoundryImportItemToCompendiumRequest,
+  FoundryImportItemToCompendiumResponse,
   FoundryJournalEntryResponse,
   FoundryJournalSummary,
   FoundryListCharacterCompanionsRequest,
@@ -58,10 +69,18 @@ import type {
   FoundrySearchCharacterItemsResponse,
   FoundrySummonCharacterCompanionRequest,
   FoundrySummonCharacterCompanionResponse,
+  FoundrySyncCharacterCompanionProgressionRequest,
+  FoundrySyncCharacterCompanionProgressionResponse,
+  FoundryUnlinkCharacterCompanionRequest,
+  FoundryUnlinkCharacterCompanionResponse,
   FoundryUpdateActorEmbeddedItemRequest,
   FoundryUpdateActorEmbeddedItemResponse,
   FoundryUpdateActorRequest,
   FoundryUpdateActorResponse,
+  FoundryUpdateCharacterCompanionLinkRequest,
+  FoundryUpdateCharacterCompanionLinkResponse,
+  FoundryUpdateWorldItemRequest,
+  FoundryUpdateWorldItemResponse,
   UnknownRecord,
 } from '@foundry-mcp/shared';
 
@@ -105,6 +124,7 @@ export class FoundryModuleFacade {
   private characterService: FoundryCharacterService;
   private companionService: FoundryCompanionService;
   private compendiumService: FoundryCompendiumService;
+  private itemAuthoringService: FoundryItemAuthoringService;
   private journalService: FoundryJournalService;
   private rollRequestService: FoundryRollRequestService;
   private sceneInteractionService: FoundrySceneInteractionService;
@@ -204,6 +224,15 @@ export class FoundryModuleFacade {
     this.compendiumService = new FoundryCompendiumService({
       moduleId: this.moduleId,
       sanitizeData: (data: unknown): unknown => this.sanitizeData(data),
+    });
+    this.itemAuthoringService = new FoundryItemAuthoringService({
+      auditLog: (
+        action: string,
+        data: unknown,
+        status: 'success' | 'failure',
+        errorMessage?: string
+      ): void => this.auditLog(action, data, status, errorMessage),
+      validateFoundryState: (): void => this.validateFoundryState(),
     });
     this.journalService = new FoundryJournalService({
       moduleId: this.moduleId,
@@ -618,10 +647,22 @@ export class FoundryModuleFacade {
     return this.companionService.createCharacterCompanion(request);
   }
 
+  async updateCharacterCompanionLink(
+    request: FoundryUpdateCharacterCompanionLinkRequest
+  ): Promise<FoundryUpdateCharacterCompanionLinkResponse> {
+    return this.companionService.updateCharacterCompanionLink(request);
+  }
+
   async listCharacterCompanions(
     request: FoundryListCharacterCompanionsRequest
   ): Promise<FoundryListCharacterCompanionsResponse> {
     return this.companionService.listCharacterCompanions(request);
+  }
+
+  async configureCharacterCompanionSummon(
+    request: FoundryConfigureCharacterCompanionSummonRequest
+  ): Promise<FoundryConfigureCharacterCompanionSummonResponse> {
+    return this.companionService.configureCharacterCompanionSummon(request);
   }
 
   async summonCharacterCompanion(
@@ -636,10 +677,52 @@ export class FoundryModuleFacade {
     return this.companionService.dismissCharacterCompanion(request);
   }
 
+  async unlinkCharacterCompanion(
+    request: FoundryUnlinkCharacterCompanionRequest
+  ): Promise<FoundryUnlinkCharacterCompanionResponse> {
+    return this.companionService.unlinkCharacterCompanion(request);
+  }
+
+  async deleteCharacterCompanion(
+    request: FoundryDeleteCharacterCompanionRequest
+  ): Promise<FoundryDeleteCharacterCompanionResponse> {
+    return this.companionService.deleteCharacterCompanion(request);
+  }
+
+  async syncCharacterCompanionProgression(
+    request: FoundrySyncCharacterCompanionProgressionRequest
+  ): Promise<FoundrySyncCharacterCompanionProgressionResponse> {
+    return this.companionService.syncCharacterCompanionProgression(request);
+  }
+
   async deleteActorEmbeddedItem(
     request: FoundryDeleteActorEmbeddedItemRequest
   ): Promise<FoundryDeleteActorEmbeddedItemResponse> {
     return this.actorItemService.deleteActorEmbeddedItem(request);
+  }
+
+  async createWorldItem(
+    request: FoundryCreateWorldItemRequest
+  ): Promise<FoundryCreateWorldItemResponse> {
+    return this.itemAuthoringService.createWorldItem(request);
+  }
+
+  async updateWorldItem(
+    request: FoundryUpdateWorldItemRequest
+  ): Promise<FoundryUpdateWorldItemResponse> {
+    return this.itemAuthoringService.updateWorldItem(request);
+  }
+
+  async createCompendiumItem(
+    request: FoundryCreateCompendiumItemRequest
+  ): Promise<FoundryCreateCompendiumItemResponse> {
+    return this.itemAuthoringService.createCompendiumItem(request);
+  }
+
+  async importItemToCompendium(
+    request: FoundryImportItemToCompendiumRequest
+  ): Promise<FoundryImportItemToCompendiumResponse> {
+    return this.itemAuthoringService.importItemToCompendium(request);
   }
 
   /**

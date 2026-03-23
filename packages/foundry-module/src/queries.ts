@@ -14,16 +14,26 @@ import type {
   FoundryCreateActorEmbeddedItemResponse,
   FoundryCreateCharacterCompanionRequest,
   FoundryCreateCharacterCompanionResponse,
+  FoundryCreateCompendiumItemRequest,
+  FoundryCreateCompendiumItemResponse,
+  FoundryCreateWorldItemRequest,
+  FoundryCreateWorldItemResponse,
   FoundryCompendiumSearchRequest,
   FoundryCreatureSearchCriteria,
   FoundryCompendiumEntryFull,
+  FoundryDeleteCharacterCompanionRequest,
+  FoundryDeleteCharacterCompanionResponse,
   FoundryDeleteActorEmbeddedItemRequest,
   FoundryDeleteActorEmbeddedItemResponse,
   FoundryDismissCharacterCompanionRequest,
   FoundryDismissCharacterCompanionResponse,
+  FoundryConfigureCharacterCompanionSummonRequest,
+  FoundryConfigureCharacterCompanionSummonResponse,
   FoundryGetCharacterAdvancementOptionsRequest,
   FoundryGetCharacterAdvancementOptionsResponse,
   FoundryGetCharacterInfoRequest,
+  FoundryImportItemToCompendiumRequest,
+  FoundryImportItemToCompendiumResponse,
   FoundryJournalEntryResponse,
   FoundryJournalSummary,
   FoundryListCharacterCompanionsRequest,
@@ -33,10 +43,18 @@ import type {
   FoundrySearchCharacterItemsRequest,
   FoundrySummonCharacterCompanionRequest,
   FoundrySummonCharacterCompanionResponse,
+  FoundrySyncCharacterCompanionProgressionRequest,
+  FoundrySyncCharacterCompanionProgressionResponse,
+  FoundryUnlinkCharacterCompanionRequest,
+  FoundryUnlinkCharacterCompanionResponse,
   FoundryUpdateActorEmbeddedItemRequest,
   FoundryUpdateActorEmbeddedItemResponse,
   FoundryUpdateActorRequest,
   FoundryUpdateActorResponse,
+  FoundryUpdateCharacterCompanionLinkRequest,
+  FoundryUpdateCharacterCompanionLinkResponse,
+  FoundryUpdateWorldItemRequest,
+  FoundryUpdateWorldItemResponse,
   FoundryWorldDetails,
 } from '@foundry-mcp/shared';
 
@@ -204,12 +222,28 @@ export class QueryHandlers {
       this.handleDeleteActorEmbeddedItem.bind(this);
     CONFIG.queries[`${modulePrefix}.createCharacterCompanion`] =
       this.handleCreateCharacterCompanion.bind(this);
+    CONFIG.queries[`${modulePrefix}.updateCharacterCompanionLink`] =
+      this.handleUpdateCharacterCompanionLink.bind(this);
     CONFIG.queries[`${modulePrefix}.listCharacterCompanions`] =
       this.handleListCharacterCompanions.bind(this);
+    CONFIG.queries[`${modulePrefix}.configureCharacterCompanionSummon`] =
+      this.handleConfigureCharacterCompanionSummon.bind(this);
     CONFIG.queries[`${modulePrefix}.summonCharacterCompanion`] =
       this.handleSummonCharacterCompanion.bind(this);
     CONFIG.queries[`${modulePrefix}.dismissCharacterCompanion`] =
       this.handleDismissCharacterCompanion.bind(this);
+    CONFIG.queries[`${modulePrefix}.unlinkCharacterCompanion`] =
+      this.handleUnlinkCharacterCompanion.bind(this);
+    CONFIG.queries[`${modulePrefix}.deleteCharacterCompanion`] =
+      this.handleDeleteCharacterCompanion.bind(this);
+    CONFIG.queries[`${modulePrefix}.syncCharacterCompanionProgression`] =
+      this.handleSyncCharacterCompanionProgression.bind(this);
+    CONFIG.queries[`${modulePrefix}.createWorldItem`] = this.handleCreateWorldItem.bind(this);
+    CONFIG.queries[`${modulePrefix}.updateWorldItem`] = this.handleUpdateWorldItem.bind(this);
+    CONFIG.queries[`${modulePrefix}.createCompendiumItem`] =
+      this.handleCreateCompendiumItem.bind(this);
+    CONFIG.queries[`${modulePrefix}.importItemToCompendium`] =
+      this.handleImportItemToCompendium.bind(this);
     CONFIG.queries[`${modulePrefix}.getCompendiumDocumentFull`] =
       this.handleGetCompendiumDocumentFull.bind(this);
     CONFIG.queries[`${modulePrefix}.addActorsToScene`] = this.handleAddActorsToScene.bind(this);
@@ -971,6 +1005,40 @@ export class QueryHandlers {
     }
   }
 
+  private async handleUpdateCharacterCompanionLink(
+    data: FoundryUpdateCharacterCompanionLinkRequest
+  ): Promise<FoundryUpdateCharacterCompanionLinkResponse | QueryErrorResult> {
+    try {
+      const gmCheck = this.validateGMAccess();
+      if (!gmCheck.allowed) {
+        return { error: 'Access denied', success: false };
+      }
+
+      this.dataAccess.validateFoundryState();
+
+      const permissionCheck = await this.dataAccess.validateWritePermissions('updateActor');
+      if (!permissionCheck.allowed) {
+        return {
+          error: permissionCheck.reason ?? 'Actor update not allowed',
+          success: false,
+        };
+      }
+
+      if (!data.ownerActorIdentifier) {
+        throw new Error('ownerActorIdentifier is required');
+      }
+      if (!data.companionIdentifier) {
+        throw new Error('companionIdentifier is required');
+      }
+
+      return await this.dataAccess.updateCharacterCompanionLink(data);
+    } catch (error) {
+      throw new Error(
+        `Failed to update character companion link: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+    }
+  }
+
   private async handleListCharacterCompanions(
     data: FoundryListCharacterCompanionsRequest
   ): Promise<FoundryListCharacterCompanionsResponse | QueryErrorResult> {
@@ -998,6 +1066,40 @@ export class QueryHandlers {
     } catch (error) {
       throw new Error(
         `Failed to list character companions: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+    }
+  }
+
+  private async handleConfigureCharacterCompanionSummon(
+    data: FoundryConfigureCharacterCompanionSummonRequest
+  ): Promise<FoundryConfigureCharacterCompanionSummonResponse | QueryErrorResult> {
+    try {
+      const gmCheck = this.validateGMAccess();
+      if (!gmCheck.allowed) {
+        return { error: 'Access denied', success: false };
+      }
+
+      this.dataAccess.validateFoundryState();
+
+      const permissionCheck = await this.dataAccess.validateWritePermissions('modifyScene');
+      if (!permissionCheck.allowed) {
+        return {
+          error: permissionCheck.reason ?? 'Scene modification not allowed',
+          success: false,
+        };
+      }
+
+      if (!data.ownerActorIdentifier) {
+        throw new Error('ownerActorIdentifier is required');
+      }
+      if (!data.companionIdentifier) {
+        throw new Error('companionIdentifier is required');
+      }
+
+      return await this.dataAccess.configureCharacterCompanionSummon(data);
+    } catch (error) {
+      throw new Error(
+        `Failed to configure character companion summon defaults: ${error instanceof Error ? error.message : 'Unknown error'}`
       );
     }
   }
@@ -1056,6 +1158,190 @@ export class QueryHandlers {
     } catch (error) {
       throw new Error(
         `Failed to dismiss character companion: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+    }
+  }
+
+  private async handleUnlinkCharacterCompanion(
+    data: FoundryUnlinkCharacterCompanionRequest
+  ): Promise<FoundryUnlinkCharacterCompanionResponse | QueryErrorResult> {
+    try {
+      const gmCheck = this.validateGMAccess();
+      if (!gmCheck.allowed) {
+        return { error: 'Access denied', success: false };
+      }
+
+      this.dataAccess.validateFoundryState();
+
+      if (!data.ownerActorIdentifier) {
+        throw new Error('ownerActorIdentifier is required');
+      }
+      if (!data.companionIdentifier) {
+        throw new Error('companionIdentifier is required');
+      }
+
+      return await this.dataAccess.unlinkCharacterCompanion(data);
+    } catch (error) {
+      throw new Error(
+        `Failed to unlink character companion: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+    }
+  }
+
+  private async handleDeleteCharacterCompanion(
+    data: FoundryDeleteCharacterCompanionRequest
+  ): Promise<FoundryDeleteCharacterCompanionResponse | QueryErrorResult> {
+    try {
+      const gmCheck = this.validateGMAccess();
+      if (!gmCheck.allowed) {
+        return { error: 'Access denied', success: false };
+      }
+
+      this.dataAccess.validateFoundryState();
+
+      const permissionCheck = await this.dataAccess.validateWritePermissions('updateActor');
+      if (!permissionCheck.allowed) {
+        return {
+          error: permissionCheck.reason ?? 'Actor update not allowed',
+          success: false,
+        };
+      }
+
+      if (!data.ownerActorIdentifier) {
+        throw new Error('ownerActorIdentifier is required');
+      }
+      if (!data.companionIdentifier) {
+        throw new Error('companionIdentifier is required');
+      }
+
+      return await this.dataAccess.deleteCharacterCompanion(data);
+    } catch (error) {
+      throw new Error(
+        `Failed to delete character companion: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+    }
+  }
+
+  private async handleSyncCharacterCompanionProgression(
+    data: FoundrySyncCharacterCompanionProgressionRequest
+  ): Promise<FoundrySyncCharacterCompanionProgressionResponse | QueryErrorResult> {
+    try {
+      const gmCheck = this.validateGMAccess();
+      if (!gmCheck.allowed) {
+        return { error: 'Access denied', success: false };
+      }
+
+      this.dataAccess.validateFoundryState();
+
+      const permissionCheck = await this.dataAccess.validateWritePermissions('updateActor');
+      if (!permissionCheck.allowed) {
+        return {
+          error: permissionCheck.reason ?? 'Actor update not allowed',
+          success: false,
+        };
+      }
+
+      if (!data.ownerActorIdentifier) {
+        throw new Error('ownerActorIdentifier is required');
+      }
+      if (!data.companionIdentifier) {
+        throw new Error('companionIdentifier is required');
+      }
+
+      return await this.dataAccess.syncCharacterCompanionProgression(data);
+    } catch (error) {
+      throw new Error(
+        `Failed to sync character companion progression: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+    }
+  }
+
+  private async handleCreateWorldItem(
+    data: FoundryCreateWorldItemRequest
+  ): Promise<FoundryCreateWorldItemResponse | QueryErrorResult> {
+    try {
+      const gmCheck = this.validateGMAccess();
+      if (!gmCheck.allowed) {
+        return { error: 'Access denied', success: false };
+      }
+
+      this.dataAccess.validateFoundryState();
+      return await this.dataAccess.createWorldItem(data);
+    } catch (error) {
+      throw new Error(
+        `Failed to create world item: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+    }
+  }
+
+  private async handleUpdateWorldItem(
+    data: FoundryUpdateWorldItemRequest
+  ): Promise<FoundryUpdateWorldItemResponse | QueryErrorResult> {
+    try {
+      const gmCheck = this.validateGMAccess();
+      if (!gmCheck.allowed) {
+        return { error: 'Access denied', success: false };
+      }
+
+      this.dataAccess.validateFoundryState();
+      if (!data.itemIdentifier) {
+        throw new Error('itemIdentifier is required');
+      }
+      if (!data.updates || typeof data.updates !== 'object') {
+        throw new Error('updates is required');
+      }
+
+      return await this.dataAccess.updateWorldItem(data);
+    } catch (error) {
+      throw new Error(
+        `Failed to update world item: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+    }
+  }
+
+  private async handleCreateCompendiumItem(
+    data: FoundryCreateCompendiumItemRequest
+  ): Promise<FoundryCreateCompendiumItemResponse | QueryErrorResult> {
+    try {
+      const gmCheck = this.validateGMAccess();
+      if (!gmCheck.allowed) {
+        return { error: 'Access denied', success: false };
+      }
+
+      this.dataAccess.validateFoundryState();
+      if (!data.packId) {
+        throw new Error('packId is required');
+      }
+
+      return await this.dataAccess.createCompendiumItem(data);
+    } catch (error) {
+      throw new Error(
+        `Failed to create compendium item: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+    }
+  }
+
+  private async handleImportItemToCompendium(
+    data: FoundryImportItemToCompendiumRequest
+  ): Promise<FoundryImportItemToCompendiumResponse | QueryErrorResult> {
+    try {
+      const gmCheck = this.validateGMAccess();
+      if (!gmCheck.allowed) {
+        return { error: 'Access denied', success: false };
+      }
+
+      this.dataAccess.validateFoundryState();
+      if (!data.itemIdentifier) {
+        throw new Error('itemIdentifier is required');
+      }
+      if (!data.packId) {
+        throw new Error('packId is required');
+      }
+
+      return await this.dataAccess.importItemToCompendium(data);
+    } catch (error) {
+      throw new Error(
+        `Failed to import item to compendium: ${error instanceof Error ? error.message : 'Unknown error'}`
       );
     }
   }

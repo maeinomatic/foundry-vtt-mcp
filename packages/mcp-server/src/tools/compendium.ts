@@ -2,14 +2,22 @@ import { z } from 'zod';
 import { FoundryClient } from '../foundry-client.js';
 import type {
   FoundryActorSystemBase,
+  FoundryCreateCompendiumItemRequest,
+  FoundryCreateCompendiumItemResponse,
+  FoundryCreateWorldItemRequest,
+  FoundryCreateWorldItemResponse,
   FoundryCompendiumEntryFull,
   FoundryCompendiumPackSummary,
   FoundryCompendiumSearchResult,
   FoundryCreatureSearchCriteria,
   FoundryCreatureSearchResult,
   FoundryDescriptionField,
+  FoundryImportItemToCompendiumRequest,
+  FoundryImportItemToCompendiumResponse,
   FoundryPriceData,
   FoundryTraitsData,
+  FoundryUpdateWorldItemRequest,
+  FoundryUpdateWorldItemResponse,
   UnknownRecord,
 } from '../foundry-types.js';
 import { Logger } from '../logger.js';
@@ -396,6 +404,121 @@ export class CompendiumTools {
               description: 'Optional filter by pack type',
             },
           },
+        },
+      },
+      {
+        name: 'create-world-item',
+        description:
+          'Create a world item from raw item data or by cloning an existing item UUID with optional overrides. Uses the public Foundry world-item creation path.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            sourceUuid: {
+              type: 'string',
+              description: 'Optional world or compendium Item UUID to clone',
+            },
+            itemData: {
+              type: 'object',
+              description: 'Raw item data with at least name and type',
+            },
+            overrides: {
+              type: 'object',
+              description: 'Optional deep overrides merged onto the source data',
+            },
+            folderId: {
+              type: 'string',
+              description: 'Optional world folder ID for the created item',
+            },
+            reason: {
+              type: 'string',
+              description: 'Optional audit reason for the change',
+            },
+          },
+        },
+      },
+      {
+        name: 'update-world-item',
+        description:
+          'Update an existing world item by name or ID using a Document.update-compatible patch payload.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            itemIdentifier: {
+              type: 'string',
+              description: 'World item name or ID',
+            },
+            updates: {
+              type: 'object',
+              description: 'Differential item update payload',
+            },
+            reason: {
+              type: 'string',
+              description: 'Optional audit reason for the change',
+            },
+          },
+          required: ['itemIdentifier', 'updates'],
+        },
+      },
+      {
+        name: 'create-compendium-item',
+        description:
+          'Create an item directly inside an unlocked Item compendium pack from raw data or by cloning an item UUID with optional overrides.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            packId: {
+              type: 'string',
+              description: 'Target Item compendium pack ID',
+            },
+            sourceUuid: {
+              type: 'string',
+              description: 'Optional world or compendium Item UUID to clone',
+            },
+            itemData: {
+              type: 'object',
+              description: 'Raw item data with at least name and type',
+            },
+            overrides: {
+              type: 'object',
+              description: 'Optional deep overrides merged onto the source data',
+            },
+            folderId: {
+              type: 'string',
+              description: 'Optional compendium folder ID for the created item',
+            },
+            reason: {
+              type: 'string',
+              description: 'Optional audit reason for the change',
+            },
+          },
+          required: ['packId'],
+        },
+      },
+      {
+        name: 'import-item-to-compendium',
+        description:
+          'Copy a world item into an unlocked Item compendium pack using the official compendium import flow.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            itemIdentifier: {
+              type: 'string',
+              description: 'Existing world item name or ID',
+            },
+            packId: {
+              type: 'string',
+              description: 'Target Item compendium pack ID',
+            },
+            folderId: {
+              type: 'string',
+              description: 'Optional destination compendium folder ID',
+            },
+            reason: {
+              type: 'string',
+              description: 'Optional audit reason for the change',
+            },
+          },
+          required: ['itemIdentifier', 'packId'],
         },
       },
     ];
@@ -816,6 +939,202 @@ export class CompendiumTools {
         `Failed to list compendium packs: ${error instanceof Error ? error.message : 'Unknown error'}`
       );
     }
+  }
+
+  async handleCreateWorldItem(args: unknown): Promise<unknown> {
+    const itemDataSchema = z.object({
+      name: z.string().min(1, 'Item name cannot be empty'),
+      type: z.string().min(1, 'Item type cannot be empty'),
+      img: z.string().optional(),
+      system: z.record(z.unknown()).optional(),
+      flags: z.record(z.unknown()).optional(),
+      effects: z.array(z.unknown()).optional(),
+    });
+
+    const schema = z
+      .object({
+        sourceUuid: z.string().min(1).optional(),
+        itemData: itemDataSchema.optional(),
+        overrides: z.record(z.unknown()).optional(),
+        folderId: z.string().optional(),
+        reason: z.string().optional(),
+      })
+      .refine(
+        value => (value.sourceUuid !== undefined) !== (value.itemData !== undefined),
+        'Provide exactly one of sourceUuid or itemData'
+      );
+
+    const parsed = schema.parse(args);
+    const itemData =
+      parsed.itemData !== undefined
+        ? {
+            name: parsed.itemData.name,
+            type: parsed.itemData.type,
+            ...(parsed.itemData.img !== undefined ? { img: parsed.itemData.img } : {}),
+            ...(parsed.itemData.system !== undefined ? { system: parsed.itemData.system } : {}),
+            ...(parsed.itemData.flags !== undefined ? { flags: parsed.itemData.flags } : {}),
+            ...(parsed.itemData.effects !== undefined ? { effects: parsed.itemData.effects } : {}),
+          }
+        : undefined;
+    const request: FoundryCreateWorldItemRequest = {
+      ...(parsed.sourceUuid !== undefined ? { sourceUuid: parsed.sourceUuid } : {}),
+      ...(itemData !== undefined ? { itemData } : {}),
+      ...(parsed.overrides !== undefined ? { overrides: parsed.overrides } : {}),
+      ...(parsed.folderId !== undefined ? { folderId: parsed.folderId } : {}),
+      ...(parsed.reason !== undefined ? { reason: parsed.reason } : {}),
+    };
+
+    const result = await this.foundryClient.query<FoundryCreateWorldItemResponse>(
+      'foundry-mcp-bridge.createWorldItem',
+      request
+    );
+
+    return {
+      success: result.success,
+      item: {
+        id: result.itemId,
+        name: result.itemName,
+        type: result.itemType,
+      },
+      createdFrom: result.createdFrom,
+      ...(result.sourceUuid ? { sourceUuid: result.sourceUuid } : {}),
+      ...(result.folderId !== undefined ? { folderId: result.folderId } : {}),
+      ...(result.appliedOverrides ? { appliedOverrides: result.appliedOverrides } : {}),
+    };
+  }
+
+  async handleUpdateWorldItem(args: unknown): Promise<unknown> {
+    const schema = z.object({
+      itemIdentifier: z.string().min(1, 'Item identifier cannot be empty'),
+      updates: z.record(z.unknown()),
+      reason: z.string().optional(),
+    });
+
+    const parsed = schema.parse(args);
+    const result = await this.foundryClient.query<FoundryUpdateWorldItemResponse>(
+      'foundry-mcp-bridge.updateWorldItem',
+      {
+        itemIdentifier: parsed.itemIdentifier,
+        updates: parsed.updates,
+        ...(parsed.reason !== undefined ? { reason: parsed.reason } : {}),
+      } satisfies FoundryUpdateWorldItemRequest
+    );
+
+    return {
+      success: result.success,
+      item: {
+        id: result.itemId,
+        name: result.itemName,
+        type: result.itemType,
+      },
+      appliedUpdates: result.appliedUpdates,
+      updatedFields: result.updatedFields,
+    };
+  }
+
+  async handleCreateCompendiumItem(args: unknown): Promise<unknown> {
+    const itemDataSchema = z.object({
+      name: z.string().min(1, 'Item name cannot be empty'),
+      type: z.string().min(1, 'Item type cannot be empty'),
+      img: z.string().optional(),
+      system: z.record(z.unknown()).optional(),
+      flags: z.record(z.unknown()).optional(),
+      effects: z.array(z.unknown()).optional(),
+    });
+
+    const schema = z
+      .object({
+        packId: z.string().min(1, 'packId cannot be empty'),
+        sourceUuid: z.string().min(1).optional(),
+        itemData: itemDataSchema.optional(),
+        overrides: z.record(z.unknown()).optional(),
+        folderId: z.string().optional(),
+        reason: z.string().optional(),
+      })
+      .refine(
+        value => (value.sourceUuid !== undefined) !== (value.itemData !== undefined),
+        'Provide exactly one of sourceUuid or itemData'
+      );
+
+    const parsed = schema.parse(args);
+    const itemData =
+      parsed.itemData !== undefined
+        ? {
+            name: parsed.itemData.name,
+            type: parsed.itemData.type,
+            ...(parsed.itemData.img !== undefined ? { img: parsed.itemData.img } : {}),
+            ...(parsed.itemData.system !== undefined ? { system: parsed.itemData.system } : {}),
+            ...(parsed.itemData.flags !== undefined ? { flags: parsed.itemData.flags } : {}),
+            ...(parsed.itemData.effects !== undefined ? { effects: parsed.itemData.effects } : {}),
+          }
+        : undefined;
+    const result = await this.foundryClient.query<FoundryCreateCompendiumItemResponse>(
+      'foundry-mcp-bridge.createCompendiumItem',
+      {
+        packId: parsed.packId,
+        ...(parsed.sourceUuid !== undefined ? { sourceUuid: parsed.sourceUuid } : {}),
+        ...(itemData !== undefined ? { itemData } : {}),
+        ...(parsed.overrides !== undefined ? { overrides: parsed.overrides } : {}),
+        ...(parsed.folderId !== undefined ? { folderId: parsed.folderId } : {}),
+        ...(parsed.reason !== undefined ? { reason: parsed.reason } : {}),
+      } satisfies FoundryCreateCompendiumItemRequest
+    );
+
+    return {
+      success: result.success,
+      pack: {
+        id: result.packId,
+        ...(result.packLabel ? { label: result.packLabel } : {}),
+      },
+      item: {
+        id: result.itemId,
+        name: result.itemName,
+        type: result.itemType,
+      },
+      createdFrom: result.createdFrom,
+      ...(result.sourceUuid ? { sourceUuid: result.sourceUuid } : {}),
+      ...(result.folderId !== undefined ? { folderId: result.folderId } : {}),
+      ...(result.appliedOverrides ? { appliedOverrides: result.appliedOverrides } : {}),
+    };
+  }
+
+  async handleImportItemToCompendium(args: unknown): Promise<unknown> {
+    const schema = z.object({
+      itemIdentifier: z.string().min(1, 'Item identifier cannot be empty'),
+      packId: z.string().min(1, 'packId cannot be empty'),
+      folderId: z.string().optional(),
+      reason: z.string().optional(),
+    });
+
+    const parsed = schema.parse(args);
+    const result = await this.foundryClient.query<FoundryImportItemToCompendiumResponse>(
+      'foundry-mcp-bridge.importItemToCompendium',
+      {
+        itemIdentifier: parsed.itemIdentifier,
+        packId: parsed.packId,
+        ...(parsed.folderId !== undefined ? { folderId: parsed.folderId } : {}),
+        ...(parsed.reason !== undefined ? { reason: parsed.reason } : {}),
+      } satisfies FoundryImportItemToCompendiumRequest
+    );
+
+    return {
+      success: result.success,
+      sourceItem: {
+        id: result.sourceItemId,
+        name: result.sourceItemName,
+        type: result.sourceItemType,
+      },
+      pack: {
+        id: result.packId,
+        ...(result.packLabel ? { label: result.packLabel } : {}),
+      },
+      item: {
+        id: result.itemId,
+        name: result.itemName,
+        type: result.itemType,
+      },
+      ...(result.folderId !== undefined ? { folderId: result.folderId } : {}),
+    };
   }
 
   private formatCompendiumItem(

@@ -1723,8 +1723,18 @@ async function startBackend(): Promise<void> {
 
                     break;
 
+                  case 'update-character-companion-link':
+                    result = await characterTools.handleUpdateCharacterCompanionLink(args);
+
+                    break;
+
                   case 'list-character-companions':
                     result = await characterTools.handleListCharacterCompanions(args);
+
+                    break;
+
+                  case 'configure-character-companion-summon':
+                    result = await characterTools.handleConfigureCharacterCompanionSummon(args);
 
                     break;
 
@@ -1735,6 +1745,21 @@ async function startBackend(): Promise<void> {
 
                   case 'dismiss-character-companion':
                     result = await characterTools.handleDismissCharacterCompanion(args);
+
+                    break;
+
+                  case 'unlink-character-companion':
+                    result = await characterTools.handleUnlinkCharacterCompanion(args);
+
+                    break;
+
+                  case 'delete-character-companion':
+                    result = await characterTools.handleDeleteCharacterCompanion(args);
+
+                    break;
+
+                  case 'sync-character-companion-progression':
+                    result = await characterTools.handleSyncCharacterCompanionProgression(args);
 
                     break;
 
@@ -1777,6 +1802,26 @@ async function startBackend(): Promise<void> {
 
                   case 'list-compendium-packs':
                     result = await compendiumTools.handleListCompendiumPacks(args);
+
+                    break;
+
+                  case 'create-world-item':
+                    result = await compendiumTools.handleCreateWorldItem(args);
+
+                    break;
+
+                  case 'update-world-item':
+                    result = await compendiumTools.handleUpdateWorldItem(args);
+
+                    break;
+
+                  case 'create-compendium-item':
+                    result = await compendiumTools.handleCreateCompendiumItem(args);
+
+                    break;
+
+                  case 'import-item-to-compendium':
+                    result = await compendiumTools.handleImportItemToCompendium(args);
 
                     break;
 

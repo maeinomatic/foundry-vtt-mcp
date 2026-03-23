@@ -498,7 +498,99 @@ export interface FoundryDeleteActorEmbeddedItemResponse extends UnknownRecord {
   itemType: string;
 }
 
+export interface FoundryCreateWorldItemData extends FoundryCreateActorEmbeddedItemData {}
+
+export interface FoundryCreateWorldItemRequest {
+  sourceUuid?: string;
+  itemData?: FoundryCreateWorldItemData;
+  overrides?: UnknownRecord;
+  folderId?: string | null;
+  reason?: string;
+}
+
+export interface FoundryCreateWorldItemResponse extends UnknownRecord {
+  success: boolean;
+  itemId: string;
+  itemName: string;
+  itemType: string;
+  createdFrom: 'uuid' | 'raw';
+  sourceUuid?: string;
+  folderId?: string | null;
+  appliedOverrides?: UnknownRecord;
+}
+
+export interface FoundryUpdateWorldItemRequest {
+  itemIdentifier: string;
+  updates: UnknownRecord;
+  reason?: string;
+}
+
+export interface FoundryUpdateWorldItemResponse extends UnknownRecord {
+  success: boolean;
+  itemId: string;
+  itemName: string;
+  itemType: string;
+  appliedUpdates: UnknownRecord;
+  updatedFields: string[];
+}
+
+export interface FoundryCreateCompendiumItemRequest {
+  packId: string;
+  sourceUuid?: string;
+  itemData?: FoundryCreateWorldItemData;
+  overrides?: UnknownRecord;
+  folderId?: string | null;
+  reason?: string;
+}
+
+export interface FoundryCreateCompendiumItemResponse extends UnknownRecord {
+  success: boolean;
+  packId: string;
+  packLabel?: string;
+  itemId: string;
+  itemName: string;
+  itemType: string;
+  createdFrom: 'uuid' | 'raw';
+  sourceUuid?: string;
+  folderId?: string | null;
+  appliedOverrides?: UnknownRecord;
+}
+
+export interface FoundryImportItemToCompendiumRequest {
+  itemIdentifier: string;
+  packId: string;
+  folderId?: string | null;
+  reason?: string;
+}
+
+export interface FoundryImportItemToCompendiumResponse extends UnknownRecord {
+  success: boolean;
+  sourceItemId: string;
+  sourceItemName: string;
+  sourceItemType: string;
+  packId: string;
+  packLabel?: string;
+  itemId: string;
+  itemName: string;
+  itemType: string;
+  folderId?: string | null;
+}
+
 export type FoundryCompanionRole = 'companion' | 'familiar';
+
+export interface FoundryCharacterCompanionSummonDefaults extends UnknownRecord {
+  placementType?: FoundryTokenPlacementOptions['type'] | 'near-owner';
+  coordinates?: FoundryTokenPlacementCoordinate[];
+  hidden?: boolean;
+  reuseExisting?: boolean;
+}
+
+export interface FoundryCharacterCompanionSyncSettings extends UnknownRecord {
+  syncOwnership?: boolean;
+  refreshFromSource?: boolean;
+  matchOwnerLevel?: boolean;
+  levelOffset?: number;
+}
 
 export interface FoundryCharacterCompanionLink extends UnknownRecord {
   ownerActorId: string;
@@ -507,6 +599,8 @@ export interface FoundryCharacterCompanionLink extends UnknownRecord {
   notes?: string;
   sourceUuid?: string;
   linkedAt?: string;
+  summonDefaults?: FoundryCharacterCompanionSummonDefaults;
+  syncSettings?: FoundryCharacterCompanionSyncSettings;
 }
 
 export interface FoundryCompendiumSearchFilters {
@@ -582,8 +676,36 @@ export interface FoundryCreateCharacterCompanionResponse extends UnknownRecord {
   created: boolean;
   sourceUuid?: string;
   linkedAt?: string;
+  summonDefaults?: FoundryCharacterCompanionSummonDefaults;
+  syncSettings?: FoundryCharacterCompanionSyncSettings;
   tokensPlaced?: number;
   tokenIds?: string[];
+  warnings?: string[];
+}
+
+export interface FoundryUpdateCharacterCompanionLinkRequest {
+  ownerActorIdentifier: string;
+  companionIdentifier: string;
+  role?: FoundryCompanionRole;
+  notes?: string;
+  sourceUuid?: string;
+  syncSettings?: FoundryCharacterCompanionSyncSettings;
+}
+
+export interface FoundryUpdateCharacterCompanionLinkResponse extends UnknownRecord {
+  success: boolean;
+  ownerActorId: string;
+  ownerActorName: string;
+  companionActorId: string;
+  companionActorName: string;
+  companionActorType: string;
+  role: FoundryCompanionRole;
+  linkedAt?: string;
+  sourceUuid?: string;
+  notes?: string;
+  summonDefaults?: FoundryCharacterCompanionSummonDefaults;
+  syncSettings?: FoundryCharacterCompanionSyncSettings;
+  updatedFields: string[];
   warnings?: string[];
 }
 
@@ -602,6 +724,8 @@ export interface FoundryCharacterCompanionSummary extends UnknownRecord {
   notes?: string;
   sourceUuid?: string;
   linkedAt?: string;
+  summonDefaults?: FoundryCharacterCompanionSummonDefaults;
+  syncSettings?: FoundryCharacterCompanionSyncSettings;
   onScene: boolean;
   tokenIds: string[];
 }
@@ -635,6 +759,26 @@ export interface FoundrySummonCharacterCompanionResponse extends UnknownRecord {
   warnings?: string[];
 }
 
+export interface FoundryConfigureCharacterCompanionSummonRequest {
+  ownerActorIdentifier: string;
+  companionIdentifier: string;
+  placementType?: FoundryTokenPlacementOptions['type'] | 'near-owner';
+  coordinates?: FoundryTokenPlacementCoordinate[];
+  hidden?: boolean;
+  reuseExisting?: boolean;
+}
+
+export interface FoundryConfigureCharacterCompanionSummonResponse extends UnknownRecord {
+  success: boolean;
+  ownerActorId: string;
+  ownerActorName: string;
+  companionActorId: string;
+  companionActorName: string;
+  role: FoundryCompanionRole;
+  summonDefaults: FoundryCharacterCompanionSummonDefaults;
+  updatedFields: string[];
+}
+
 export interface FoundryDismissCharacterCompanionRequest {
   ownerActorIdentifier: string;
   companionIdentifier?: string;
@@ -655,6 +799,61 @@ export interface FoundryDismissCharacterCompanionResponse extends UnknownRecord 
   ownerActorName: string;
   dismissedCompanions: FoundryDismissedCompanionSummary[];
   dismissedTokenCount: number;
+  warnings?: string[];
+}
+
+export interface FoundryUnlinkCharacterCompanionRequest {
+  ownerActorIdentifier: string;
+  companionIdentifier: string;
+}
+
+export interface FoundryUnlinkCharacterCompanionResponse extends UnknownRecord {
+  success: boolean;
+  ownerActorId: string;
+  ownerActorName: string;
+  companionActorId: string;
+  companionActorName: string;
+  role: FoundryCompanionRole;
+  unlinked: boolean;
+}
+
+export interface FoundryDeleteCharacterCompanionRequest {
+  ownerActorIdentifier: string;
+  companionIdentifier: string;
+  dismissSceneTokens?: boolean;
+}
+
+export interface FoundryDeleteCharacterCompanionResponse extends UnknownRecord {
+  success: boolean;
+  ownerActorId: string;
+  ownerActorName: string;
+  companionActorId: string;
+  companionActorName: string;
+  role: FoundryCompanionRole;
+  actorDeleted: boolean;
+  dismissedTokenCount: number;
+  dismissedTokenIds?: string[];
+  warnings?: string[];
+}
+
+export interface FoundrySyncCharacterCompanionProgressionRequest {
+  ownerActorIdentifier: string;
+  companionIdentifier: string;
+  syncOwnership?: boolean;
+  refreshFromSource?: boolean;
+  matchOwnerLevel?: boolean;
+  levelOffset?: number;
+}
+
+export interface FoundrySyncCharacterCompanionProgressionResponse extends UnknownRecord {
+  success: boolean;
+  ownerActorId: string;
+  ownerActorName: string;
+  companionActorId: string;
+  companionActorName: string;
+  role: FoundryCompanionRole;
+  appliedOperations: string[];
+  updatedFields: string[];
   warnings?: string[];
 }
 
