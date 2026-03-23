@@ -4596,6 +4596,8 @@ export class CharacterTools {
       );
     }
 
+    const workflowMetadata = this.createDnD5eWorkflowMetadata('run-dnd5e-rest-workflow');
+
     const restResult = await this.foundryClient.query<FoundryRunCharacterRestWorkflowResponse>(
       'foundry-mcp-bridge.runCharacterRestWorkflow',
       {
@@ -4629,8 +4631,10 @@ export class CharacterTools {
         );
 
         return {
+          ...workflowMetadata,
           success: false,
           partialSuccess: true,
+          workflowStatus: 'partial-failure',
           restCompleted: true,
           character: {
             id: restResult.actorId,
@@ -4644,13 +4648,20 @@ export class CharacterTools {
             changes: restResult.changes,
           },
           ...(spellPreparationUpdates.length > 0 ? { spellPreparationUpdates } : {}),
+          verification: {
+            verified: false,
+            restCompleted: true,
+            postRestPreparationPlansApplied: spellPreparationUpdates.length,
+          },
           warnings,
         };
       }
     }
 
     return {
+      ...workflowMetadata,
       success: true,
+      workflowStatus: 'completed',
       restCompleted: true,
       character: {
         id: restResult.actorId,
@@ -4664,6 +4675,11 @@ export class CharacterTools {
         changes: restResult.changes,
       },
       ...(spellPreparationUpdates.length > 0 ? { spellPreparationUpdates } : {}),
+      verification: {
+        verified: true,
+        restCompleted: true,
+        postRestPreparationPlansApplied: spellPreparationUpdates.length,
+      },
       ...(warnings.length > 0 ? { warnings } : {}),
     };
   }
@@ -4724,6 +4740,7 @@ export class CharacterTools {
       );
     }
 
+    const workflowMetadata = this.createDnD5eWorkflowMetadata('award-dnd5e-party-resources');
     const warnings: string[] = [];
     const workflowReason = parsed.reason ?? 'dnd5e party resource award workflow';
 
@@ -4768,6 +4785,7 @@ export class CharacterTools {
       );
 
       return {
+        ...workflowMetadata,
         success: true,
         workflowStatus: 'staged',
         awardSource: parsed.awardSource,
@@ -5012,6 +5030,7 @@ export class CharacterTools {
       Object.values(actualDistributedCurrency).every(amount => amount === 0)
     ) {
       return {
+        ...workflowMetadata,
         success: false,
         workflowStatus: 'nothing-to-distribute',
         awardSource: parsed.awardSource,
@@ -5128,6 +5147,7 @@ export class CharacterTools {
             : [];
 
         return {
+          ...workflowMetadata,
           success: false,
           partialSuccess:
             parsed.awardSource === 'staged-party-group'
@@ -5174,6 +5194,7 @@ export class CharacterTools {
         });
 
         return {
+          ...workflowMetadata,
           success: false,
           partialSuccess: false,
           workflowStatus: 'rolled-back',
@@ -5198,7 +5219,10 @@ export class CharacterTools {
       }
     }
 
+    const verification = this.createAwardWorkflowVerification(awardedRecipients);
+
     return {
+      ...workflowMetadata,
       success: true,
       workflowStatus: 'completed',
       awardSource: parsed.awardSource,
@@ -5244,6 +5268,7 @@ export class CharacterTools {
         ? { partyGroupUpdatedFields: partyGroupUpdateResult.updatedFields }
         : {}),
       recipients: awardedRecipients,
+      ...(verification ? { verification } : {}),
       ...(warnings.length > 0 ? { warnings } : {}),
     };
   }
@@ -5278,6 +5303,8 @@ export class CharacterTools {
       );
     }
 
+    const workflowMetadata = this.createDnD5eWorkflowMetadata('run-dnd5e-summon-activity');
+
     const result = await this.foundryClient.query<FoundryRunDnD5eSummonActivityResponse>(
       'foundry-mcp-bridge.runDnD5eSummonActivity',
       {
@@ -5299,6 +5326,7 @@ export class CharacterTools {
 
     if (result.workflowStatus !== 'completed') {
       return {
+        ...workflowMetadata,
         success: false,
         workflowStatus: result.workflowStatus,
         requiresChoices: result.requiresChoices ?? true,
@@ -5322,12 +5350,26 @@ export class CharacterTools {
           : {}),
         ...(result.availableActivities ? { availableActivities: result.availableActivities } : {}),
         ...(result.availableProfiles ? { availableProfiles: result.availableProfiles } : {}),
+        unresolved: {
+          kind: result.availableProfiles
+            ? 'summon-profile'
+            : result.availableActivities
+              ? 'summon-activity'
+              : 'summon-choice',
+          requiresChoices: result.requiresChoices ?? true,
+          ...(result.availableActivities
+            ? { availableActivities: result.availableActivities }
+            : {}),
+          ...(result.availableProfiles ? { availableProfiles: result.availableProfiles } : {}),
+          ...(result.message ? { message: result.message } : {}),
+        },
         ...(result.message ? { message: result.message } : {}),
         ...(result.warnings ? { warnings: result.warnings } : {}),
       };
     }
 
     return {
+      ...workflowMetadata,
       success: true,
       workflowStatus: result.workflowStatus,
       actor: {
@@ -5392,6 +5434,7 @@ export class CharacterTools {
       );
     }
 
+    const workflowMetadata = this.createDnD5eWorkflowMetadata('organize-dnd5e-spellbook-workflow');
     const workflowReason = parsed.reason ?? 'dnd5e spellbook organization workflow';
     const initialState = await this.validateDnD5eSpellbookState(parsed.actorIdentifier);
     let currentState = initialState;
@@ -5496,7 +5539,15 @@ export class CharacterTools {
     } catch (error) {
       currentState = await this.validateDnD5eSpellbookState(parsed.actorIdentifier);
 
+      const autoApplied = {
+        sourceClassAssignments: appliedSourceClassAssignments.filter(
+          assignment => assignment.appliedBy === 'auto'
+        ),
+        preparationUpdates: appliedPreparationUpdates.filter(update => update.appliedBy === 'auto'),
+      };
+
       return {
+        ...workflowMetadata,
         success: false,
         partialSuccess:
           appliedSourceClassAssignments.length > 0 ||
@@ -5519,19 +5570,64 @@ export class CharacterTools {
             ? { recommendations: currentState.recommendations }
             : {}),
         },
+        verification: {
+          verified: false,
+          initial: {
+            summary: initialState.summary,
+            issues: initialState.issues,
+            ...(initialState.recommendations
+              ? { recommendations: initialState.recommendations }
+              : {}),
+          },
+          final: {
+            summary: currentState.summary,
+            issues: currentState.issues,
+            ...(currentState.recommendations
+              ? { recommendations: currentState.recommendations }
+              : {}),
+          },
+        },
         ...(appliedSourceClassAssignments.length > 0 ? { appliedSourceClassAssignments } : {}),
         ...(appliedPreparationUpdates.length > 0 ? { appliedPreparationUpdates } : {}),
         ...(spellPreparationPlanResults.length > 0
           ? { spellPreparationPlans: spellPreparationPlanResults }
           : {}),
+        ...(autoApplied.sourceClassAssignments.length > 0 ||
+        autoApplied.preparationUpdates.length > 0
+          ? {
+              autoApplied: {
+                ...(autoApplied.sourceClassAssignments.length > 0
+                  ? { sourceClassAssignments: autoApplied.sourceClassAssignments }
+                  : {}),
+                ...(autoApplied.preparationUpdates.length > 0
+                  ? { preparationUpdates: autoApplied.preparationUpdates }
+                  : {}),
+              },
+            }
+          : {}),
+        unresolved: {
+          kind: 'spellbook-review',
+          reviewRequired: true,
+          issues: currentState.issues,
+          ...(currentState.recommendations
+            ? { recommendations: currentState.recommendations }
+            : {}),
+        },
         message: error instanceof Error ? error.message : 'Unknown spellbook workflow error.',
       };
     }
 
     const remainingIssues = currentState.issues;
     const workflowCompleted = remainingIssues.length === 0;
+    const autoApplied = {
+      sourceClassAssignments: appliedSourceClassAssignments.filter(
+        assignment => assignment.appliedBy === 'auto'
+      ),
+      preparationUpdates: appliedPreparationUpdates.filter(update => update.appliedBy === 'auto'),
+    };
 
     return {
+      ...workflowMetadata,
       success: workflowCompleted,
       partialSuccess:
         !workflowCompleted &&
@@ -5552,6 +5648,23 @@ export class CharacterTools {
         issues: currentState.issues,
         ...(currentState.recommendations ? { recommendations: currentState.recommendations } : {}),
       },
+      verification: {
+        verified: workflowCompleted,
+        initial: {
+          summary: initialState.summary,
+          issues: initialState.issues,
+          ...(initialState.recommendations
+            ? { recommendations: initialState.recommendations }
+            : {}),
+        },
+        final: {
+          summary: currentState.summary,
+          issues: currentState.issues,
+          ...(currentState.recommendations
+            ? { recommendations: currentState.recommendations }
+            : {}),
+        },
+      },
       fixes: {
         sourceClassAssignmentsApplied: appliedSourceClassAssignments.length,
         preparationUpdatesApplied: appliedPreparationUpdates.length,
@@ -5562,8 +5675,28 @@ export class CharacterTools {
       ...(spellPreparationPlanResults.length > 0
         ? { spellPreparationPlans: spellPreparationPlanResults }
         : {}),
+      ...(autoApplied.sourceClassAssignments.length > 0 || autoApplied.preparationUpdates.length > 0
+        ? {
+            autoApplied: {
+              ...(autoApplied.sourceClassAssignments.length > 0
+                ? { sourceClassAssignments: autoApplied.sourceClassAssignments }
+                : {}),
+              ...(autoApplied.preparationUpdates.length > 0
+                ? { preparationUpdates: autoApplied.preparationUpdates }
+                : {}),
+            },
+          }
+        : {}),
       ...(!workflowCompleted
         ? {
+            unresolved: {
+              kind: 'spellbook-review',
+              reviewRequired: true,
+              issues: currentState.issues,
+              ...(currentState.recommendations
+                ? { recommendations: currentState.recommendations }
+                : {}),
+            },
             nextStep:
               'Review the remaining spellbook issues and either provide explicit sourceClassAssignments or spellPreparationPlans, or use the lower-level DnD5e spellbook tools for the remaining ambiguous cases.',
           }
@@ -6146,6 +6279,7 @@ export class CharacterTools {
       );
     }
 
+    const workflowMetadata = this.createDnD5eWorkflowMetadata('complete-dnd5e-level-up-workflow');
     let previewResult = await this.buildProgressionPreviewResult(parsed);
     let appliedAdvancements: AppliedAdvancementStep[] = [];
 
@@ -6169,6 +6303,7 @@ export class CharacterTools {
           : [];
 
       return {
+        ...workflowMetadata,
         success: false,
         workflowStatus: 'invalid-selection',
         requiresChoices: true,
@@ -6180,6 +6315,23 @@ export class CharacterTools {
           : {}),
         ...(pendingStepOptions.length > 0 ? { pendingAdvancementOptions: pendingStepOptions } : {}),
         ...(appliedAdvancements.length > 0 ? { appliedAdvancements } : {}),
+        ...(appliedAdvancements.some(step => step.appliedBy === 'auto-safe')
+          ? {
+              autoApplied: {
+                advancements: appliedAdvancements.filter(step => step.appliedBy === 'auto-safe'),
+              },
+            }
+          : {}),
+        unresolved: {
+          kind: 'advancement',
+          requiresChoices: true,
+          ...(previewResult.preview
+            ? { pendingAdvancements: previewResult.preview.pendingSteps }
+            : {}),
+          ...(pendingStepOptions.length > 0
+            ? { pendingAdvancementOptions: pendingStepOptions }
+            : {}),
+        },
         nextStep:
           'Correct the invalid advancement selection, then rerun complete-dnd5e-level-up-workflow with the remaining required choices.',
         ...(previewResult.warnings.length > 0 ? { warnings: previewResult.warnings } : {}),
@@ -6197,6 +6349,7 @@ export class CharacterTools {
       );
 
       return {
+        ...workflowMetadata,
         success: false,
         workflowStatus: 'needs-choices',
         requiresChoices: true,
@@ -6205,6 +6358,21 @@ export class CharacterTools {
         pendingAdvancements: previewResult.preview.pendingSteps,
         ...(pendingStepOptions.length > 0 ? { pendingAdvancementOptions: pendingStepOptions } : {}),
         ...(appliedAdvancements.length > 0 ? { appliedAdvancements } : {}),
+        ...(appliedAdvancements.some(step => step.appliedBy === 'auto-safe')
+          ? {
+              autoApplied: {
+                advancements: appliedAdvancements.filter(step => step.appliedBy === 'auto-safe'),
+              },
+            }
+          : {}),
+        unresolved: {
+          kind: 'advancement',
+          requiresChoices: true,
+          pendingAdvancements: previewResult.preview.pendingSteps,
+          ...(pendingStepOptions.length > 0
+            ? { pendingAdvancementOptions: pendingStepOptions }
+            : {}),
+        },
         nextStep:
           'Review the unresolved advancement steps, provide advancementSelections for the remaining required choices, and rerun complete-dnd5e-level-up-workflow.',
         ...(previewResult.warnings.length > 0 ? { warnings: previewResult.warnings } : {}),
@@ -6221,8 +6389,10 @@ export class CharacterTools {
         actorIdentifier: parsed.characterIdentifier,
       } satisfies FoundryValidateCharacterBuildRequest
     );
+    const verification = this.createCharacterBuildVerification(validation);
 
     return {
+      ...workflowMetadata,
       success: result.success,
       workflowStatus: 'completed',
       completed: true,
@@ -6241,17 +6411,15 @@ export class CharacterTools {
       appliedUpdates: result.appliedUpdates,
       updatedFields: result.updatedFields,
       ...(appliedAdvancements.length > 0 ? { appliedAdvancements } : {}),
-      validation: {
-        summary: validation.summary,
-        issues: validation.issues,
-        ...(validation.outstandingAdvancements
-          ? { outstandingAdvancements: validation.outstandingAdvancements }
-          : {}),
-        ...(validation.recommendations ? { recommendations: validation.recommendations } : {}),
-        verified:
-          validation.summary.errorCount === 0 &&
-          validation.summary.outstandingAdvancementCount === 0,
-      },
+      ...(appliedAdvancements.some(step => step.appliedBy === 'auto-safe')
+        ? {
+            autoApplied: {
+              advancements: appliedAdvancements.filter(step => step.appliedBy === 'auto-safe'),
+            },
+          }
+        : {}),
+      verification,
+      validation: verification,
       ...(previewResult.warnings.length > 0 ? { warnings: previewResult.warnings } : {}),
     };
   }
@@ -6800,6 +6968,91 @@ export class CharacterTools {
         warningSets.flatMap(warnings => warnings ?? []).filter(warning => warning.trim().length > 0)
       )
     );
+  }
+
+  private createDnD5eWorkflowMetadata(name: string): UnknownRecord {
+    return {
+      workflow: {
+        name,
+        system: 'dnd5e',
+      },
+    };
+  }
+
+  private createCharacterBuildVerification(
+    validation: FoundryValidateCharacterBuildResponse
+  ): UnknownRecord {
+    return {
+      summary: validation.summary,
+      issues: validation.issues,
+      ...(validation.outstandingAdvancements
+        ? { outstandingAdvancements: validation.outstandingAdvancements }
+        : {}),
+      ...(validation.recommendations ? { recommendations: validation.recommendations } : {}),
+      verified:
+        validation.summary.errorCount === 0 && validation.summary.outstandingAdvancementCount === 0,
+    };
+  }
+
+  private createAwardWorkflowVerification(recipients: UnknownRecord[]): UnknownRecord | undefined {
+    type AwardVerificationRecipient = {
+      actor: UnknownRecord;
+      summary: UnknownRecord;
+      issues: unknown[];
+      verified: boolean;
+      outstandingAdvancements?: unknown[];
+      recommendations?: unknown[];
+    };
+
+    const verifiedRecipients = recipients
+      .map(recipient => {
+        const record = this.toRecord(recipient);
+        const actor = this.toRecord(record?.actor);
+        const validation = this.toRecord(record?.validation);
+        const summary = this.toRecord(validation?.summary);
+        const issues = Array.isArray(validation?.issues) ? validation.issues : undefined;
+        if (!actor || !validation || !summary || !issues) {
+          return null;
+        }
+
+        const outstandingAdvancements = Array.isArray(validation.outstandingAdvancements)
+          ? validation.outstandingAdvancements
+          : undefined;
+        const recommendations = Array.isArray(validation.recommendations)
+          ? validation.recommendations
+          : undefined;
+        const errorCount = typeof summary.errorCount === 'number' ? summary.errorCount : Number.NaN;
+        const outstandingCount =
+          typeof summary.outstandingAdvancementCount === 'number'
+            ? summary.outstandingAdvancementCount
+            : Number.NaN;
+
+        const verificationRecipient: AwardVerificationRecipient = {
+          actor,
+          summary,
+          issues,
+          ...(outstandingAdvancements ? { outstandingAdvancements } : {}),
+          ...(recommendations ? { recommendations } : {}),
+          verified:
+            Number.isFinite(errorCount) &&
+            Number.isFinite(outstandingCount) &&
+            errorCount === 0 &&
+            outstandingCount === 0,
+        };
+
+        return verificationRecipient;
+      })
+      .filter((recipient): recipient is AwardVerificationRecipient => recipient !== null);
+
+    if (verifiedRecipients.length === 0) {
+      return undefined;
+    }
+
+    return {
+      verified: verifiedRecipients.every(recipient => recipient.verified === true),
+      validatedRecipientCount: verifiedRecipients.length,
+      recipients: verifiedRecipients,
+    };
   }
 
   private async prepareProgressionUpdate(

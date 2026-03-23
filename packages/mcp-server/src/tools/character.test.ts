@@ -2009,6 +2009,10 @@ describe('CharacterTools', () => {
 
     expect(result).toMatchObject({
       success: true,
+      workflow: {
+        name: 'organize-dnd5e-spellbook-workflow',
+        system: 'dnd5e',
+      },
       workflowStatus: 'completed',
       completed: true,
       character: {
@@ -2046,6 +2050,26 @@ describe('CharacterTools', () => {
       },
       finalValidation: {
         issues: [],
+      },
+      verification: {
+        verified: true,
+        final: {
+          issues: [],
+        },
+      },
+      autoApplied: {
+        sourceClassAssignments: [
+          expect.objectContaining({
+            spellId: 'spell-magic-missile',
+            appliedBy: 'auto',
+          }),
+        ],
+        preparationUpdates: [
+          expect.objectContaining({
+            spellId: 'spell-shield',
+            appliedBy: 'auto',
+          }),
+        ],
       },
     });
   });
@@ -2120,6 +2144,10 @@ describe('CharacterTools', () => {
     expect(result).toMatchObject({
       success: false,
       partialSuccess: false,
+      workflow: {
+        name: 'organize-dnd5e-spellbook-workflow',
+        system: 'dnd5e',
+      },
       workflowStatus: 'needs-review',
       reviewRequired: true,
       character: {
@@ -2132,6 +2160,20 @@ describe('CharacterTools', () => {
         preparationUpdatesApplied: 0,
       },
       finalValidation: {
+        issues: [
+          expect.objectContaining({
+            code: 'missing-source-class',
+            spellId: 'spell-shield',
+            spellName: 'Shield',
+          }),
+        ],
+      },
+      verification: {
+        verified: false,
+      },
+      unresolved: {
+        kind: 'spellbook-review',
+        reviewRequired: true,
         issues: [
           expect.objectContaining({
             code: 'missing-source-class',
@@ -2320,6 +2362,10 @@ describe('CharacterTools', () => {
 
     expect(result).toMatchObject({
       success: true,
+      workflow: {
+        name: 'organize-dnd5e-spellbook-workflow',
+        system: 'dnd5e',
+      },
       workflowStatus: 'completed',
       completed: true,
       fixes: {
@@ -2515,6 +2561,11 @@ describe('CharacterTools', () => {
 
     expect(result).toMatchObject({
       success: true,
+      workflow: {
+        name: 'run-dnd5e-rest-workflow',
+        system: 'dnd5e',
+      },
+      workflowStatus: 'completed',
       restCompleted: true,
       character: {
         id: 'actor-3',
@@ -2531,6 +2582,11 @@ describe('CharacterTools', () => {
             },
           ],
         },
+      },
+      verification: {
+        verified: true,
+        restCompleted: true,
+        postRestPreparationPlansApplied: 1,
       },
       warnings: ['Review optional rest-time choices after automation.'],
     });
@@ -4682,6 +4738,10 @@ describe('CharacterTools', () => {
 
     expect(result).toMatchObject({
       success: false,
+      workflow: {
+        name: 'complete-dnd5e-level-up-workflow',
+        system: 'dnd5e',
+      },
       workflowStatus: 'needs-choices',
       requiresChoices: true,
       character: {
@@ -4713,6 +4773,15 @@ describe('CharacterTools', () => {
           ],
         },
       ],
+      unresolved: {
+        kind: 'advancement',
+        requiresChoices: true,
+        pendingAdvancementOptions: [
+          expect.objectContaining({
+            stepId: 'subclass-step',
+          }),
+        ],
+      },
     });
   });
 
@@ -4945,7 +5014,7 @@ describe('CharacterTools', () => {
         },
       ],
       updatedFields: ['system.levels'],
-      validation: {
+      verification: {
         verified: true,
         summary: {
           totalClassLevels: 8,
@@ -4955,6 +5024,7 @@ describe('CharacterTools', () => {
         issues: [],
       },
     });
+    expect(result.validation).toEqual(result.verification);
   });
 
   it('awards split DnD5e party resources with remainder reporting and build validation', async () => {
@@ -5113,6 +5183,10 @@ describe('CharacterTools', () => {
 
     expect(result).toMatchObject({
       success: true,
+      workflow: {
+        name: 'award-dnd5e-party-resources',
+        system: 'dnd5e',
+      },
       workflowStatus: 'completed',
       awardTarget: 'party-characters',
       distributionMode: 'split',
@@ -5162,6 +5236,10 @@ describe('CharacterTools', () => {
           },
         },
       ],
+      verification: {
+        verified: true,
+        validatedRecipientCount: 2,
+      },
     });
   });
 
@@ -5755,6 +5833,10 @@ describe('CharacterTools', () => {
 
     expect(result).toMatchObject({
       success: true,
+      workflow: {
+        name: 'run-dnd5e-summon-activity',
+        system: 'dnd5e',
+      },
       workflowStatus: 'completed',
       actor: {
         id: 'actor-laeral',
@@ -5834,6 +5916,10 @@ describe('CharacterTools', () => {
 
     expect(result).toMatchObject({
       success: false,
+      workflow: {
+        name: 'run-dnd5e-summon-activity',
+        system: 'dnd5e',
+      },
       workflowStatus: 'needs-profile',
       requiresChoices: true,
       activity: {
@@ -5850,6 +5936,20 @@ describe('CharacterTools', () => {
           name: 'Fire Elemental',
         },
       ],
+      unresolved: {
+        kind: 'summon-profile',
+        requiresChoices: true,
+        availableProfiles: [
+          {
+            id: 'air-elemental',
+            name: 'Air Elemental',
+          },
+          {
+            id: 'fire-elemental',
+            name: 'Fire Elemental',
+          },
+        ],
+      },
     });
   });
 

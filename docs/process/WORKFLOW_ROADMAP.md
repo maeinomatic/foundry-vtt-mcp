@@ -105,7 +105,7 @@ These should now be treated as the baseline pattern for future workflow work:
 
 ## Next Phase
 
-### Priority 1: Workflow Contract Hardening
+### Priority 1: Workflow Contract Hardening (Completed)
 
 Before we keep expanding the workflow surface too far, keep the result shape
 disciplined.
@@ -122,6 +122,17 @@ Why first:
 - this improves every future workflow tool
 - it reduces MCP client complexity
 - it keeps LLM behavior more predictable
+
+Completed in the current baseline:
+
+- shared `workflow` metadata on the baseline DnD5e workflow tools
+- consistent `workflowStatus` coverage across the baseline workflow tools
+- normalized `verification` reporting where workflows perform build or state
+  validation
+- normalized `unresolved` reporting where workflows stop on remaining choices or
+  review-required states
+- explicit `autoApplied` reporting where workflows safely applied deterministic
+  steps
 
 ### Priority 2: Complete DnD5e Multiclass Entry Workflow
 
