@@ -10,8 +10,6 @@ on:
   push:
     branches:
       - master
-      - feat/**
-      - feature/**
   workflow_dispatch:
 
 concurrency:
