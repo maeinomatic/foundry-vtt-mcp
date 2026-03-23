@@ -280,9 +280,19 @@ export class FoundryClient {
 
   async query(method: string, data?: unknown): Promise<unknown> {
     if (!this.connector.isConnected()) {
-      throw new Error(
-        'Foundry VTT module not connected. Please ensure Foundry is running and the MCP Bridge module is enabled.'
-      );
+      const connectionGraceMs = Math.min(this.config.connectionTimeout, 5000);
+
+      this.logger.debug('Foundry module disconnected, waiting briefly for reconnect', {
+        method,
+        graceMs: connectionGraceMs,
+      });
+
+      const connectedWithinGrace = await this.connector.waitForConnection(connectionGraceMs);
+      if (!connectedWithinGrace) {
+        throw new Error(
+          'Foundry VTT module not connected. Please ensure Foundry is running and the MCP Bridge module is enabled.'
+        );
+      }
     }
 
     this.logger.debug('Sending query to Foundry module', { method, data });

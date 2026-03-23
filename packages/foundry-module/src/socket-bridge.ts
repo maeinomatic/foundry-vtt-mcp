@@ -1,4 +1,4 @@
-import { CONNECTION_STATES } from './constants.js';
+import { CONNECTION_STATES, DEFAULT_CONFIG } from './constants.js';
 import { debugGM, notifyGM } from './gm-notifications.js';
 import { WebRTCConnection, type WebRTCConfig } from './webrtc-connection.js';
 
@@ -90,9 +90,21 @@ export class SocketBridge {
   private maxReconnectAttempts = 5;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private activeConnectionType: 'websocket' | 'webrtc' | null = null;
+  private maintenanceReconnectDelayMs = DEFAULT_CONFIG.MAINTENANCE_RECONNECT_DELAY_MS;
+  private maintenanceReconnectLogged = false;
 
   constructor(private config: BridgeConfig) {
     this.maxReconnectAttempts = config.reconnectAttempts;
+  }
+
+  private resetReconnectState(): void {
+    this.reconnectAttempts = 0;
+    this.maintenanceReconnectLogged = false;
+
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
   }
 
   private errorMessage(error: unknown): string {
@@ -285,7 +297,7 @@ export class SocketBridge {
     try {
       await this.webrtc.connect(this.handleMessage.bind(this));
       this.connectionState = CONNECTION_STATES.CONNECTED;
-      this.reconnectAttempts = 0;
+      this.resetReconnectState();
       this.log('Connected via WebRTC');
     } catch (error) {
       this.log(`WebRTC connection failed: ${this.errorMessage(error)}`);
@@ -318,7 +330,7 @@ export class SocketBridge {
         this.ws.onopen = (): void => {
           clearTimeout(connectTimeout);
           this.connectionState = CONNECTION_STATES.CONNECTED;
-          this.reconnectAttempts = 0;
+          this.resetReconnectState();
           this.log('Connected to MCP server via WebSocket');
           this.setupEventHandlers();
           resolve();
@@ -358,10 +370,7 @@ export class SocketBridge {
   }
 
   disconnect(): void {
-    if (this.reconnectTimer) {
-      clearTimeout(this.reconnectTimer);
-      this.reconnectTimer = null;
-    }
+    this.resetReconnectState();
 
     if (this.webrtc) {
       this.webrtc.disconnect();
@@ -686,22 +695,31 @@ export class SocketBridge {
   }
 
   private scheduleReconnect(): void {
-    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-      this.log(`Max reconnection attempts reached (${this.maxReconnectAttempts})`);
-      return;
-    }
-
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
     }
 
-    const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 30000); // Exponential backoff, max 30s
-    this.reconnectAttempts++;
+    const nextAttempt = this.reconnectAttempts + 1;
+    const useBurstRetry = nextAttempt <= this.maxReconnectAttempts;
+    const delay = useBurstRetry
+      ? Math.min(this.config.reconnectDelay * Math.pow(2, this.reconnectAttempts), 30000)
+      : this.maintenanceReconnectDelayMs;
 
-    this.log(`Scheduling reconnection attempt ${this.reconnectAttempts} in ${delay}ms`);
+    this.reconnectAttempts = nextAttempt;
+
+    if (useBurstRetry) {
+      this.log(`Scheduling reconnection attempt ${this.reconnectAttempts} in ${delay}ms`);
+    } else if (!this.maintenanceReconnectLogged) {
+      this.maintenanceReconnectLogged = true;
+      this.log(
+        `Entering maintenance reconnect mode - retrying every ${this.maintenanceReconnectDelayMs}ms`
+      );
+    }
+
     this.connectionState = CONNECTION_STATES.RECONNECTING;
 
     this.reconnectTimer = setTimeout((): void => {
+      this.reconnectTimer = null;
       void this.connect().catch(() => {
         // Connection failed, scheduleReconnect will be called again from connect()
       });

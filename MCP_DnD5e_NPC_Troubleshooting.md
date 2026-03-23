@@ -249,6 +249,143 @@ This is not evidence that the world is misconfigured. It is evidence that the MC
    - reconnect recovery is now explicit
    - world-switch invalidation without reconnect is still not automatic
 
+## 4j. WebRTC Bridge Startup Instability
+
+### A. Primary startup race
+- The Foundry module auto-connects the bridge during the Foundry `ready` hook.
+   - `packages/foundry-module/src/main.ts`
+   - `Hooks.once('ready', ...)` calls `foundryMCPBridge.onReady()`
+   - `onReady()` immediately calls `start()` when the bridge is enabled
+- The desktop MCP wrapper starts the backend lazily, only when the wrapper itself first needs it.
+   - `packages/mcp-server/src/index.ts`
+   - `ensure()` -> `connectWithRetry()` -> `startBackend()`
+- Result:
+   - Foundry can try its first WebRTC connection before the backend or WebRTC signaling server exists.
+   - The first attempt then fails with connection refusal, which looks like flaky WebRTC even though the backend simply was not listening yet.
+
+### B. Why opening Settings or reloading can make it work
+- The module already has later retry paths:
+   - `packages/foundry-module/src/main.ts`
+   - `Hooks.on('closeSettingsConfig', ...)` attempts `start()` again if enabled and not connected
+   - `Hooks.on('canvasReady', ...)` also attempts `start()` again if enabled and not connected
+- This means opening and then closing the settings window, or reloading the session, can trigger a second connection attempt after the backend is already up.
+- That behavior matches the user symptom closely and suggests the instability is partly a startup-order problem, not only a transport problem.
+
+### C. Reconnect backoff makes the bridge feel late
+- `packages/foundry-module/src/socket-bridge.ts`
+   - failed connects call `scheduleReconnect()`
+   - reconnect delay uses exponential backoff: 1s, 2s, 4s, 8s, 16s (max 30s per attempt)
+- If the backend becomes available just after a failed attempt, the module can sit idle until the next retry window.
+- This explains the bridge feeling like it connects "quite late" even when it eventually succeeds.
+
+### D. WebRTC client/server handshake mismatch
+- Browser-side WebRTC still waits for full ICE gathering before it even posts the offer.
+   - `packages/foundry-module/src/webrtc-connection.ts`
+   - `await this.waitForIceGathering();`
+- Server-side WebRTC was already optimized to answer immediately and not wait for ICE/data-channel readiness.
+   - `packages/mcp-server/src/webrtc-peer.ts`
+   - comment and implementation explicitly say to send the answer immediately
+- Result:
+   - the browser side is still the slower side of the handshake
+   - if the page is busy during early world load, the first signaling round can be delayed or time out more easily
+
+### E. Connection state is reported too early on the browser side
+- `packages/foundry-module/src/socket-bridge.ts`
+   - after `await this.webrtc.connect(...)`, it sets `this.connectionState = CONNECTED`
+   - it logs `Connected via WebRTC`
+- But the actual WebRTC transport marks itself connected only when the data channel opens.
+   - `packages/foundry-module/src/webrtc-connection.ts`
+   - `dataChannel.onopen` is where `connectionState = CONNECTED` is also set
+- Result:
+   - one layer reports "connected" after signaling completes
+   - another layer treats the connection as truly ready only after the data channel opens
+   - this creates a real gap between "signaling succeeded" and "bridge is actually usable"
+
+### F. Server-side connection status is also announced before the data channel is fully ready
+- `packages/mcp-server/src/foundry-connector.ts`
+   - `handleWebRTCOfferHTTP()` sets `activeConnectionType = 'webrtc'`
+   - logs `WebRTC connection established via HTTP signaling`
+   - notifies `connected`
+- But the server WebRTC peer only becomes truly usable when `getIsConnected()` becomes true from peer/data-channel events.
+   - `packages/mcp-server/src/webrtc-peer.ts`
+   - `Peer connection fully established`
+   - `Data channel opened - connection fully ready`
+- This is safer than the browser side because actual queries still check `getIsConnected()`, but it still makes lifecycle reporting optimistic.
+
+### G. Most likely explanation of the instability
+This now looks like a combination of two problems:
+
+1. Backend startup race
+   - Foundry tries to connect before the backend and signaling server are running.
+
+2. WebRTC readiness mismatch
+   - signaling success is treated as connection success before the data channel is fully open.
+
+These together can produce exactly the reported behavior:
+- first attempt fails or half-succeeds during initial load
+- later UI activity or reload causes a second attempt
+- the second attempt works because the backend is already up and the page is fully loaded
+
+### H. Likely fixes
+1. Make the backend available before Foundry attempts auto-connect, or have the module delay first auto-connect until the backend is expected to exist.
+2. Make browser-side WebRTC `connect()` resolve only after the data channel is actually open.
+3. Avoid reporting `connected` on either side purely from signaling completion.
+4. Consider deferring initial WebRTC auto-connect from `ready` to a later point such as `canvasReady`, or retry immediately once on `canvasReady` without waiting for long backoff.
+5. Add explicit timing logs for first-attempt WebRTC startup so the next live test can distinguish:
+   - backend not listening
+   - signaling timeout
+   - ICE timeout
+   - data channel never opening
+
+### I. Implemented so far
+- Updated `packages/foundry-module/src/webrtc-connection.ts`
+   - browser-side WebRTC `connect()` now waits for the data channel to actually open before resolving success
+   - failed or closed channels now reject the pending connect attempt instead of leaving a false-ready gap
+- Updated `packages/foundry-module/src/main.ts`
+   - the primary automatic bridge startup is no longer triggered in the Foundry `ready` hook
+   - `ready` now defers auto-connect until `canvasReady`, which is closer to the world actually being usable
+- Updated `packages/foundry-module/src/socket-bridge.ts`
+   - reconnect no longer stops permanently after the initial burst window
+   - retry policy is now two-phase:
+      - startup burst using exponential backoff
+      - low-frequency maintenance reconnects every 60 seconds while enabled
+   - long-lived maintenance mode logs only once when entered to avoid log spam on low-power hosts
+- Updated `packages/foundry-module/src/constants.ts`
+   - added a dedicated maintenance reconnect interval constant for low-cost background retries
+- Updated `packages/mcp-server/src/foundry-connector.ts`
+   - added a bounded `waitForConnection()` helper for short reconnect grace windows
+- Updated `packages/mcp-server/src/foundry-client.ts`
+   - queries now wait briefly for the Foundry bridge to reconnect before failing immediately
+   - this is a fallback for first-call timing races, not the primary connection strategy
+- This removes two confirmed problems:
+   - premature "connected" state on the browser side
+   - permanent reconnect exhaustion for the "backend starts much later" scenario
+- It also improves a third case:
+   - a user starts MCP/backend shortly before issuing the first command, and the backend-side query path can now tolerate a short in-progress reconnect
+
+### J. Connection Strategy Going Forward
+The working strategy is now:
+
+1. Do not rely on the first MCP tool call to create the bridge.
+   - Tool calls should use an already-maintained connection whenever possible.
+
+2. Do not rely on the Foundry `ready` hook as the authoritative first connect point.
+   - `ready` can happen before the world is fully settled.
+   - `canvasReady` is a better first meaningful connect point.
+
+3. Support both startup orders.
+   - If MCP/backend is already running before the world starts, Foundry should connect automatically after the world is ready.
+   - If the world is already running before MCP/backend starts, Foundry should keep retrying cheaply in the background until the backend appears.
+
+4. Keep reconnect cheap enough for low-power hosts.
+   - short burst at startup
+   - then sparse maintenance retries instead of aggressive permanent polling
+   - no heavy queries during maintenance reconnect attempts
+
+5. Reserve tool-call waiting as a future fallback, not the primary strategy.
+   - Backend queries now include a short grace wait for an in-progress reconnect.
+   - This complements background bridge maintenance rather than replacing it.
+
 ## 5. Next Troubleshooting Steps
 1. **Fix cache invalidation in the MCP server:**
    - Prevent `detectGameSystem()` from persisting `other` after transient failures.

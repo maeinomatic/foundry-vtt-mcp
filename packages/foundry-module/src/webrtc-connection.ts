@@ -28,6 +28,9 @@ export class WebRTCConnection {
   private dataChannel: RTCDataChannel | null = null;
   private connectionState: string = CONNECTION_STATES.DISCONNECTED;
   private messageHandler: ((message: IncomingWebRTCMessage) => Promise<void>) | null = null;
+  private dataChannelOpenPromise: Promise<void> | null = null;
+  private resolveDataChannelOpen: (() => void) | null = null;
+  private rejectDataChannelOpen: ((error: Error) => void) | null = null;
 
   constructor(private config: WebRTCConfig) {}
 
@@ -58,6 +61,10 @@ export class WebRTCConnection {
         ordered: true,
         maxRetransmits: 10,
       });
+      this.dataChannelOpenPromise = new Promise<void>((resolve, reject) => {
+        this.resolveDataChannelOpen = resolve;
+        this.rejectDataChannelOpen = reject;
+      });
 
       this.setupDataChannelHandlers();
       this.setupPeerConnectionHandlers();
@@ -72,10 +79,14 @@ export class WebRTCConnection {
       // Step 5: Send offer to server via signaling WebSocket
       await this.sendSignalingOffer(this.peerConnection.localDescription!);
 
-      this.log('WebRTC connection initiated');
+      // Do not report success until the transport is actually usable.
+      await this.waitForDataChannelOpen();
+
+      this.log('WebRTC connection ready');
     } catch (error) {
       this.log(`WebRTC connection failed: ${this.errorMessage(error)}`);
       this.connectionState = CONNECTION_STATES.DISCONNECTED;
+      this.rejectPendingDataChannelOpen(error);
       throw error;
     }
   }
@@ -86,15 +97,20 @@ export class WebRTCConnection {
     this.dataChannel.onopen = (): void => {
       this.log('WebRTC data channel opened');
       this.connectionState = CONNECTION_STATES.CONNECTED;
+      this.resolvePendingDataChannelOpen();
     };
 
     this.dataChannel.onclose = (): void => {
       this.log('WebRTC data channel closed');
       this.connectionState = CONNECTION_STATES.DISCONNECTED;
+      this.rejectPendingDataChannelOpen(new Error('WebRTC data channel closed before opening'));
     };
 
     this.dataChannel.onerror = (error: Event): void => {
       this.log(`WebRTC data channel error: ${String(error.type)}`);
+      this.rejectPendingDataChannelOpen(
+        new Error(`WebRTC data channel error: ${String(error.type)}`)
+      );
     };
 
     this.dataChannel.onmessage = async (
@@ -167,6 +183,55 @@ export class WebRTCConnection {
     });
   }
 
+  private async waitForDataChannelOpen(): Promise<void> {
+    if (this.dataChannel?.readyState === 'open') {
+      return;
+    }
+
+    if (!this.dataChannelOpenPromise) {
+      throw new Error('WebRTC data channel open promise was not initialized');
+    }
+
+    const dataChannelOpenPromise = this.dataChannelOpenPromise;
+
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        this.rejectPendingDataChannelOpen(new Error('WebRTC data channel open timeout'));
+      }, this.config.connectionTimeout * 1000);
+
+      dataChannelOpenPromise
+        .then(() => {
+          clearTimeout(timeout);
+          resolve();
+        })
+        .catch(error => {
+          clearTimeout(timeout);
+          reject(error);
+        });
+    });
+  }
+
+  private resolvePendingDataChannelOpen(): void {
+    this.resolveDataChannelOpen?.();
+    this.clearPendingDataChannelOpen();
+  }
+
+  private rejectPendingDataChannelOpen(error: unknown): void {
+    if (!this.rejectDataChannelOpen) {
+      return;
+    }
+
+    const resolvedError = error instanceof Error ? error : new Error(this.errorMessage(error));
+    this.rejectDataChannelOpen(resolvedError);
+    this.clearPendingDataChannelOpen();
+  }
+
+  private clearPendingDataChannelOpen(): void {
+    this.dataChannelOpenPromise = null;
+    this.resolveDataChannelOpen = null;
+    this.rejectDataChannelOpen = null;
+  }
+
   private async sendSignalingOffer(offer: RTCSessionDescriptionInit): Promise<void> {
     // Use HTTP POST for signaling to dedicated WebRTC signaling port (31416)
     // For HTTPS pages, browsers allow HTTP POST to localhost (security exception)
@@ -230,6 +295,7 @@ export class WebRTCConnection {
     }
 
     this.connectionState = CONNECTION_STATES.DISCONNECTED;
+    this.rejectPendingDataChannelOpen(new Error('WebRTC connection closed'));
     this.log('WebRTC connection closed');
   }
 

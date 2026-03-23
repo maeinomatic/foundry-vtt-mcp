@@ -120,6 +120,7 @@ class FoundryMCPBridge {
   private heartbeatInterval: number | null = null;
   private lastActivity: Date = new Date();
   private isConnecting = false;
+  private hasShownMissingServerWarning = false;
 
   constructor() {
     this.settings = new ModuleSettings();
@@ -206,7 +207,7 @@ class FoundryMCPBridge {
       const enabled = this.settings.getSetting('enabled') === true;
 
       if (enabled) {
-        await this.start();
+        this.log('Bridge auto-connect deferred until canvas is ready');
       }
 
       // Auto-build enhanced creature index if enabled and not exists
@@ -324,6 +325,7 @@ class FoundryMCPBridge {
       if (this.settings.getSetting<boolean>('enableNotifications')) {
         ui.notifications.info('🔗 MCP Bridge connected successfully');
       }
+      this.hasShownMissingServerWarning = false;
       this.log(
         `GM connection established - Bridge active for user: ${game.user?.name ?? 'Unknown'}`
       );
@@ -340,19 +342,11 @@ class FoundryMCPBridge {
           errorMessage.includes('ECONNREFUSED') ||
           errorMessage.includes('connect ECONNREFUSED')
         ) {
-          // Only show this notification if it's been more than 30 seconds since last shown
-          const lastShownRaw: unknown = this.settings.getSetting('lastMCPServerNotification');
-          const lastShown = typeof lastShownRaw === 'string' ? lastShownRaw : '';
-          const now = new Date().getTime();
-          const thirtySecondsAgo = now - 30 * 1000;
-
-          if (!lastShown || new Date(lastShown).getTime() < thirtySecondsAgo) {
+          if (!this.hasShownMissingServerWarning) {
             ui.notifications?.warn(
               'MCP Server not found. Install it from https://github.com/maeinomatic/foundry-vtt-mcp'
             );
-
-            // Remember when we showed this notification
-            void this.settings.setSetting('lastMCPServerNotification', new Date().toISOString());
+            this.hasShownMissingServerWarning = true;
           }
         }
       }
@@ -381,6 +375,7 @@ class FoundryMCPBridge {
 
       this.socketBridge.disconnect();
       this.socketBridge = null;
+      this.hasShownMissingServerWarning = false;
 
       await this.settings.setSetting('lastConnectionState', 'disconnected');
 

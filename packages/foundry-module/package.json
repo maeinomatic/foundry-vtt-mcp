@@ -1,6 +1,6 @@
 {
   "name": "@maeinomatic/foundry-mcp-module",
-  "version": "0.6.5",
+  "version": "0.6.6",
   "description": "Foundry VTT module for the independently maintained MCP bridge integration",
   "type": "module",
   "scripts": {

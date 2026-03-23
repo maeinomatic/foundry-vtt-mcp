@@ -520,6 +520,34 @@ export class FoundryConnector {
     return this.activeConnectionType;
   }
 
+  async waitForConnection(timeoutMs: number): Promise<boolean> {
+    if (this.isConnected()) {
+      return true;
+    }
+
+    if (timeoutMs <= 0) {
+      return false;
+    }
+
+    return new Promise<boolean>(resolve => {
+      const deadline = Date.now() + timeoutMs;
+      const intervalMs = 100;
+
+      const interval = setInterval(() => {
+        if (this.isConnected()) {
+          clearInterval(interval);
+          resolve(true);
+          return;
+        }
+
+        if (Date.now() >= deadline) {
+          clearInterval(interval);
+          resolve(false);
+        }
+      }, intervalMs);
+    });
+  }
+
   /**
    * Send a message to the connected Foundry module
    */
