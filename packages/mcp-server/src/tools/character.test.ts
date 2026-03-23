@@ -5953,6 +5953,400 @@ describe('CharacterTools', () => {
     });
   });
 
+  it('completes the DnD5e multiclass entry workflow, reconciles the spellbook, and validates the final build', async () => {
+    const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
+      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+        return Promise.resolve({ system: 'dnd5e' });
+      }
+
+      if (method === 'foundry-mcp-bridge.getCharacterInfo') {
+        const characterInfoCallCount = query.mock.calls.filter(
+          ([calledMethod]) => calledMethod === 'foundry-mcp-bridge.getCharacterInfo'
+        ).length;
+
+        expect(data).toEqual({ identifier: 'Laeral' });
+
+        if (characterInfoCallCount === 1) {
+          return Promise.resolve({
+            id: 'actor-10',
+            name: 'Laeral',
+            type: 'character',
+            system: {},
+            items: [
+              {
+                id: 'class-fighter',
+                name: 'Fighter',
+                type: 'class',
+                system: {
+                  levels: 3,
+                },
+              },
+            ],
+            effects: [],
+          });
+        }
+
+        return Promise.resolve({
+          id: 'actor-10',
+          name: 'Laeral',
+          type: 'character',
+          system: {},
+          items: [
+            {
+              id: 'class-fighter',
+              name: 'Fighter',
+              type: 'class',
+              system: {
+                levels: 3,
+              },
+            },
+            {
+              id: 'class-wizard-new',
+              name: 'Wizard',
+              type: 'class',
+              system: {
+                levels: 1,
+                spellcasting: {
+                  progression: 'full',
+                  type: 'prepared',
+                },
+              },
+            },
+          ],
+          effects: [],
+        });
+      }
+
+      if (method === 'foundry-mcp-bridge.getCompendiumDocumentFull') {
+        expect(data).toEqual({
+          packId: 'dnd5e.classes',
+          documentId: 'wizard',
+        });
+        return Promise.resolve({
+          id: 'wizard',
+          name: 'Wizard',
+          type: 'class',
+        });
+      }
+
+      if (method === 'foundry-mcp-bridge.createActorEmbeddedItem') {
+        expect(data).toEqual({
+          actorIdentifier: 'Laeral',
+          sourceUuid: 'Compendium.dnd5e.classes.wizard',
+          itemType: 'class',
+          reason: 'multiclass entry',
+        });
+        return Promise.resolve({
+          success: true,
+          actorId: 'actor-10',
+          actorName: 'Laeral',
+          itemId: 'class-wizard-new',
+          itemName: 'Wizard',
+          itemType: 'class',
+          createdFrom: 'uuid',
+          sourceUuid: 'Compendium.dnd5e.classes.wizard',
+        });
+      }
+
+      if (method === 'foundry-mcp-bridge.previewCharacterProgression') {
+        expect(data).toEqual({
+          actorIdentifier: 'Laeral',
+          classIdentifier: 'class-wizard-new',
+          targetLevel: 1,
+        });
+        return Promise.resolve({
+          system: 'dnd5e',
+          actorId: 'actor-10',
+          actorName: 'Laeral',
+          actorType: 'character',
+          classId: 'class-wizard-new',
+          className: 'Wizard',
+          currentLevel: 0,
+          targetLevel: 1,
+          safeToApplyDirectly: true,
+          pendingSteps: [],
+        });
+      }
+
+      if (method === 'foundry-mcp-bridge.updateActorEmbeddedItem') {
+        expect(data).toEqual({
+          actorIdentifier: 'Laeral',
+          itemIdentifier: 'class-wizard-new',
+          itemType: 'class',
+          updates: {
+            'system.levels': 1,
+          },
+          reason: 'character progression update',
+        });
+        return Promise.resolve({
+          success: true,
+          actorId: 'actor-10',
+          actorName: 'Laeral',
+          itemId: 'class-wizard-new',
+          itemName: 'Wizard',
+          itemType: 'class',
+          appliedUpdates: {
+            'system.levels': 1,
+          },
+          updatedFields: ['system.levels'],
+        });
+      }
+
+      if (method === 'foundry-mcp-bridge.validateCharacterBuild') {
+        return Promise.resolve({
+          system: 'dnd5e',
+          actorId: 'actor-10',
+          actorName: 'Laeral',
+          actorType: 'character',
+          summary: {
+            classCount: 2,
+            totalClassLevels: 4,
+            outstandingAdvancementCount: 0,
+            issueCount: 0,
+            errorCount: 0,
+            warningCount: 0,
+            infoCount: 0,
+          },
+          issues: [],
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected query: ${method}`));
+    });
+
+    const registry = new SystemRegistry();
+    registry.register(new DnD5eAdapter());
+
+    const tools = new CharacterTools({
+      foundryClient: { query } as unknown as FoundryClient,
+      logger: createLoggerStub(),
+      systemRegistry: registry,
+    });
+
+    const result = (await tools.handleCompleteDnD5eMulticlassEntryWorkflow({
+      characterIdentifier: 'Laeral',
+      classUuid: 'Compendium.dnd5e.classes.wizard',
+      reason: 'multiclass entry',
+    })) as Record<string, unknown>;
+
+    expect(result).toMatchObject({
+      success: true,
+      workflow: {
+        name: 'complete-dnd5e-multiclass-entry-workflow',
+        system: 'dnd5e',
+      },
+      workflowStatus: 'completed',
+      completed: true,
+      classCreated: true,
+      progressionComplete: true,
+      spellbookOrganized: true,
+      class: {
+        id: 'class-wizard-new',
+        name: 'Wizard',
+        type: 'class',
+      },
+      sourceUuid: 'Compendium.dnd5e.classes.wizard',
+      levelUp: {
+        workflowStatus: 'completed',
+      },
+      spellbook: {
+        workflowStatus: 'completed',
+      },
+      verification: {
+        verified: true,
+        build: {
+          verified: true,
+          summary: {
+            classCount: 2,
+            totalClassLevels: 4,
+          },
+        },
+        spellbook: {
+          verified: true,
+        },
+      },
+    });
+  });
+
+  it('returns resumable level-up guidance when multiclass entry still needs advancement choices', async () => {
+    const query = vi.fn().mockImplementation((method: string) => {
+      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+        return Promise.resolve({ system: 'dnd5e' });
+      }
+
+      if (method === 'foundry-mcp-bridge.getCharacterInfo') {
+        const characterInfoCallCount = query.mock.calls.filter(
+          ([calledMethod]) => calledMethod === 'foundry-mcp-bridge.getCharacterInfo'
+        ).length;
+
+        if (characterInfoCallCount === 1) {
+          return Promise.resolve({
+            id: 'actor-11',
+            name: 'Laeral',
+            type: 'character',
+            system: {},
+            items: [
+              {
+                id: 'class-fighter',
+                name: 'Fighter',
+                type: 'class',
+                system: {
+                  levels: 3,
+                },
+              },
+            ],
+            effects: [],
+          });
+        }
+
+        return Promise.resolve({
+          id: 'actor-11',
+          name: 'Laeral',
+          type: 'character',
+          system: {},
+          items: [
+            {
+              id: 'class-fighter',
+              name: 'Fighter',
+              type: 'class',
+              system: {
+                levels: 3,
+              },
+            },
+            {
+              id: 'class-wizard-new',
+              name: 'Wizard',
+              type: 'class',
+              system: {
+                levels: 0,
+                advancement: [{ type: 'Subclass', level: 1 }],
+              },
+            },
+          ],
+          effects: [],
+        });
+      }
+
+      if (method === 'foundry-mcp-bridge.getCompendiumDocumentFull') {
+        return Promise.resolve({
+          id: 'wizard',
+          name: 'Wizard',
+          type: 'class',
+        });
+      }
+
+      if (method === 'foundry-mcp-bridge.createActorEmbeddedItem') {
+        return Promise.resolve({
+          success: true,
+          actorId: 'actor-11',
+          actorName: 'Laeral',
+          itemId: 'class-wizard-new',
+          itemName: 'Wizard',
+          itemType: 'class',
+          createdFrom: 'uuid',
+          sourceUuid: 'Compendium.dnd5e.classes.wizard',
+        });
+      }
+
+      if (method === 'foundry-mcp-bridge.previewCharacterProgression') {
+        return Promise.resolve({
+          system: 'dnd5e',
+          actorId: 'actor-11',
+          actorName: 'Laeral',
+          actorType: 'character',
+          classId: 'class-wizard-new',
+          className: 'Wizard',
+          currentLevel: 0,
+          targetLevel: 1,
+          safeToApplyDirectly: false,
+          pendingSteps: [
+            {
+              id: 'subclass-step',
+              level: 1,
+              type: 'Subclass',
+              title: 'Arcane Tradition',
+              required: true,
+              choicesRequired: true,
+              autoApplySafe: false,
+            },
+          ],
+        });
+      }
+
+      if (method === 'foundry-mcp-bridge.getCharacterAdvancementOptions') {
+        return Promise.resolve({
+          system: 'dnd5e',
+          actorId: 'actor-11',
+          actorName: 'Laeral',
+          actorType: 'character',
+          stepId: 'subclass-step',
+          stepType: 'Subclass',
+          stepTitle: 'Arcane Tradition',
+          options: [
+            {
+              id: 'evocation',
+              name: 'School of Evocation',
+              type: 'subclass',
+              source: 'compendium',
+              uuid: 'Compendium.dnd5e.subclasses.Item.evocation',
+            },
+          ],
+          totalOptions: 1,
+          classId: 'class-wizard-new',
+          className: 'Wizard',
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected query: ${method}`));
+    });
+
+    const registry = new SystemRegistry();
+    registry.register(new DnD5eAdapter());
+
+    const tools = new CharacterTools({
+      foundryClient: { query } as unknown as FoundryClient,
+      logger: createLoggerStub(),
+      systemRegistry: registry,
+    });
+
+    const result = (await tools.handleCompleteDnD5eMulticlassEntryWorkflow({
+      characterIdentifier: 'Laeral',
+      classUuid: 'Compendium.dnd5e.classes.wizard',
+    })) as Record<string, unknown>;
+
+    expect(result).toMatchObject({
+      success: false,
+      partialSuccess: true,
+      workflow: {
+        name: 'complete-dnd5e-multiclass-entry-workflow',
+        system: 'dnd5e',
+      },
+      workflowStatus: 'needs-choices',
+      classCreated: true,
+      progressionComplete: false,
+      spellbookOrganized: false,
+      class: {
+        id: 'class-wizard-new',
+        name: 'Wizard',
+        type: 'class',
+      },
+      levelUp: {
+        workflowStatus: 'needs-choices',
+        pendingAdvancements: [
+          expect.objectContaining({
+            id: 'subclass-step',
+          }),
+        ],
+      },
+      unresolved: {
+        phase: 'level-up',
+        kind: 'advancement',
+        requiresChoices: true,
+      },
+    });
+    expect(result.nextStep).toContain('classIdentifier');
+  });
+
   it('adds a new DnD5e class item and finalizes the initial multiclass level flow', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
       if (method === 'foundry-mcp-bridge.getWorldInfo') {

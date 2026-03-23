@@ -130,6 +130,7 @@ an MCP client wants fine-grained control.
 
 - `run-dnd5e-rest-workflow`
 - `complete-dnd5e-level-up-workflow`
+- `complete-dnd5e-multiclass-entry-workflow`
 - `award-dnd5e-party-resources`
 - `run-dnd5e-summon-activity`
 - `organize-dnd5e-spellbook-workflow`

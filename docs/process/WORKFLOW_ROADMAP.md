@@ -134,7 +134,7 @@ Completed in the current baseline:
 - explicit `autoApplied` reporting where workflows safely applied deterministic
   steps
 
-### Priority 2: Complete DnD5e Multiclass Entry Workflow
+### Priority 2: Complete DnD5e Multiclass Entry Workflow (Completed)
 
 Proposed tool:
 
@@ -154,6 +154,15 @@ Why this is next:
 - it is the most direct extension of the current progression work
 - it maps closely to the original MCP character-progression goal
 - the repo already has most of the needed primitives
+
+Completed in the current baseline:
+
+- `complete-dnd5e-multiclass-entry-workflow` now handles initial class creation
+  or safe resume via `classIdentifier`
+- it composes class creation, initial level-up progression, multiclass spellbook
+  organization, and final build validation under one workflow contract
+- unresolved advancement choices now stop with resumable guidance instead of
+  forcing the caller to rediscover the owned class item state
 
 ### Priority 3: DnD5e Group Rest Workflow
 

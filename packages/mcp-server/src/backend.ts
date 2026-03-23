@@ -1668,6 +1668,11 @@ async function startBackend(): Promise<void> {
 
                     break;
 
+                  case 'complete-dnd5e-multiclass-entry-workflow':
+                    result = await characterTools.handleCompleteDnD5eMulticlassEntryWorkflow(args);
+
+                    break;
+
                   case 'update-character-item':
                     result = await characterTools.handleUpdateCharacterItem(args);
 

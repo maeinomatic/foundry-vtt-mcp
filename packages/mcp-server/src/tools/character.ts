@@ -587,6 +587,84 @@ export class CharacterTools {
     });
   }
 
+  private async createDnD5eClassItemOnCharacter(params: {
+    characterIdentifier: string;
+    classUuid: string;
+    reason?: string;
+  }): Promise<FoundryCreateActorEmbeddedItemResponse> {
+    const characterData = await this.getCharacterData(params.characterIdentifier);
+    if (characterData.type !== 'character') {
+      throw new Error(
+        'UNSUPPORTED_CAPABILITY: DnD5e class addition is only supported for character actors.'
+      );
+    }
+
+    const parsedClassUuid = parseCompendiumDocumentUuid(params.classUuid);
+    if (parsedClassUuid) {
+      const classDocument = await this.foundryClient.query<FoundryItemDocumentBase | null>(
+        'foundry-mcp-bridge.getCompendiumDocumentFull',
+        {
+          packId: parsedClassUuid.packId,
+          documentId: parsedClassUuid.documentId,
+        } satisfies FoundryGetCompendiumDocumentRequest
+      );
+
+      const className = classDocument?.name?.toLowerCase();
+      if (
+        className &&
+        (characterData.items ?? []).some(
+          item => item.type === 'class' && item.name.toLowerCase() === className
+        )
+      ) {
+        throw new Error(
+          `This character already has the class "${classDocument?.name ?? params.classUuid}". Use update-character-progression to level the existing class instead of adding a duplicate class item.`
+        );
+      }
+    }
+
+    return this.foundryClient.query<FoundryCreateActorEmbeddedItemResponse>(
+      'foundry-mcp-bridge.createActorEmbeddedItem',
+      {
+        actorIdentifier: params.characterIdentifier,
+        sourceUuid: params.classUuid,
+        itemType: 'class',
+        ...(params.reason !== undefined ? { reason: params.reason } : {}),
+      }
+    );
+  }
+
+  private async resolveDnD5eOwnedClassSummary(
+    characterIdentifier: string,
+    classIdentifier: string
+  ): Promise<{ id: string; name: string; type: string }> {
+    const characterData = await this.getCharacterData(characterIdentifier);
+    if (characterData.type !== 'character') {
+      throw new Error(
+        'UNSUPPORTED_CAPABILITY: DnD5e multiclass entry is only supported for character actors.'
+      );
+    }
+
+    const normalizedClassIdentifier = classIdentifier.toLowerCase();
+    const classItem = (characterData.items ?? []).find(
+      item =>
+        item.type === 'class' &&
+        (item.id.toLowerCase() === normalizedClassIdentifier ||
+          item.name.toLowerCase() === normalizedClassIdentifier)
+    );
+
+    if (!classItem) {
+      throw new Error(
+        `UNSUPPORTED_CAPABILITY: Class "${classIdentifier}" was not found on this DnD5e character.`
+      );
+    }
+
+    return {
+      id: classItem.id,
+      name: classItem.name,
+      type: classItem.type,
+    };
+  }
+
   private async applyPreparedWriteMutation(params: {
     actorIdentifier: string;
     mutation: PreparedCharacterWriteMutation;
@@ -1755,6 +1833,79 @@ export class CharacterTools {
             },
           },
           required: ['characterIdentifier', 'classUuid'],
+        },
+      },
+      {
+        name: 'complete-dnd5e-multiclass-entry-workflow',
+        description:
+          'DnD5e only: add or resume a multiclass entry workflow, complete the initial class advancement flow, reconcile multiclass spellbook state, and validate the final build with one workflow contract.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            characterIdentifier: {
+              type: 'string',
+              description: 'Character name or ID that is entering a new DnD5e class',
+            },
+            classUuid: {
+              type: 'string',
+              description:
+                'Compendium or world UUID of the DnD5e class item to add on the first run. Provide exactly one of classUuid or classIdentifier.',
+            },
+            classIdentifier: {
+              type: 'string',
+              description:
+                'Existing owned DnD5e class item name or ID to resume a previously started multiclass entry workflow. Provide exactly one of classUuid or classIdentifier.',
+            },
+            targetLevel: {
+              type: 'number',
+              description:
+                'Target level for the newly added class. Defaults to 1 for the initial multiclass entry workflow.',
+            },
+            advancementSelections: createAdvancementSelectionsInputSchema(
+              'Optional progression choices to apply during the class-entry advancement flow.'
+            ),
+            sourceClassAssignments: {
+              type: 'array',
+              description:
+                'Optional explicit spell-to-class assignments to apply if the new multiclass entry creates multiclass spellbook ambiguity.',
+              items: {
+                type: 'object',
+                properties: {
+                  spellIdentifier: { type: 'string' },
+                  classIdentifier: { type: 'string' },
+                },
+                required: ['spellIdentifier', 'classIdentifier'],
+              },
+            },
+            spellPreparationPlans: createSpellPreparationPlansInputSchema(
+              'Optional spell preparation plans to apply after the class entry progression completes.'
+            ),
+            autoFixSourceClasses: {
+              type: 'boolean',
+              description:
+                'When true, safely auto-assign source classes during the spellbook reconciliation phase.',
+            },
+            autoFixPreparationMismatches: {
+              type: 'boolean',
+              description:
+                'When true, safely auto-fix preparation mismatches during the spellbook reconciliation phase.',
+            },
+            optionQuery: {
+              type: 'string',
+              description:
+                'Optional filter text when collecting pending advancement options for unresolved multiclass entry steps.',
+            },
+            optionLimit: {
+              type: 'number',
+              description:
+                'Maximum number of pending advancement options to fetch per unresolved step.',
+            },
+            reason: {
+              type: 'string',
+              description: 'Optional audit reason for the multiclass entry workflow',
+            },
+          },
+          required: ['characterIdentifier'],
         },
       },
       {
@@ -3837,51 +3988,11 @@ export class CharacterTools {
       );
     }
 
-    const characterData = await this.foundryClient.query<CharacterInfoResponse>(
-      'foundry-mcp-bridge.getCharacterInfo',
-      {
-        identifier: baseParsed.characterIdentifier,
-      }
-    );
-
-    if (characterData.type !== 'character') {
-      throw new Error(
-        'UNSUPPORTED_CAPABILITY: DnD5e class addition is only supported for character actors.'
-      );
-    }
-
-    const parsedClassUuid = parseCompendiumDocumentUuid(baseParsed.classUuid);
-    if (parsedClassUuid) {
-      const classDocument = await this.foundryClient.query<FoundryItemDocumentBase | null>(
-        'foundry-mcp-bridge.getCompendiumDocumentFull',
-        {
-          packId: parsedClassUuid.packId,
-          documentId: parsedClassUuid.documentId,
-        } satisfies FoundryGetCompendiumDocumentRequest
-      );
-
-      const className = classDocument?.name?.toLowerCase();
-      if (
-        className &&
-        (characterData.items ?? []).some(
-          item => item.type === 'class' && item.name.toLowerCase() === className
-        )
-      ) {
-        throw new Error(
-          `This character already has the class "${classDocument?.name ?? baseParsed.classUuid}". Use update-character-progression to level the existing class instead of adding a duplicate class item.`
-        );
-      }
-    }
-
-    const createResult = await this.foundryClient.query<FoundryCreateActorEmbeddedItemResponse>(
-      'foundry-mcp-bridge.createActorEmbeddedItem',
-      {
-        actorIdentifier: baseParsed.characterIdentifier,
-        sourceUuid: baseParsed.classUuid,
-        itemType: 'class',
-        ...(baseParsed.reason !== undefined ? { reason: baseParsed.reason } : {}),
-      }
-    );
+    const createResult = await this.createDnD5eClassItemOnCharacter({
+      characterIdentifier: baseParsed.characterIdentifier,
+      classUuid: baseParsed.classUuid,
+      ...(baseParsed.reason !== undefined ? { reason: baseParsed.reason } : {}),
+    });
 
     const progressionResult = await this.runProgressionUpdateFlow({
       ...progressionParsed,
@@ -3903,6 +4014,221 @@ export class CharacterTools {
         type: createResult.itemType,
       },
       sourceUuid: baseParsed.classUuid,
+    };
+  }
+
+  async handleCompleteDnD5eMulticlassEntryWorkflow(args: unknown): Promise<UnknownRecord> {
+    const advancementSelectionSchema = createAdvancementSelectionSchema();
+    const schema = z
+      .object({
+        characterIdentifier: z.string().min(1, 'Character identifier cannot be empty'),
+        classUuid: z.string().min(1).optional(),
+        classIdentifier: z.string().min(1).optional(),
+        targetLevel: z.number().int().positive().default(1),
+        advancementSelections: z.array(advancementSelectionSchema).optional(),
+        sourceClassAssignments: z
+          .array(
+            z.object({
+              spellIdentifier: z.string().min(1, 'Spell identifier cannot be empty'),
+              classIdentifier: z.string().min(1, 'Class identifier cannot be empty'),
+            })
+          )
+          .optional(),
+        spellPreparationPlans: z.array(createSpellPreparationPlanSchema()).optional(),
+        autoFixSourceClasses: z.boolean().default(true),
+        autoFixPreparationMismatches: z.boolean().default(true),
+        optionQuery: z.string().min(1).optional(),
+        optionLimit: z.number().int().positive().max(50).default(25),
+        reason: z.string().min(1).optional(),
+      })
+      .refine(
+        value => (value.classUuid !== undefined) !== (value.classIdentifier !== undefined),
+        'Provide exactly one of classUuid or classIdentifier'
+      );
+
+    const parsed = schema.parse(args);
+
+    this.logger.info('Running complete DnD5e multiclass entry workflow', parsed);
+
+    const gameSystem = await this.getGameSystem();
+    if (gameSystem !== 'dnd5e') {
+      throw new Error(
+        'UNSUPPORTED_CAPABILITY: complete-dnd5e-multiclass-entry-workflow is only available when the active system is dnd5e.'
+      );
+    }
+
+    const workflowMetadata = this.createDnD5eWorkflowMetadata(
+      'complete-dnd5e-multiclass-entry-workflow'
+    );
+
+    let classSummary: { id: string; name: string; type: string };
+    let sourceUuid: string | undefined;
+    let classCreated = false;
+
+    if (parsed.classUuid !== undefined) {
+      const createResult = await this.createDnD5eClassItemOnCharacter({
+        characterIdentifier: parsed.characterIdentifier,
+        classUuid: parsed.classUuid,
+        ...(parsed.reason !== undefined ? { reason: parsed.reason } : {}),
+      });
+      classSummary = {
+        id: createResult.itemId,
+        name: createResult.itemName,
+        type: createResult.itemType,
+      };
+      classCreated = true;
+      sourceUuid = parsed.classUuid;
+    } else {
+      classSummary = await this.resolveDnD5eOwnedClassSummary(
+        parsed.characterIdentifier,
+        parsed.classIdentifier!
+      );
+    }
+
+    const levelUpResult = await this.handleCompleteDnD5eLevelUpWorkflow({
+      characterIdentifier: parsed.characterIdentifier,
+      classIdentifier: classSummary.id,
+      targetLevel: parsed.targetLevel,
+      ...(parsed.advancementSelections !== undefined
+        ? { advancementSelections: parsed.advancementSelections }
+        : {}),
+      ...(parsed.optionQuery !== undefined ? { optionQuery: parsed.optionQuery } : {}),
+      optionLimit: parsed.optionLimit,
+    });
+    const levelUpRecord = this.toRecord(levelUpResult) ?? {};
+    const levelUpWarnings = Array.isArray(levelUpRecord.warnings)
+      ? levelUpRecord.warnings.filter((warning): warning is string => typeof warning === 'string')
+      : [];
+    const levelUpCompleted =
+      levelUpRecord.success === true && levelUpRecord.workflowStatus === 'completed';
+
+    if (!levelUpCompleted) {
+      return {
+        ...workflowMetadata,
+        success: false,
+        partialSuccess: true,
+        workflowStatus:
+          typeof levelUpRecord.workflowStatus === 'string'
+            ? levelUpRecord.workflowStatus
+            : 'needs-choices',
+        classCreated,
+        progressionComplete: false,
+        spellbookOrganized: false,
+        class: classSummary,
+        ...(sourceUuid !== undefined ? { sourceUuid } : {}),
+        levelUp: levelUpResult,
+        ...(levelUpRecord.autoApplied
+          ? { autoApplied: { levelUp: levelUpRecord.autoApplied } }
+          : {}),
+        unresolved: {
+          phase: 'level-up',
+          ...(this.toRecord(levelUpRecord.unresolved) ?? {}),
+        },
+        nextStep:
+          'Provide the remaining advancementSelections and rerun complete-dnd5e-multiclass-entry-workflow with classIdentifier to resume this class entry workflow.',
+        ...(levelUpWarnings.length > 0 ? { warnings: levelUpWarnings } : {}),
+      };
+    }
+
+    const spellbookResult = await this.handleOrganizeDnD5eSpellbookWorkflow({
+      actorIdentifier: parsed.characterIdentifier,
+      ...(parsed.sourceClassAssignments !== undefined
+        ? { sourceClassAssignments: parsed.sourceClassAssignments }
+        : {}),
+      ...(parsed.spellPreparationPlans !== undefined
+        ? { spellPreparationPlans: parsed.spellPreparationPlans }
+        : {}),
+      autoFixSourceClasses: parsed.autoFixSourceClasses,
+      autoFixPreparationMismatches: parsed.autoFixPreparationMismatches,
+      ...(parsed.reason !== undefined ? { reason: parsed.reason } : {}),
+    });
+    const spellbookRecord = this.toRecord(spellbookResult) ?? {};
+    const spellbookWarnings = Array.isArray(spellbookRecord.warnings)
+      ? spellbookRecord.warnings.filter((warning): warning is string => typeof warning === 'string')
+      : [];
+    const spellbookCompleted =
+      spellbookRecord.success === true && spellbookRecord.workflowStatus === 'completed';
+
+    const buildValidation = await this.foundryClient.query<FoundryValidateCharacterBuildResponse>(
+      'foundry-mcp-bridge.validateCharacterBuild',
+      {
+        actorIdentifier: parsed.characterIdentifier,
+      } satisfies FoundryValidateCharacterBuildRequest
+    );
+    const verification = {
+      verified:
+        spellbookCompleted &&
+        buildValidation.summary.errorCount === 0 &&
+        buildValidation.summary.outstandingAdvancementCount === 0,
+      build: this.createCharacterBuildVerification(buildValidation),
+      ...(spellbookRecord.verification
+        ? { spellbook: spellbookRecord.verification }
+        : {
+            spellbook: {
+              verified: spellbookCompleted,
+            },
+          }),
+    };
+
+    const warnings = this.mergeWarnings(levelUpWarnings, spellbookWarnings);
+
+    if (!spellbookCompleted) {
+      return {
+        ...workflowMetadata,
+        success: false,
+        partialSuccess: true,
+        workflowStatus:
+          typeof spellbookRecord.workflowStatus === 'string'
+            ? spellbookRecord.workflowStatus
+            : 'needs-review',
+        classCreated,
+        progressionComplete: true,
+        spellbookOrganized: false,
+        class: classSummary,
+        ...(sourceUuid !== undefined ? { sourceUuid } : {}),
+        levelUp: levelUpResult,
+        spellbook: spellbookResult,
+        ...(levelUpRecord.autoApplied || spellbookRecord.autoApplied
+          ? {
+              autoApplied: {
+                ...(levelUpRecord.autoApplied ? { levelUp: levelUpRecord.autoApplied } : {}),
+                ...(spellbookRecord.autoApplied ? { spellbook: spellbookRecord.autoApplied } : {}),
+              },
+            }
+          : {}),
+        unresolved: {
+          phase: 'spellbook',
+          ...(this.toRecord(spellbookRecord.unresolved) ?? {}),
+        },
+        verification,
+        nextStep:
+          'Review the remaining multiclass spellbook issues and rerun complete-dnd5e-multiclass-entry-workflow with classIdentifier, or use the lower-level DnD5e spellbook tools for the ambiguous cases.',
+        ...(warnings.length > 0 ? { warnings } : {}),
+      };
+    }
+
+    return {
+      ...workflowMetadata,
+      success: true,
+      workflowStatus: 'completed',
+      completed: true,
+      classCreated,
+      progressionComplete: true,
+      spellbookOrganized: true,
+      class: classSummary,
+      ...(sourceUuid !== undefined ? { sourceUuid } : {}),
+      levelUp: levelUpResult,
+      spellbook: spellbookResult,
+      ...(levelUpRecord.autoApplied || spellbookRecord.autoApplied
+        ? {
+            autoApplied: {
+              ...(levelUpRecord.autoApplied ? { levelUp: levelUpRecord.autoApplied } : {}),
+              ...(spellbookRecord.autoApplied ? { spellbook: spellbookRecord.autoApplied } : {}),
+            },
+          }
+        : {}),
+      verification,
+      ...(warnings.length > 0 ? { warnings } : {}),
     };
   }
 
