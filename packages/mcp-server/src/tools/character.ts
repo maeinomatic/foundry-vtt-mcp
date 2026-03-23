@@ -541,6 +541,143 @@ export class CharacterTools {
     return value as UnknownRecord;
   }
 
+  private toNumber(value: unknown): number | undefined {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value;
+    }
+
+    if (typeof value === 'string' && value.trim().length > 0) {
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : undefined;
+    }
+
+    return undefined;
+  }
+
+  private getNestedValue(root: unknown, path: string[]): unknown {
+    let current: unknown = root;
+    for (const segment of path) {
+      const record = this.toRecord(current);
+      if (!record) {
+        return undefined;
+      }
+      current = record[segment];
+    }
+    return current;
+  }
+
+  private getDnD5eExperienceState(characterData: CharacterInfoResponse): {
+    current: number;
+    max?: number;
+    updatePath: string;
+  } | null {
+    const candidates = [
+      {
+        basePath: 'system.details.xp',
+        value: this.getNestedValue(characterData, ['system', 'details', 'xp']),
+      },
+      {
+        basePath: 'system.attributes.xp',
+        value: this.getNestedValue(characterData, ['system', 'attributes', 'xp']),
+      },
+      {
+        basePath: 'system.xp',
+        value: this.getNestedValue(characterData, ['system', 'xp']),
+      },
+    ];
+
+    for (const candidate of candidates) {
+      const record = this.toRecord(candidate.value);
+      if (record) {
+        const current = this.toNumber(record.value);
+        if (current !== undefined) {
+          const max = this.toNumber(record.max);
+          return {
+            current,
+            ...(max !== undefined ? { max } : {}),
+            updatePath: `${candidate.basePath}.value`,
+          };
+        }
+      }
+
+      const direct = this.toNumber(candidate.value);
+      if (direct !== undefined) {
+        return {
+          current: direct,
+          updatePath: candidate.basePath,
+        };
+      }
+    }
+
+    return null;
+  }
+
+  private getDnD5eCurrencyState(
+    characterData: CharacterInfoResponse,
+    denomination: string
+  ): { current: number; updatePath: string } {
+    const basePath = `system.currency.${denomination}`;
+    const value = this.getNestedValue(characterData, ['system', 'currency', denomination]);
+    const record = this.toRecord(value);
+    if (record) {
+      const current = this.toNumber(record.value);
+      if (current !== undefined) {
+        return {
+          current,
+          updatePath: `${basePath}.value`,
+        };
+      }
+    }
+
+    const direct = this.toNumber(value);
+    return {
+      current: direct ?? 0,
+      updatePath: basePath,
+    };
+  }
+
+  private normalizeNamedEntities(value: unknown): Array<{ id: string; name: string }> {
+    if (!Array.isArray(value)) {
+      return [];
+    }
+
+    return value
+      .map(entry => {
+        const record = this.toRecord(entry);
+        const id = typeof record?.id === 'string' ? record.id : '';
+        const name = typeof record?.name === 'string' ? record.name : '';
+        return { id, name };
+      })
+      .filter(entry => entry.id.length > 0);
+  }
+
+  private distributeAwardAmount(
+    amount: number,
+    recipientCount: number,
+    mode: 'split' | 'each'
+  ): { perRecipient: number; remainder: number } {
+    if (mode === 'each') {
+      return { perRecipient: amount, remainder: 0 };
+    }
+
+    if (recipientCount <= 0) {
+      return { perRecipient: 0, remainder: amount };
+    }
+
+    if (!Number.isInteger(amount)) {
+      return {
+        perRecipient: amount / recipientCount,
+        remainder: 0,
+      };
+    }
+
+    const perRecipient = Math.floor(amount / recipientCount);
+    return {
+      perRecipient,
+      remainder: amount - perRecipient * recipientCount,
+    };
+  }
+
   private getDnD5eSpellSourceValue(item: CharacterItem): string | undefined {
     const system = this.toRecord(item.system);
     const spellSource = system?.spellSource;
@@ -2131,6 +2268,53 @@ export class CharacterTools {
             },
           },
           required: ['characterIdentifier', 'targetLevel'],
+        },
+      },
+      {
+        name: 'award-dnd5e-party-resources',
+        description:
+          'DnD5e only: distribute XP and currency awards across party characters or an explicit character list using the same split-versus-each semantics documented by the DnD5e award workflow, then optionally validate the updated builds.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            awardTarget: {
+              type: 'string',
+              enum: ['party-characters', 'explicit-characters'],
+              description:
+                'party-characters awards all current player-owned character actors. explicit-characters awards only the listed characterIdentifiers.',
+            },
+            characterIdentifiers: {
+              type: 'array',
+              items: { type: 'string' },
+              description:
+                'Required when awardTarget is explicit-characters. Each entry may be a character name or ID.',
+            },
+            distributionMode: {
+              type: 'string',
+              enum: ['split', 'each'],
+              description:
+                'split divides the total award across all destinations. each grants the full award to every destination.',
+            },
+            experiencePoints: {
+              type: 'number',
+              description: 'Optional XP total to distribute.',
+            },
+            currency: {
+              type: 'object',
+              additionalProperties: { type: 'number' },
+              description:
+                'Optional currency totals keyed by DnD5e denomination, for example { gp: 500, sp: 25 }.',
+            },
+            validateCharacterBuilds: {
+              type: 'boolean',
+              description:
+                'When true, validate each updated DnD5e build after the award workflow completes. Defaults to true.',
+            },
+            reason: {
+              type: 'string',
+              description: 'Optional audit reason for the award workflow',
+            },
+          },
         },
       },
     ];
@@ -3848,6 +4032,260 @@ export class CharacterTools {
         changes: restResult.changes,
       },
       ...(spellPreparationUpdates.length > 0 ? { spellPreparationUpdates } : {}),
+      ...(warnings.length > 0 ? { warnings } : {}),
+    };
+  }
+
+  async handleAwardDnD5ePartyResources(args: unknown): Promise<UnknownRecord> {
+    const schema = z
+      .object({
+        awardTarget: z
+          .enum(['party-characters', 'explicit-characters'])
+          .default('party-characters'),
+        characterIdentifiers: z.array(z.string().min(1)).optional(),
+        distributionMode: z.enum(['split', 'each']).default('split'),
+        experiencePoints: z.number().nonnegative().optional(),
+        currency: z.record(z.string(), z.number().nonnegative()).optional(),
+        validateCharacterBuilds: z.boolean().default(true),
+        reason: z.string().min(1).optional(),
+      })
+      .superRefine((value, ctx) => {
+        if (value.experiencePoints === undefined && value.currency === undefined) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'Provide experiencePoints or currency to award.',
+          });
+        }
+
+        if (
+          value.awardTarget === 'explicit-characters' &&
+          (!value.characterIdentifiers || value.characterIdentifiers.length === 0)
+        ) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message:
+              'characterIdentifiers must contain at least one target when awardTarget is explicit-characters.',
+            path: ['characterIdentifiers'],
+          });
+        }
+      });
+
+    const parsed = schema.parse(args);
+    const gameSystem = await this.getGameSystem();
+    if (gameSystem !== 'dnd5e') {
+      throw new Error(
+        'UNSUPPORTED_CAPABILITY: award-dnd5e-party-resources is only available when the active system is dnd5e.'
+      );
+    }
+
+    const recipients =
+      parsed.awardTarget === 'party-characters'
+        ? this.normalizeNamedEntities(
+            await this.foundryClient.query<unknown[]>('foundry-mcp-bridge.getPartyCharacters', {})
+          )
+        : parsed.characterIdentifiers!.map(identifier => ({
+            id: identifier,
+            name: identifier,
+          }));
+
+    if (recipients.length === 0) {
+      throw new Error(
+        parsed.awardTarget === 'party-characters'
+          ? 'No party characters were found to receive the DnD5e award.'
+          : 'No explicit character targets were provided for the DnD5e award.'
+      );
+    }
+
+    const xpDistribution =
+      parsed.experiencePoints !== undefined
+        ? this.distributeAwardAmount(
+            parsed.experiencePoints,
+            recipients.length,
+            parsed.distributionMode
+          )
+        : null;
+    const currencyDistribution = Object.fromEntries(
+      Object.entries(parsed.currency ?? {}).map(([denomination, amount]) => [
+        denomination,
+        this.distributeAwardAmount(amount, recipients.length, parsed.distributionMode),
+      ])
+    );
+
+    const warnings: string[] = [];
+    if (parsed.distributionMode === 'split') {
+      if ((xpDistribution?.remainder ?? 0) > 0) {
+        warnings.push(
+          `The DnD5e award workflow split XP directly across character actors. ${xpDistribution?.remainder} XP could not be evenly distributed and was left undistributed because this MCP workflow does not yet stage awards on a primary party group actor.`
+        );
+      }
+
+      const currencyRemainders = Object.entries(currencyDistribution)
+        .filter(([, distribution]) => distribution.remainder > 0)
+        .map(([denomination, distribution]) => `${distribution.remainder} ${denomination}`);
+      if (currencyRemainders.length > 0) {
+        warnings.push(
+          `The DnD5e award workflow split currency directly across character actors. The following remainder was left undistributed because this MCP workflow does not yet stage awards on a primary party group actor: ${currencyRemainders.join(', ')}.`
+        );
+      }
+    }
+
+    const awardedRecipients: UnknownRecord[] = [];
+    for (const recipient of recipients) {
+      try {
+        const characterData = await this.getCharacterData(recipient.id);
+        if (characterData.type !== 'character') {
+          throw new Error(
+            `Actor "${characterData.name}" is type "${characterData.type}", not character.`
+          );
+        }
+
+        const updates: Record<string, unknown> = {};
+        let experienceSummary:
+          | {
+              before: number;
+              after: number;
+              awarded: number;
+              nextLevelAt?: number;
+              levelUpReady?: boolean;
+            }
+          | undefined;
+
+        if (xpDistribution && xpDistribution.perRecipient > 0) {
+          const xpState = this.getDnD5eExperienceState(characterData);
+          if (!xpState) {
+            throw new Error(
+              `Character "${characterData.name}" does not expose a supported DnD5e experience field for awards.`
+            );
+          }
+
+          const nextExperience = xpState.current + xpDistribution.perRecipient;
+          updates[xpState.updatePath] = nextExperience;
+          experienceSummary = {
+            before: xpState.current,
+            after: nextExperience,
+            awarded: xpDistribution.perRecipient,
+            ...(xpState.max !== undefined ? { nextLevelAt: xpState.max } : {}),
+            ...(xpState.max !== undefined ? { levelUpReady: nextExperience >= xpState.max } : {}),
+          };
+        }
+
+        const awardedCurrency: Record<string, number> = {};
+        for (const [denomination, distribution] of Object.entries(currencyDistribution)) {
+          if (distribution.perRecipient === 0) {
+            continue;
+          }
+
+          const currencyState = this.getDnD5eCurrencyState(characterData, denomination);
+          updates[currencyState.updatePath] = currencyState.current + distribution.perRecipient;
+          awardedCurrency[denomination] = distribution.perRecipient;
+        }
+
+        let updateResult: FoundryUpdateActorResponse | null = null;
+        if (Object.keys(updates).length > 0) {
+          updateResult = await this.foundryClient.query<FoundryUpdateActorResponse>(
+            'foundry-mcp-bridge.updateActor',
+            {
+              identifier: recipient.id,
+              updates,
+              reason: parsed.reason ?? 'dnd5e party resource award workflow',
+            } satisfies FoundryUpdateActorRequest
+          );
+        }
+
+        const validation =
+          parsed.validateCharacterBuilds && xpDistribution && xpDistribution.perRecipient > 0
+            ? await this.foundryClient.query<FoundryValidateCharacterBuildResponse>(
+                'foundry-mcp-bridge.validateCharacterBuild',
+                {
+                  actorIdentifier: recipient.id,
+                } satisfies FoundryValidateCharacterBuildRequest
+              )
+            : null;
+
+        awardedRecipients.push({
+          actor: {
+            id: characterData.id,
+            name: characterData.name,
+            type: characterData.type,
+          },
+          awarded: {
+            ...(experienceSummary ? { experiencePoints: experienceSummary.awarded } : {}),
+            ...(Object.keys(awardedCurrency).length > 0 ? { currency: awardedCurrency } : {}),
+          },
+          ...(experienceSummary ? { experience: experienceSummary } : {}),
+          ...(updateResult ? { updatedFields: updateResult.updatedFields } : {}),
+          ...(validation
+            ? {
+                validation: {
+                  summary: validation.summary,
+                  issues: validation.issues,
+                  ...(validation.recommendations
+                    ? { recommendations: validation.recommendations }
+                    : {}),
+                  ...(validation.outstandingAdvancements
+                    ? { outstandingAdvancements: validation.outstandingAdvancements }
+                    : {}),
+                },
+              }
+            : {}),
+        });
+      } catch (error) {
+        return {
+          success: false,
+          partialSuccess: awardedRecipients.length > 0,
+          workflowStatus: 'partial-failure',
+          awardTarget: parsed.awardTarget,
+          distributionMode: parsed.distributionMode,
+          recipientCount: recipients.length,
+          completedRecipients: awardedRecipients,
+          failedRecipient: {
+            id: recipient.id,
+            name: recipient.name,
+            error: error instanceof Error ? error.message : 'Unknown error',
+          },
+          ...(warnings.length > 0 ? { warnings } : {}),
+        };
+      }
+    }
+
+    return {
+      success: true,
+      workflowStatus: 'completed',
+      awardTarget: parsed.awardTarget,
+      distributionMode: parsed.distributionMode,
+      recipientCount: recipients.length,
+      totalAwarded: {
+        ...(parsed.experiencePoints !== undefined
+          ? { experiencePoints: parsed.experiencePoints }
+          : {}),
+        ...(parsed.currency !== undefined ? { currency: parsed.currency } : {}),
+      },
+      perRecipientAward: {
+        ...(xpDistribution ? { experiencePoints: xpDistribution.perRecipient } : {}),
+        ...(Object.keys(currencyDistribution).length > 0
+          ? {
+              currency: Object.fromEntries(
+                Object.entries(currencyDistribution).map(([denomination, distribution]) => [
+                  denomination,
+                  distribution.perRecipient,
+                ])
+              ),
+            }
+          : {}),
+      },
+      ...(xpDistribution && xpDistribution.remainder > 0
+        ? { undistributedExperiencePoints: xpDistribution.remainder }
+        : {}),
+      ...(Object.values(currencyDistribution).some(distribution => distribution.remainder > 0)
+        ? {
+            undistributedCurrency: Object.fromEntries(
+              Object.entries(currencyDistribution)
+                .filter(([, distribution]) => distribution.remainder > 0)
+                .map(([denomination, distribution]) => [denomination, distribution.remainder])
+            ),
+          }
+        : {}),
+      recipients: awardedRecipients,
       ...(warnings.length > 0 ? { warnings } : {}),
     };
   }

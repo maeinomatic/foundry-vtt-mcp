@@ -60,6 +60,8 @@ For broader character management, the current toolset now supports:
 - DnD5e bulk spell source-class reassignment
 - DnD5e bulk prepared-spell management for rest-based spell changes
 - DnD5e short-rest and long-rest workflow execution with optional post-rest spell preparation plans
+- DnD5e XP and currency award workflow for party characters or explicit character lists, with split
+  versus each distribution, remainder reporting, and post-award build validation
 - DnD5e spellbook validation for source-class, preparation-mode, and class-assignment issues
 - creating or linking persistent character companions and familiars
 - listing linked companions and familiars and whether they are already active on the scene
@@ -197,6 +199,12 @@ Architecture rules for this phase:
   - follow-up validation for level-up readiness
 - Why next:
   - The official DnD5e award system already models XP and currency grants as first-class workflows.
+- Current state:
+  - Implemented for direct distribution to party characters or explicit character lists in the
+    current branch.
+  - The workflow follows the documented split-versus-each semantics, reports undistributed remainders,
+    and can validate the updated character builds after the award.
+  - Staging awards on a primary party group actor is still a future enhancement.
 
 4. `run-dnd5e-summon-activity`
 

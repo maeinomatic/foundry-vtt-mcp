@@ -252,6 +252,10 @@ export class FoundryClient {
     data?: FoundryListActorsRequest
   ): Promise<FoundryActorSummary[]>;
   async query(
+    method: 'foundry-mcp-bridge.getPartyCharacters',
+    data?: Record<string, never>
+  ): Promise<Array<{ id: string; name: string }>>;
+  async query(
     method: 'foundry-mcp-bridge.getAvailablePacks',
     data?: undefined
   ): Promise<FoundryCompendiumPackSummary[]>;

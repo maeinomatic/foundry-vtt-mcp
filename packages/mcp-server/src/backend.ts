@@ -1738,6 +1738,11 @@ async function startBackend(): Promise<void> {
 
                     break;
 
+                  case 'award-dnd5e-party-resources':
+                    result = await characterTools.handleAwardDnD5ePartyResources(args);
+
+                    break;
+
                   case 'create-character-companion':
                     result = await characterTools.handleCreateCharacterCompanion(args);
 

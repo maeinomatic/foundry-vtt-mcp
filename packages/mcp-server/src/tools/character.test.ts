@@ -4397,6 +4397,332 @@ describe('CharacterTools', () => {
     });
   });
 
+  it('awards split DnD5e party resources with remainder reporting and build validation', async () => {
+    const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
+      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+        return Promise.resolve({ system: 'dnd5e' });
+      }
+
+      if (method === 'foundry-mcp-bridge.getPartyCharacters') {
+        expect(data).toEqual({});
+        return Promise.resolve([
+          { id: 'actor-award-1', name: 'Laeral' },
+          { id: 'actor-award-2', name: 'Khelben' },
+        ]);
+      }
+
+      if (method === 'foundry-mcp-bridge.getCharacterInfo') {
+        if ((data as Record<string, unknown>).identifier === 'actor-award-1') {
+          return Promise.resolve({
+            id: 'actor-award-1',
+            name: 'Laeral',
+            type: 'character',
+            system: {
+              details: {
+                xp: { value: 2500, max: 2700 },
+              },
+              currency: {
+                gp: 10,
+                sp: { value: 5 },
+              },
+            },
+            items: [],
+            effects: [],
+          });
+        }
+
+        if ((data as Record<string, unknown>).identifier === 'actor-award-2') {
+          return Promise.resolve({
+            id: 'actor-award-2',
+            name: 'Khelben',
+            type: 'character',
+            system: {
+              details: {
+                xp: { value: 500, max: 900 },
+              },
+              currency: {
+                gp: 3,
+                sp: { value: 1 },
+              },
+            },
+            items: [],
+            effects: [],
+          });
+        }
+      }
+
+      if (method === 'foundry-mcp-bridge.updateActor') {
+        if ((data as Record<string, unknown>).identifier === 'actor-award-1') {
+          expect(data).toEqual({
+            identifier: 'actor-award-1',
+            updates: {
+              'system.details.xp.value': 2800,
+              'system.currency.gp': 12,
+              'system.currency.sp.value': 6,
+            },
+            reason: 'session reward',
+          });
+          return Promise.resolve({
+            success: true,
+            actorId: 'actor-award-1',
+            actorName: 'Laeral',
+            actorType: 'character',
+            appliedUpdates: {
+              'system.details.xp.value': 2800,
+              'system.currency.gp': 12,
+              'system.currency.sp.value': 6,
+            },
+            updatedFields: [
+              'system.details.xp.value',
+              'system.currency.gp',
+              'system.currency.sp.value',
+            ],
+          });
+        }
+
+        expect(data).toEqual({
+          identifier: 'actor-award-2',
+          updates: {
+            'system.details.xp.value': 800,
+            'system.currency.gp': 5,
+            'system.currency.sp.value': 2,
+          },
+          reason: 'session reward',
+        });
+        return Promise.resolve({
+          success: true,
+          actorId: 'actor-award-2',
+          actorName: 'Khelben',
+          actorType: 'character',
+          appliedUpdates: {
+            'system.details.xp.value': 800,
+            'system.currency.gp': 5,
+            'system.currency.sp.value': 2,
+          },
+          updatedFields: [
+            'system.details.xp.value',
+            'system.currency.gp',
+            'system.currency.sp.value',
+          ],
+        });
+      }
+
+      if (method === 'foundry-mcp-bridge.validateCharacterBuild') {
+        return Promise.resolve({
+          system: 'dnd5e',
+          actorId: (data as Record<string, unknown>).actorIdentifier,
+          actorName:
+            (data as Record<string, unknown>).actorIdentifier === 'actor-award-1'
+              ? 'Laeral'
+              : 'Khelben',
+          actorType: 'character',
+          summary: {
+            classCount: 1,
+            totalClassLevels:
+              (data as Record<string, unknown>).actorIdentifier === 'actor-award-1' ? 5 : 3,
+            outstandingAdvancementCount: 0,
+            issueCount: 0,
+            errorCount: 0,
+            warningCount: 0,
+            infoCount: 0,
+          },
+          issues: [],
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected query: ${method}`));
+    });
+
+    const registry = new SystemRegistry();
+    registry.register(new DnD5eAdapter());
+
+    const tools = new CharacterTools({
+      foundryClient: { query } as unknown as FoundryClient,
+      logger: createLoggerStub(),
+      systemRegistry: registry,
+    });
+
+    const result = (await tools.handleAwardDnD5ePartyResources({
+      experiencePoints: 601,
+      currency: {
+        gp: 5,
+        sp: 3,
+      },
+      reason: 'session reward',
+    })) as Record<string, unknown>;
+
+    expect(result).toMatchObject({
+      success: true,
+      workflowStatus: 'completed',
+      awardTarget: 'party-characters',
+      distributionMode: 'split',
+      recipientCount: 2,
+      perRecipientAward: {
+        experiencePoints: 300,
+        currency: {
+          gp: 2,
+          sp: 1,
+        },
+      },
+      undistributedExperiencePoints: 1,
+      undistributedCurrency: {
+        gp: 1,
+        sp: 1,
+      },
+      recipients: [
+        {
+          actor: {
+            id: 'actor-award-1',
+            name: 'Laeral',
+          },
+          awarded: {
+            experiencePoints: 300,
+            currency: {
+              gp: 2,
+              sp: 1,
+            },
+          },
+          experience: {
+            before: 2500,
+            after: 2800,
+            nextLevelAt: 2700,
+            levelUpReady: true,
+          },
+        },
+        {
+          actor: {
+            id: 'actor-award-2',
+            name: 'Khelben',
+          },
+          experience: {
+            before: 500,
+            after: 800,
+            nextLevelAt: 900,
+            levelUpReady: false,
+          },
+        },
+      ],
+    });
+  });
+
+  it('awards explicit DnD5e character resources in each mode without validation', async () => {
+    const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
+      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+        return Promise.resolve({ system: 'dnd5e' });
+      }
+
+      if (method === 'foundry-mcp-bridge.getCharacterInfo') {
+        return Promise.resolve({
+          id: (data as Record<string, unknown>).identifier,
+          name: (data as Record<string, unknown>).identifier,
+          type: 'character',
+          system: {
+            details: {
+              xp: { value: 100, max: 300 },
+            },
+            currency: {
+              gp: 1,
+            },
+          },
+          items: [],
+          effects: [],
+        });
+      }
+
+      if (method === 'foundry-mcp-bridge.updateActor') {
+        if ((data as Record<string, unknown>).identifier === 'Laeral') {
+          expect(data).toEqual({
+            identifier: 'Laeral',
+            updates: {
+              'system.details.xp.value': 150,
+              'system.currency.gp': 11,
+            },
+            reason: 'each reward',
+          });
+        } else {
+          expect(data).toEqual({
+            identifier: 'Khelben',
+            updates: {
+              'system.details.xp.value': 150,
+              'system.currency.gp': 11,
+            },
+            reason: 'each reward',
+          });
+        }
+
+        return Promise.resolve({
+          success: true,
+          actorId: (data as Record<string, unknown>).identifier,
+          actorName: (data as Record<string, unknown>).identifier,
+          actorType: 'character',
+          appliedUpdates: (data as Record<string, unknown>).updates,
+          updatedFields: ['system.details.xp.value', 'system.currency.gp'],
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected query: ${method}`));
+    });
+
+    const registry = new SystemRegistry();
+    registry.register(new DnD5eAdapter());
+
+    const tools = new CharacterTools({
+      foundryClient: { query } as unknown as FoundryClient,
+      logger: createLoggerStub(),
+      systemRegistry: registry,
+    });
+
+    const result = (await tools.handleAwardDnD5ePartyResources({
+      awardTarget: 'explicit-characters',
+      characterIdentifiers: ['Laeral', 'Khelben'],
+      distributionMode: 'each',
+      experiencePoints: 50,
+      currency: {
+        gp: 10,
+      },
+      validateCharacterBuilds: false,
+      reason: 'each reward',
+    })) as Record<string, unknown>;
+
+    expect(query).not.toHaveBeenCalledWith(
+      'foundry-mcp-bridge.validateCharacterBuild',
+      expect.anything()
+    );
+    expect(result).toMatchObject({
+      success: true,
+      workflowStatus: 'completed',
+      awardTarget: 'explicit-characters',
+      distributionMode: 'each',
+      recipientCount: 2,
+      perRecipientAward: {
+        experiencePoints: 50,
+        currency: {
+          gp: 10,
+        },
+      },
+      recipients: [
+        {
+          actor: { id: 'Laeral', name: 'Laeral' },
+          awarded: {
+            experiencePoints: 50,
+            currency: {
+              gp: 10,
+            },
+          },
+        },
+        {
+          actor: { id: 'Khelben', name: 'Khelben' },
+          awarded: {
+            experiencePoints: 50,
+            currency: {
+              gp: 10,
+            },
+          },
+        },
+      ],
+    });
+  });
+
   it('adds a new DnD5e class item and finalizes the initial multiclass level flow', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
       if (method === 'foundry-mcp-bridge.getWorldInfo') {
