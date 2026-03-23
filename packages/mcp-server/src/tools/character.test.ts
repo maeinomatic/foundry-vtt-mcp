@@ -5283,6 +5283,419 @@ describe('CharacterTools', () => {
     });
   });
 
+  it('stages DnD5e awards on a primary party group actor', async () => {
+    const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
+      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+        return Promise.resolve({ system: 'dnd5e' });
+      }
+
+      if (method === 'foundry-mcp-bridge.listActors') {
+        expect(data).toEqual({ type: 'group' });
+        return Promise.resolve([{ id: 'party-group-1', name: 'The Company', type: 'group' }]);
+      }
+
+      if (method === 'foundry-mcp-bridge.getCharacterInfo') {
+        expect(data).toEqual({ identifier: 'party-group-1' });
+        return Promise.resolve({
+          id: 'party-group-1',
+          name: 'The Company',
+          type: 'group',
+          system: {
+            details: {
+              xp: { value: 1200, max: 2700 },
+            },
+            currency: {
+              gp: 10,
+              sp: { value: 4 },
+            },
+          },
+          items: [],
+          effects: [],
+        });
+      }
+
+      if (method === 'foundry-mcp-bridge.updateActor') {
+        expect(data).toEqual({
+          identifier: 'party-group-1',
+          updates: {
+            'system.details.xp.value': 1801,
+            'system.currency.gp': 15,
+            'system.currency.sp.value': 6,
+          },
+          reason: 'session reward',
+        });
+
+        return Promise.resolve({
+          success: true,
+          actorId: 'party-group-1',
+          actorName: 'The Company',
+          actorType: 'group',
+          appliedUpdates: (data as Record<string, unknown>).updates,
+          updatedFields: [
+            'system.details.xp.value',
+            'system.currency.gp',
+            'system.currency.sp.value',
+          ],
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected query: ${method}`));
+    });
+
+    const registry = new SystemRegistry();
+    registry.register(new DnD5eAdapter());
+
+    const tools = new CharacterTools({
+      foundryClient: { query } as unknown as FoundryClient,
+      logger: createLoggerStub(),
+      systemRegistry: registry,
+    });
+
+    const result = (await tools.handleAwardDnD5ePartyResources({
+      awardTarget: 'primary-party-group',
+      experiencePoints: 601,
+      currency: {
+        gp: 5,
+        sp: 2,
+      },
+      reason: 'session reward',
+    })) as Record<string, unknown>;
+
+    expect(result).toMatchObject({
+      success: true,
+      workflowStatus: 'staged',
+      awardSource: 'new-award',
+      awardTarget: 'primary-party-group',
+      partyGroup: {
+        id: 'party-group-1',
+        name: 'The Company',
+        type: 'group',
+      },
+      stagedAward: {
+        experiencePoints: 601,
+        currency: {
+          gp: 5,
+          sp: 2,
+        },
+      },
+      stagedBefore: {
+        experiencePoints: 1200,
+        currency: {
+          gp: 10,
+          sp: 4,
+        },
+      },
+      stagedAfter: {
+        experiencePoints: 1801,
+        currency: {
+          gp: 15,
+          sp: 6,
+        },
+      },
+    });
+  });
+
+  it('distributes staged DnD5e party awards with caps and retained remainders', async () => {
+    const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
+      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+        return Promise.resolve({ system: 'dnd5e' });
+      }
+
+      if (method === 'foundry-mcp-bridge.getPartyCharacters') {
+        expect(data).toEqual({});
+        return Promise.resolve([
+          { id: 'actor-award-1', name: 'Laeral' },
+          { id: 'actor-award-2', name: 'Khelben' },
+        ]);
+      }
+
+      if (method === 'foundry-mcp-bridge.listActors') {
+        expect(data).toEqual({ type: 'group' });
+        return Promise.resolve([{ id: 'party-group-1', name: 'The Company', type: 'group' }]);
+      }
+
+      if (method === 'foundry-mcp-bridge.getCharacterInfo') {
+        if ((data as Record<string, unknown>).identifier === 'party-group-1') {
+          return Promise.resolve({
+            id: 'party-group-1',
+            name: 'The Company',
+            type: 'group',
+            system: {
+              details: {
+                xp: { value: 401, max: 9999 },
+              },
+              currency: {
+                gp: 7,
+              },
+            },
+            items: [],
+            effects: [],
+          });
+        }
+
+        if ((data as Record<string, unknown>).identifier === 'actor-award-1') {
+          return Promise.resolve({
+            id: 'actor-award-1',
+            name: 'Laeral',
+            type: 'character',
+            system: {
+              details: {
+                xp: { value: 100, max: 300 },
+              },
+              currency: {
+                gp: 1,
+              },
+            },
+            items: [],
+            effects: [],
+          });
+        }
+
+        if ((data as Record<string, unknown>).identifier === 'actor-award-2') {
+          return Promise.resolve({
+            id: 'actor-award-2',
+            name: 'Khelben',
+            type: 'character',
+            system: {
+              details: {
+                xp: { value: 200, max: 900 },
+              },
+              currency: {
+                gp: 2,
+              },
+            },
+            items: [],
+            effects: [],
+          });
+        }
+      }
+
+      if (method === 'foundry-mcp-bridge.updateActor') {
+        if ((data as Record<string, unknown>).identifier === 'actor-award-1') {
+          expect(data).toEqual({
+            identifier: 'actor-award-1',
+            updates: {
+              'system.details.xp.value': 300,
+              'system.currency.gp': 4,
+            },
+            reason: 'grant staged rewards',
+          });
+          return Promise.resolve({
+            success: true,
+            actorId: 'actor-award-1',
+            actorName: 'Laeral',
+            actorType: 'character',
+            appliedUpdates: (data as Record<string, unknown>).updates,
+            updatedFields: ['system.details.xp.value', 'system.currency.gp'],
+          });
+        }
+
+        if ((data as Record<string, unknown>).identifier === 'actor-award-2') {
+          expect(data).toEqual({
+            identifier: 'actor-award-2',
+            updates: {
+              'system.details.xp.value': 400,
+              'system.currency.gp': 5,
+            },
+            reason: 'grant staged rewards',
+          });
+          return Promise.resolve({
+            success: true,
+            actorId: 'actor-award-2',
+            actorName: 'Khelben',
+            actorType: 'character',
+            appliedUpdates: (data as Record<string, unknown>).updates,
+            updatedFields: ['system.details.xp.value', 'system.currency.gp'],
+          });
+        }
+
+        expect(data).toEqual({
+          identifier: 'party-group-1',
+          updates: {
+            'system.details.xp.value': 1,
+            'system.currency.gp': 1,
+          },
+          reason: 'grant staged rewards staged-distribution deduction',
+        });
+        return Promise.resolve({
+          success: true,
+          actorId: 'party-group-1',
+          actorName: 'The Company',
+          actorType: 'group',
+          appliedUpdates: (data as Record<string, unknown>).updates,
+          updatedFields: ['system.details.xp.value', 'system.currency.gp'],
+        });
+      }
+
+      if (method === 'foundry-mcp-bridge.validateCharacterBuild') {
+        return Promise.resolve({
+          system: 'dnd5e',
+          actorId: (data as Record<string, unknown>).actorIdentifier,
+          actorName:
+            (data as Record<string, unknown>).actorIdentifier === 'actor-award-1'
+              ? 'Laeral'
+              : 'Khelben',
+          actorType: 'character',
+          summary: {
+            classCount: 1,
+            totalClassLevels:
+              (data as Record<string, unknown>).actorIdentifier === 'actor-award-1' ? 4 : 5,
+            outstandingAdvancementCount: 0,
+            issueCount: 0,
+            errorCount: 0,
+            warningCount: 0,
+            infoCount: 0,
+          },
+          issues: [],
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected query: ${method}`));
+    });
+
+    const registry = new SystemRegistry();
+    registry.register(new DnD5eAdapter());
+
+    const tools = new CharacterTools({
+      foundryClient: { query } as unknown as FoundryClient,
+      logger: createLoggerStub(),
+      systemRegistry: registry,
+    });
+
+    const result = (await tools.handleAwardDnD5ePartyResources({
+      awardSource: 'staged-party-group',
+      awardTarget: 'party-characters',
+      distributionMode: 'each',
+      experiencePoints: 250,
+      currency: {
+        gp: 4,
+      },
+      reason: 'grant staged rewards',
+    })) as Record<string, unknown>;
+
+    expect(result).toMatchObject({
+      success: true,
+      workflowStatus: 'completed',
+      awardSource: 'staged-party-group',
+      awardTarget: 'party-characters',
+      distributionMode: 'each',
+      recipientCount: 2,
+      totalAwarded: {
+        experiencePoints: 400,
+        currency: {
+          gp: 6,
+        },
+      },
+      perRecipientAward: {
+        experiencePoints: 200,
+        currency: {
+          gp: 3,
+        },
+      },
+      undistributedExperiencePoints: 1,
+      undistributedCurrency: {
+        gp: 1,
+      },
+      requestedButUnavailable: {
+        experiencePoints: 100,
+        currency: {
+          gp: 2,
+        },
+      },
+      partyGroup: {
+        id: 'party-group-1',
+        name: 'The Company',
+        type: 'group',
+      },
+      stagedBefore: {
+        experiencePoints: 401,
+        currency: {
+          gp: 7,
+        },
+      },
+      stagedConsumed: {
+        experiencePoints: 400,
+        currency: {
+          gp: 6,
+        },
+      },
+      stagedAfter: {
+        experiencePoints: 1,
+        currency: {
+          gp: 1,
+        },
+      },
+      recipients: [
+        {
+          actor: {
+            id: 'actor-award-1',
+            name: 'Laeral',
+          },
+          awarded: {
+            experiencePoints: 200,
+            currency: {
+              gp: 3,
+            },
+          },
+          experience: {
+            before: 100,
+            after: 300,
+          },
+        },
+        {
+          actor: {
+            id: 'actor-award-2',
+            name: 'Khelben',
+          },
+          awarded: {
+            experiencePoints: 200,
+            currency: {
+              gp: 3,
+            },
+          },
+          experience: {
+            before: 200,
+            after: 400,
+          },
+        },
+      ],
+    });
+  });
+
+  it('requires partyIdentifier when staged awards cannot resolve a unique group actor', async () => {
+    const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
+      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+        return Promise.resolve({ system: 'dnd5e' });
+      }
+
+      if (method === 'foundry-mcp-bridge.listActors') {
+        expect(data).toEqual({ type: 'group' });
+        return Promise.resolve([
+          { id: 'group-1', name: 'Heroes', type: 'group' },
+          { id: 'group-2', name: 'Ambushers', type: 'group' },
+        ]);
+      }
+
+      return Promise.reject(new Error(`Unexpected query: ${method}`));
+    });
+
+    const registry = new SystemRegistry();
+    registry.register(new DnD5eAdapter());
+
+    const tools = new CharacterTools({
+      foundryClient: { query } as unknown as FoundryClient,
+      logger: createLoggerStub(),
+      systemRegistry: registry,
+    });
+
+    await expect(
+      tools.handleAwardDnD5ePartyResources({
+        awardTarget: 'primary-party-group',
+        experiencePoints: 100,
+      })
+    ).rejects.toThrow('Multiple DnD5e group actors were found');
+  });
+
   it('uses the shared run-dnd5e-summon-activity bridge request shape', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
       if (method === 'foundry-mcp-bridge.getWorldInfo') {

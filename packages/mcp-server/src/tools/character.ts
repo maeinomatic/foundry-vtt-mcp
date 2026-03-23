@@ -775,6 +775,222 @@ export class CharacterTools {
     };
   }
 
+  private distributeStagedAwardAmount(params: {
+    requestedAmount: number;
+    availableAmount: number;
+    recipientCount: number;
+    mode: 'split' | 'each';
+  }): {
+    requestedTotal: number;
+    perRecipient: number;
+    actualDistributed: number;
+    unavailable: number;
+    availableAfter: number;
+  } {
+    const { requestedAmount, availableAmount, recipientCount, mode } = params;
+
+    if (recipientCount <= 0) {
+      return {
+        requestedTotal: mode === 'each' ? requestedAmount : requestedAmount,
+        perRecipient: 0,
+        actualDistributed: 0,
+        unavailable: mode === 'each' ? requestedAmount : requestedAmount,
+        availableAfter: availableAmount,
+      };
+    }
+
+    if (mode === 'split') {
+      const cappedTotal = Math.min(requestedAmount, availableAmount);
+      const distribution = this.distributeAwardAmount(cappedTotal, recipientCount, 'split');
+      const actualDistributed =
+        Number.isInteger(cappedTotal) && Number.isInteger(distribution.perRecipient)
+          ? distribution.perRecipient * recipientCount
+          : cappedTotal;
+
+      return {
+        requestedTotal: requestedAmount,
+        perRecipient: distribution.perRecipient,
+        actualDistributed,
+        unavailable: Math.max(0, requestedAmount - cappedTotal),
+        availableAfter: Math.max(0, availableAmount - actualDistributed),
+      };
+    }
+
+    const perRecipient =
+      Number.isInteger(requestedAmount) && Number.isInteger(availableAmount)
+        ? Math.min(requestedAmount, Math.floor(availableAmount / recipientCount))
+        : Math.min(requestedAmount, availableAmount / recipientCount);
+    const requestedTotal = requestedAmount * recipientCount;
+    const actualDistributed = perRecipient * recipientCount;
+
+    return {
+      requestedTotal,
+      perRecipient,
+      actualDistributed,
+      unavailable: Math.max(0, requestedTotal - actualDistributed),
+      availableAfter: Math.max(0, availableAmount - actualDistributed),
+    };
+  }
+
+  private buildDnD5eAwardUpdates(params: {
+    actorData: CharacterInfoResponse;
+    experiencePoints?: number;
+    currency?: Record<string, number>;
+  }): {
+    updates: Record<string, unknown>;
+    experienceSummary?:
+      | {
+          before: number;
+          after: number;
+          awarded: number;
+          nextLevelAt?: number;
+          levelUpReady?: boolean;
+        }
+      | undefined;
+    awardedCurrency: Record<string, number>;
+  } {
+    const updates: Record<string, unknown> = {};
+    let experienceSummary:
+      | {
+          before: number;
+          after: number;
+          awarded: number;
+          nextLevelAt?: number;
+          levelUpReady?: boolean;
+        }
+      | undefined;
+
+    if (params.experiencePoints !== undefined && params.experiencePoints > 0) {
+      const xpState = this.getDnD5eExperienceState(params.actorData);
+      if (!xpState) {
+        throw new Error(
+          `Actor "${params.actorData.name}" does not expose a supported DnD5e experience field for awards.`
+        );
+      }
+
+      const nextExperience = xpState.current + params.experiencePoints;
+      updates[xpState.updatePath] = nextExperience;
+      experienceSummary = {
+        before: xpState.current,
+        after: nextExperience,
+        awarded: params.experiencePoints,
+        ...(xpState.max !== undefined ? { nextLevelAt: xpState.max } : {}),
+        ...(xpState.max !== undefined ? { levelUpReady: nextExperience >= xpState.max } : {}),
+      };
+    }
+
+    const awardedCurrency: Record<string, number> = {};
+    for (const [denomination, amount] of Object.entries(params.currency ?? {})) {
+      if (amount <= 0) {
+        continue;
+      }
+
+      const currencyState = this.getDnD5eCurrencyState(params.actorData, denomination);
+      updates[currencyState.updatePath] = currencyState.current + amount;
+      awardedCurrency[denomination] = amount;
+    }
+
+    return {
+      updates,
+      ...(experienceSummary ? { experienceSummary } : {}),
+      awardedCurrency,
+    };
+  }
+
+  private getRollbackUpdates(
+    actorData: CharacterInfoResponse,
+    updates: Record<string, unknown>
+  ): Record<string, unknown> {
+    return Object.fromEntries(
+      Object.keys(updates).map(path => [path, this.getNestedValue(actorData, path.split('.'))])
+    );
+  }
+
+  private async rollbackAwardActorUpdates(params: {
+    rollbacks: Array<{
+      identifier: string;
+      actorName: string;
+      updates: Record<string, unknown>;
+    }>;
+    reason: string;
+  }): Promise<string[]> {
+    const errors: string[] = [];
+
+    for (const rollback of [...params.rollbacks].reverse()) {
+      if (Object.keys(rollback.updates).length === 0) {
+        continue;
+      }
+
+      try {
+        await this.foundryClient.query<FoundryUpdateActorResponse>(
+          'foundry-mcp-bridge.updateActor',
+          {
+            identifier: rollback.identifier,
+            updates: rollback.updates,
+            reason: params.reason,
+          } satisfies FoundryUpdateActorRequest
+        );
+      } catch (error) {
+        errors.push(
+          `Failed to roll back award updates for "${rollback.actorName}": ${
+            error instanceof Error ? error.message : 'Unknown error'
+          }`
+        );
+      }
+    }
+
+    return errors;
+  }
+
+  private async resolvePrimaryPartyGroup(params?: {
+    partyIdentifier?: string;
+  }): Promise<{ id: string; name: string }> {
+    if (params?.partyIdentifier) {
+      const actorData = await this.getCharacterData(params.partyIdentifier);
+      if (actorData.type !== 'group') {
+        throw new Error(
+          `Actor "${actorData.name}" is type "${actorData.type}", not group. Provide a DnD5e party group actor when using staged awards.`
+        );
+      }
+
+      return {
+        id: actorData.id,
+        name: actorData.name,
+      };
+    }
+
+    const groups = await this.foundryClient.query<ActorListEntry[]>(
+      'foundry-mcp-bridge.listActors',
+      {
+        type: 'group',
+      }
+    );
+    const normalizedGroups = Array.isArray(groups)
+      ? groups.filter(
+          (group): group is ActorListEntry =>
+            typeof group?.id === 'string' && group.id.length > 0 && group.type === 'group'
+        )
+      : [];
+
+    if (normalizedGroups.length === 0) {
+      throw new Error(
+        'No DnD5e group actors were found. Provide partyIdentifier or create a party group actor before using staged awards.'
+      );
+    }
+
+    if (normalizedGroups.length > 1) {
+      const groupNames = normalizedGroups.map(group => group.name ?? group.id).join(', ');
+      throw new Error(
+        `Multiple DnD5e group actors were found (${groupNames}). Provide partyIdentifier to select which party group should stage or distribute awards.`
+      );
+    }
+
+    return {
+      id: normalizedGroups[0].id,
+      name: normalizedGroups[0].name ?? normalizedGroups[0].id,
+    };
+  }
+
   private getDnD5eSpellSourceValue(item: CharacterItem): string | undefined {
     const system = this.toRecord(item.system);
     const spellSource = system?.spellSource;
@@ -2569,15 +2785,26 @@ export class CharacterTools {
       {
         name: 'award-dnd5e-party-resources',
         description:
-          'DnD5e only: distribute XP and currency awards across party characters or an explicit character list using the same split-versus-each semantics documented by the DnD5e award workflow, then optionally validate the updated builds.',
+          'DnD5e only: award XP and currency directly to characters, stage them on a primary party group actor for later distribution, or distribute staged party awards using the same split-versus-each semantics documented by the DnD5e award workflow.',
         inputSchema: {
           type: 'object',
           properties: {
             awardTarget: {
               type: 'string',
-              enum: ['party-characters', 'explicit-characters'],
+              enum: ['party-characters', 'explicit-characters', 'primary-party-group'],
               description:
-                'party-characters awards all current player-owned character actors. explicit-characters awards only the listed characterIdentifiers.',
+                'party-characters awards all current player-owned character actors. explicit-characters awards only the listed characterIdentifiers. primary-party-group stages the award on a DnD5e group actor instead of distributing it to characters immediately.',
+            },
+            awardSource: {
+              type: 'string',
+              enum: ['new-award', 'staged-party-group'],
+              description:
+                'new-award uses the provided XP/currency totals as a fresh award. staged-party-group distributes from a staged party group balance and caps the grant by what the group actor currently has.',
+            },
+            partyIdentifier: {
+              type: 'string',
+              description:
+                'Optional DnD5e group actor name or ID used for staged awards. Recommended when more than one group actor exists.',
             },
             characterIdentifiers: {
               type: 'array',
@@ -2589,11 +2816,11 @@ export class CharacterTools {
               type: 'string',
               enum: ['split', 'each'],
               description:
-                'split divides the total award across all destinations. each grants the full award to every destination.',
+                'split divides the total award across all destinations. each grants the full award to every destination, or caps each recipient proportionally when distributing from staged party resources.',
             },
             experiencePoints: {
               type: 'number',
-              description: 'Optional XP total to distribute.',
+              description: 'Optional XP total to distribute or stage.',
             },
             currency: {
               type: 'object',
@@ -2604,7 +2831,7 @@ export class CharacterTools {
             validateCharacterBuilds: {
               type: 'boolean',
               description:
-                'When true, validate each updated DnD5e build after the award workflow completes. Defaults to true.',
+                'When true, validate each updated DnD5e character build after a character-facing award workflow completes. Defaults to true.',
             },
             reason: {
               type: 'string',
@@ -4445,8 +4672,10 @@ export class CharacterTools {
     const schema = z
       .object({
         awardTarget: z
-          .enum(['party-characters', 'explicit-characters'])
+          .enum(['party-characters', 'explicit-characters', 'primary-party-group'])
           .default('party-characters'),
+        awardSource: z.enum(['new-award', 'staged-party-group']).default('new-award'),
+        partyIdentifier: z.string().min(1).optional(),
         characterIdentifiers: z.array(z.string().min(1)).optional(),
         distributionMode: z.enum(['split', 'each']).default('split'),
         experiencePoints: z.number().nonnegative().optional(),
@@ -4473,6 +4702,18 @@ export class CharacterTools {
             path: ['characterIdentifiers'],
           });
         }
+
+        if (
+          value.awardTarget === 'primary-party-group' &&
+          value.awardSource === 'staged-party-group'
+        ) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message:
+              'awardTarget primary-party-group stages fresh awards. Use awardSource staged-party-group with a character-facing awardTarget when distributing staged party awards later.',
+            path: ['awardSource'],
+          });
+        }
       });
 
     const parsed = schema.parse(args);
@@ -4481,6 +4722,85 @@ export class CharacterTools {
       throw new Error(
         'UNSUPPORTED_CAPABILITY: award-dnd5e-party-resources is only available when the active system is dnd5e.'
       );
+    }
+
+    const warnings: string[] = [];
+    const workflowReason = parsed.reason ?? 'dnd5e party resource award workflow';
+
+    if (parsed.awardTarget === 'primary-party-group') {
+      const partyGroup = await this.resolvePrimaryPartyGroup({
+        ...(parsed.partyIdentifier !== undefined
+          ? { partyIdentifier: parsed.partyIdentifier }
+          : {}),
+      });
+      const partyGroupData = await this.getCharacterData(partyGroup.id);
+      const stagedMutation = this.buildDnD5eAwardUpdates({
+        actorData: partyGroupData,
+        ...(parsed.experiencePoints !== undefined
+          ? { experiencePoints: parsed.experiencePoints }
+          : {}),
+        ...(parsed.currency !== undefined ? { currency: parsed.currency } : {}),
+      });
+
+      let updateResult: FoundryUpdateActorResponse | null = null;
+      if (Object.keys(stagedMutation.updates).length > 0) {
+        updateResult = await this.foundryClient.query<FoundryUpdateActorResponse>(
+          'foundry-mcp-bridge.updateActor',
+          {
+            identifier: partyGroup.id,
+            updates: stagedMutation.updates,
+            reason: workflowReason,
+          } satisfies FoundryUpdateActorRequest
+        );
+      }
+
+      const stagedBeforeCurrency = Object.fromEntries(
+        Object.keys(stagedMutation.awardedCurrency).map(denomination => [
+          denomination,
+          this.getDnD5eCurrencyState(partyGroupData, denomination).current,
+        ])
+      );
+      const stagedAfterCurrency = Object.fromEntries(
+        Object.entries(stagedBeforeCurrency).map(([denomination, current]) => [
+          denomination,
+          current + (stagedMutation.awardedCurrency[denomination] ?? 0),
+        ])
+      );
+
+      return {
+        success: true,
+        workflowStatus: 'staged',
+        awardSource: parsed.awardSource,
+        awardTarget: parsed.awardTarget,
+        partyGroup: {
+          id: partyGroupData.id,
+          name: partyGroupData.name,
+          type: partyGroupData.type,
+        },
+        stagedAward: {
+          ...(stagedMutation.experienceSummary
+            ? { experiencePoints: stagedMutation.experienceSummary.awarded }
+            : {}),
+          ...(Object.keys(stagedMutation.awardedCurrency).length > 0
+            ? { currency: stagedMutation.awardedCurrency }
+            : {}),
+        },
+        stagedBefore: {
+          ...(stagedMutation.experienceSummary
+            ? { experiencePoints: stagedMutation.experienceSummary.before }
+            : {}),
+          ...(Object.keys(stagedBeforeCurrency).length > 0
+            ? { currency: stagedBeforeCurrency }
+            : {}),
+        },
+        stagedAfter: {
+          ...(stagedMutation.experienceSummary
+            ? { experiencePoints: stagedMutation.experienceSummary.after }
+            : {}),
+          ...(Object.keys(stagedAfterCurrency).length > 0 ? { currency: stagedAfterCurrency } : {}),
+        },
+        ...(updateResult ? { updatedFields: updateResult.updatedFields } : {}),
+      };
     }
 
     const recipients =
@@ -4501,40 +4821,223 @@ export class CharacterTools {
       );
     }
 
-    const xpDistribution =
-      parsed.experiencePoints !== undefined
-        ? this.distributeAwardAmount(
-            parsed.experiencePoints,
-            recipients.length,
-            parsed.distributionMode
-          )
-        : null;
-    const currencyDistribution = Object.fromEntries(
-      Object.entries(parsed.currency ?? {}).map(([denomination, amount]) => [
-        denomination,
-        this.distributeAwardAmount(amount, recipients.length, parsed.distributionMode),
-      ])
-    );
+    let partyGroupData: CharacterInfoResponse | null = null;
+    let partyGroupSummary: {
+      id: string;
+      name: string;
+      type: string;
+    } | null = null;
+    const partyGroupUpdates: Record<string, unknown> = {};
 
-    const warnings: string[] = [];
-    if (parsed.distributionMode === 'split') {
-      if ((xpDistribution?.remainder ?? 0) > 0) {
-        warnings.push(
-          `The DnD5e award workflow split XP directly across character actors. ${xpDistribution?.remainder} XP could not be evenly distributed and was left undistributed because this MCP workflow does not yet stage awards on a primary party group actor.`
-        );
-      }
+    const stagedBefore: Record<string, unknown> = {};
+    const stagedAfter: Record<string, unknown> = {};
+    const stagedConsumed: Record<string, unknown> = {};
+    const requestedButUnavailable: Record<string, unknown> = {};
 
-      const currencyRemainders = Object.entries(currencyDistribution)
-        .filter(([, distribution]) => distribution.remainder > 0)
-        .map(([denomination, distribution]) => `${distribution.remainder} ${denomination}`);
-      if (currencyRemainders.length > 0) {
-        warnings.push(
-          `The DnD5e award workflow split currency directly across character actors. The following remainder was left undistributed because this MCP workflow does not yet stage awards on a primary party group actor: ${currencyRemainders.join(', ')}.`
+    let xpPerRecipient = 0;
+    let xpUndistributed = 0;
+    let xpActualDistributed = 0;
+
+    if (parsed.experiencePoints !== undefined) {
+      if (parsed.awardSource === 'staged-party-group') {
+        const partyGroup = await this.resolvePrimaryPartyGroup({
+          ...(parsed.partyIdentifier !== undefined
+            ? { partyIdentifier: parsed.partyIdentifier }
+            : {}),
+        });
+        partyGroupData = await this.getCharacterData(partyGroup.id);
+        partyGroupSummary = {
+          id: partyGroupData.id,
+          name: partyGroupData.name,
+          type: partyGroupData.type,
+        };
+
+        const xpState = this.getDnD5eExperienceState(partyGroupData);
+        if (!xpState) {
+          throw new Error(
+            `Party group "${partyGroupData.name}" does not expose a supported DnD5e experience field for staged awards.`
+          );
+        }
+
+        const stagedDistribution = this.distributeStagedAwardAmount({
+          requestedAmount: parsed.experiencePoints,
+          availableAmount: xpState.current,
+          recipientCount: recipients.length,
+          mode: parsed.distributionMode,
+        });
+
+        xpPerRecipient = stagedDistribution.perRecipient;
+        xpActualDistributed = stagedDistribution.actualDistributed;
+        xpUndistributed = Math.max(
+          0,
+          Math.min(stagedDistribution.requestedTotal, xpState.current) -
+            stagedDistribution.actualDistributed
         );
+
+        stagedBefore.experiencePoints = xpState.current;
+        stagedAfter.experiencePoints = stagedDistribution.availableAfter;
+        if (stagedDistribution.actualDistributed > 0) {
+          stagedConsumed.experiencePoints = stagedDistribution.actualDistributed;
+          partyGroupUpdates[xpState.updatePath] = stagedDistribution.availableAfter;
+        }
+        if (stagedDistribution.unavailable > 0) {
+          requestedButUnavailable.experiencePoints = stagedDistribution.unavailable;
+          warnings.push(
+            `The staged party award only had ${xpState.current} XP available, so ${stagedDistribution.actualDistributed} XP was distributed and ${stagedDistribution.unavailable} requested XP could not be granted.`
+          );
+        }
+        if (xpUndistributed > 0) {
+          warnings.push(
+            `The staged party award retained ${xpUndistributed} XP on the party group actor because the distribution could not divide it evenly across ${recipients.length} recipients.`
+          );
+        }
+      } else {
+        const distribution = this.distributeAwardAmount(
+          parsed.experiencePoints,
+          recipients.length,
+          parsed.distributionMode
+        );
+        xpPerRecipient = distribution.perRecipient;
+        xpUndistributed = distribution.remainder;
+        xpActualDistributed =
+          parsed.distributionMode === 'split' && Number.isInteger(parsed.experiencePoints)
+            ? distribution.perRecipient * recipients.length
+            : distribution.perRecipient * recipients.length;
+
+        if (parsed.distributionMode === 'split' && distribution.remainder > 0) {
+          warnings.push(
+            `The DnD5e award workflow left ${distribution.remainder} XP undistributed after splitting directly across character actors. Stage the award on a primary party group actor first if you want to preserve split remainders for later distribution.`
+          );
+        }
       }
     }
 
+    const currencyPerRecipient: Record<string, number> = {};
+    const undistributedCurrency: Record<string, number> = {};
+    const actualDistributedCurrency: Record<string, number> = {};
+
+    for (const [denomination, amount] of Object.entries(parsed.currency ?? {})) {
+      if (parsed.awardSource === 'staged-party-group') {
+        if (!partyGroupData) {
+          const partyGroup = await this.resolvePrimaryPartyGroup({
+            ...(parsed.partyIdentifier !== undefined
+              ? { partyIdentifier: parsed.partyIdentifier }
+              : {}),
+          });
+          partyGroupData = await this.getCharacterData(partyGroup.id);
+          partyGroupSummary = {
+            id: partyGroupData.id,
+            name: partyGroupData.name,
+            type: partyGroupData.type,
+          };
+        }
+
+        const currencyState = this.getDnD5eCurrencyState(partyGroupData, denomination);
+        const stagedDistribution = this.distributeStagedAwardAmount({
+          requestedAmount: amount,
+          availableAmount: currencyState.current,
+          recipientCount: recipients.length,
+          mode: parsed.distributionMode,
+        });
+
+        currencyPerRecipient[denomination] = stagedDistribution.perRecipient;
+        actualDistributedCurrency[denomination] = stagedDistribution.actualDistributed;
+
+        const retainedRemainder = Math.max(
+          0,
+          Math.min(stagedDistribution.requestedTotal, currencyState.current) -
+            stagedDistribution.actualDistributed
+        );
+        if (retainedRemainder > 0) {
+          undistributedCurrency[denomination] = retainedRemainder;
+          warnings.push(
+            `The staged party award retained ${retainedRemainder} ${denomination} on the party group actor because the distribution could not divide it evenly across ${recipients.length} recipients.`
+          );
+        }
+        if (stagedDistribution.unavailable > 0) {
+          requestedButUnavailable.currency = {
+            ...(this.toRecord(requestedButUnavailable.currency) ?? {}),
+            [denomination]: stagedDistribution.unavailable,
+          };
+          warnings.push(
+            `The staged party award only had ${currencyState.current} ${denomination} available, so ${stagedDistribution.actualDistributed} ${denomination} was distributed and ${stagedDistribution.unavailable} requested ${denomination} could not be granted.`
+          );
+        }
+
+        stagedBefore.currency = {
+          ...(this.toRecord(stagedBefore.currency) ?? {}),
+          [denomination]: currencyState.current,
+        };
+        stagedAfter.currency = {
+          ...(this.toRecord(stagedAfter.currency) ?? {}),
+          [denomination]: stagedDistribution.availableAfter,
+        };
+        if (stagedDistribution.actualDistributed > 0) {
+          stagedConsumed.currency = {
+            ...(this.toRecord(stagedConsumed.currency) ?? {}),
+            [denomination]: stagedDistribution.actualDistributed,
+          };
+          partyGroupUpdates[currencyState.updatePath] = stagedDistribution.availableAfter;
+        }
+      } else {
+        const distribution = this.distributeAwardAmount(
+          amount,
+          recipients.length,
+          parsed.distributionMode
+        );
+        currencyPerRecipient[denomination] = distribution.perRecipient;
+        actualDistributedCurrency[denomination] = distribution.perRecipient * recipients.length;
+
+        if (distribution.remainder > 0) {
+          undistributedCurrency[denomination] = distribution.remainder;
+        }
+      }
+    }
+
+    if (parsed.awardSource === 'new-award' && Object.keys(undistributedCurrency).length > 0) {
+      warnings.push(
+        `The DnD5e award workflow left split currency undistributed after direct character updates (${Object.entries(
+          undistributedCurrency
+        )
+          .map(([denomination, amount]) => `${amount} ${denomination}`)
+          .join(
+            ', '
+          )}). Stage the award on a primary party group actor first if you want to preserve those remainders for later distribution.`
+      );
+    }
+
+    if (
+      parsed.awardSource === 'staged-party-group' &&
+      xpActualDistributed === 0 &&
+      Object.values(actualDistributedCurrency).every(amount => amount === 0)
+    ) {
+      return {
+        success: false,
+        workflowStatus: 'nothing-to-distribute',
+        awardSource: parsed.awardSource,
+        awardTarget: parsed.awardTarget,
+        distributionMode: parsed.distributionMode,
+        recipientCount: recipients.length,
+        ...(partyGroupSummary ? { partyGroup: partyGroupSummary } : {}),
+        ...(Object.keys(stagedBefore).length > 0 ? { stagedBefore } : {}),
+        ...(Object.keys(requestedButUnavailable).length > 0 ? { requestedButUnavailable } : {}),
+        warnings:
+          warnings.length > 0
+            ? warnings
+            : ['No staged party resources were available to distribute.'],
+      };
+    }
+
+    const recipientAwardCurrency = Object.fromEntries(
+      Object.entries(currencyPerRecipient).filter(([, amount]) => amount > 0)
+    );
     const awardedRecipients: UnknownRecord[] = [];
+    const appliedRecipientRollbacks: Array<{
+      identifier: string;
+      actorName: string;
+      updates: Record<string, unknown>;
+    }> = [];
+
     for (const recipient of recipients) {
       try {
         const characterData = await this.getCharacterData(recipient.id);
@@ -4544,61 +5047,36 @@ export class CharacterTools {
           );
         }
 
-        const updates: Record<string, unknown> = {};
-        let experienceSummary:
-          | {
-              before: number;
-              after: number;
-              awarded: number;
-              nextLevelAt?: number;
-              levelUpReady?: boolean;
-            }
-          | undefined;
-
-        if (xpDistribution && xpDistribution.perRecipient > 0) {
-          const xpState = this.getDnD5eExperienceState(characterData);
-          if (!xpState) {
-            throw new Error(
-              `Character "${characterData.name}" does not expose a supported DnD5e experience field for awards.`
-            );
-          }
-
-          const nextExperience = xpState.current + xpDistribution.perRecipient;
-          updates[xpState.updatePath] = nextExperience;
-          experienceSummary = {
-            before: xpState.current,
-            after: nextExperience,
-            awarded: xpDistribution.perRecipient,
-            ...(xpState.max !== undefined ? { nextLevelAt: xpState.max } : {}),
-            ...(xpState.max !== undefined ? { levelUpReady: nextExperience >= xpState.max } : {}),
-          };
-        }
-
-        const awardedCurrency: Record<string, number> = {};
-        for (const [denomination, distribution] of Object.entries(currencyDistribution)) {
-          if (distribution.perRecipient === 0) {
-            continue;
-          }
-
-          const currencyState = this.getDnD5eCurrencyState(characterData, denomination);
-          updates[currencyState.updatePath] = currencyState.current + distribution.perRecipient;
-          awardedCurrency[denomination] = distribution.perRecipient;
-        }
+        const recipientMutation = this.buildDnD5eAwardUpdates({
+          actorData: characterData,
+          ...(xpPerRecipient > 0 ? { experiencePoints: xpPerRecipient } : {}),
+          ...(Object.keys(recipientAwardCurrency).length > 0
+            ? { currency: recipientAwardCurrency }
+            : {}),
+        });
 
         let updateResult: FoundryUpdateActorResponse | null = null;
-        if (Object.keys(updates).length > 0) {
+        if (Object.keys(recipientMutation.updates).length > 0) {
           updateResult = await this.foundryClient.query<FoundryUpdateActorResponse>(
             'foundry-mcp-bridge.updateActor',
             {
               identifier: recipient.id,
-              updates,
-              reason: parsed.reason ?? 'dnd5e party resource award workflow',
+              updates: recipientMutation.updates,
+              reason: workflowReason,
             } satisfies FoundryUpdateActorRequest
           );
+
+          if (parsed.awardSource === 'staged-party-group') {
+            appliedRecipientRollbacks.push({
+              identifier: recipient.id,
+              actorName: characterData.name,
+              updates: this.getRollbackUpdates(characterData, recipientMutation.updates),
+            });
+          }
         }
 
         const validation =
-          parsed.validateCharacterBuilds && xpDistribution && xpDistribution.perRecipient > 0
+          parsed.validateCharacterBuilds && recipientMutation.experienceSummary
             ? await this.foundryClient.query<FoundryValidateCharacterBuildResponse>(
                 'foundry-mcp-bridge.validateCharacterBuild',
                 {
@@ -4614,10 +5092,16 @@ export class CharacterTools {
             type: characterData.type,
           },
           awarded: {
-            ...(experienceSummary ? { experiencePoints: experienceSummary.awarded } : {}),
-            ...(Object.keys(awardedCurrency).length > 0 ? { currency: awardedCurrency } : {}),
+            ...(recipientMutation.experienceSummary
+              ? { experiencePoints: recipientMutation.experienceSummary.awarded }
+              : {}),
+            ...(Object.keys(recipientMutation.awardedCurrency).length > 0
+              ? { currency: recipientMutation.awardedCurrency }
+              : {}),
           },
-          ...(experienceSummary ? { experience: experienceSummary } : {}),
+          ...(recipientMutation.experienceSummary
+            ? { experience: recipientMutation.experienceSummary }
+            : {}),
           ...(updateResult ? { updatedFields: updateResult.updatedFields } : {}),
           ...(validation
             ? {
@@ -4635,10 +5119,23 @@ export class CharacterTools {
             : {}),
         });
       } catch (error) {
+        const rollbackErrors =
+          parsed.awardSource === 'staged-party-group'
+            ? await this.rollbackAwardActorUpdates({
+                rollbacks: appliedRecipientRollbacks,
+                reason: `${workflowReason} rollback`,
+              })
+            : [];
+
         return {
           success: false,
-          partialSuccess: awardedRecipients.length > 0,
-          workflowStatus: 'partial-failure',
+          partialSuccess:
+            parsed.awardSource === 'staged-party-group'
+              ? awardedRecipients.length > 0 && rollbackErrors.length > 0
+              : awardedRecipients.length > 0,
+          workflowStatus:
+            parsed.awardSource === 'staged-party-group' ? 'rolled-back' : 'partial-failure',
+          awardSource: parsed.awardSource,
           awardTarget: parsed.awardTarget,
           distributionMode: parsed.distributionMode,
           recipientCount: recipients.length,
@@ -4648,6 +5145,54 @@ export class CharacterTools {
             name: recipient.name,
             error: error instanceof Error ? error.message : 'Unknown error',
           },
+          ...(partyGroupSummary ? { partyGroup: partyGroupSummary } : {}),
+          ...(rollbackErrors.length > 0 ? { rollbackErrors } : {}),
+          ...(warnings.length > 0 ? { warnings } : {}),
+        };
+      }
+    }
+
+    let partyGroupUpdateResult: FoundryUpdateActorResponse | null = null;
+    if (
+      parsed.awardSource === 'staged-party-group' &&
+      partyGroupSummary &&
+      Object.keys(partyGroupUpdates).length > 0
+    ) {
+      try {
+        partyGroupUpdateResult = await this.foundryClient.query<FoundryUpdateActorResponse>(
+          'foundry-mcp-bridge.updateActor',
+          {
+            identifier: partyGroupSummary.id,
+            updates: partyGroupUpdates,
+            reason: `${workflowReason} staged-distribution deduction`,
+          } satisfies FoundryUpdateActorRequest
+        );
+      } catch (error) {
+        const rollbackErrors = await this.rollbackAwardActorUpdates({
+          rollbacks: appliedRecipientRollbacks,
+          reason: `${workflowReason} rollback`,
+        });
+
+        return {
+          success: false,
+          partialSuccess: false,
+          workflowStatus: 'rolled-back',
+          awardSource: parsed.awardSource,
+          awardTarget: parsed.awardTarget,
+          distributionMode: parsed.distributionMode,
+          recipientCount: recipients.length,
+          partyGroup: partyGroupSummary,
+          completedRecipients: awardedRecipients,
+          failedRecipient: {
+            id: partyGroupSummary.id,
+            name: partyGroupSummary.name,
+            error:
+              error instanceof Error
+                ? `Failed to deduct staged party resources: ${error.message}`
+                : 'Failed to deduct staged party resources',
+          },
+          ...(Object.keys(stagedBefore).length > 0 ? { stagedBefore } : {}),
+          ...(rollbackErrors.length > 0 ? { rollbackErrors } : {}),
           ...(warnings.length > 0 ? { warnings } : {}),
         };
       }
@@ -4656,39 +5201,47 @@ export class CharacterTools {
     return {
       success: true,
       workflowStatus: 'completed',
+      awardSource: parsed.awardSource,
       awardTarget: parsed.awardTarget,
       distributionMode: parsed.distributionMode,
       recipientCount: recipients.length,
       totalAwarded: {
-        ...(parsed.experiencePoints !== undefined
-          ? { experiencePoints: parsed.experiencePoints }
-          : {}),
-        ...(parsed.currency !== undefined ? { currency: parsed.currency } : {}),
+        ...(parsed.awardSource === 'staged-party-group'
+          ? xpActualDistributed > 0
+            ? { experiencePoints: xpActualDistributed }
+            : {}
+          : parsed.experiencePoints !== undefined
+            ? { experiencePoints: parsed.experiencePoints }
+            : {}),
+        ...(parsed.awardSource === 'staged-party-group'
+          ? Object.values(actualDistributedCurrency).some(amount => amount > 0)
+            ? { currency: actualDistributedCurrency }
+            : {}
+          : parsed.currency !== undefined
+            ? { currency: parsed.currency }
+            : {}),
       },
       perRecipientAward: {
-        ...(xpDistribution ? { experiencePoints: xpDistribution.perRecipient } : {}),
-        ...(Object.keys(currencyDistribution).length > 0
+        ...(xpPerRecipient > 0 ? { experiencePoints: xpPerRecipient } : {}),
+        ...(Object.keys(currencyPerRecipient).some(
+          denomination => currencyPerRecipient[denomination] > 0
+        )
           ? {
               currency: Object.fromEntries(
-                Object.entries(currencyDistribution).map(([denomination, distribution]) => [
-                  denomination,
-                  distribution.perRecipient,
-                ])
+                Object.entries(currencyPerRecipient).filter(([, amount]) => amount > 0)
               ),
             }
           : {}),
       },
-      ...(xpDistribution && xpDistribution.remainder > 0
-        ? { undistributedExperiencePoints: xpDistribution.remainder }
-        : {}),
-      ...(Object.values(currencyDistribution).some(distribution => distribution.remainder > 0)
-        ? {
-            undistributedCurrency: Object.fromEntries(
-              Object.entries(currencyDistribution)
-                .filter(([, distribution]) => distribution.remainder > 0)
-                .map(([denomination, distribution]) => [denomination, distribution.remainder])
-            ),
-          }
+      ...(xpUndistributed > 0 ? { undistributedExperiencePoints: xpUndistributed } : {}),
+      ...(Object.keys(undistributedCurrency).length > 0 ? { undistributedCurrency } : {}),
+      ...(Object.keys(requestedButUnavailable).length > 0 ? { requestedButUnavailable } : {}),
+      ...(partyGroupSummary ? { partyGroup: partyGroupSummary } : {}),
+      ...(Object.keys(stagedBefore).length > 0 ? { stagedBefore } : {}),
+      ...(Object.keys(stagedConsumed).length > 0 ? { stagedConsumed } : {}),
+      ...(Object.keys(stagedAfter).length > 0 ? { stagedAfter } : {}),
+      ...(partyGroupUpdateResult
+        ? { partyGroupUpdatedFields: partyGroupUpdateResult.updatedFields }
         : {}),
       recipients: awardedRecipients,
       ...(warnings.length > 0 ? { warnings } : {}),

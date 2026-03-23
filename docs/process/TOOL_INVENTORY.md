@@ -61,7 +61,8 @@ For broader character management, the current toolset now supports:
 - DnD5e bulk prepared-spell management for rest-based spell changes
 - DnD5e short-rest and long-rest workflow execution with optional post-rest spell preparation plans
 - DnD5e XP and currency award workflow for party characters or explicit character lists, with split
-  versus each distribution, remainder reporting, and post-award build validation
+  versus each distribution, remainder reporting, post-award build validation, primary-party group
+  staging, and capped later distribution from staged party awards
 - DnD5e summon-activity workflow that can surface unresolved activity/profile choices, execute the
   selected summon activity through the system activity API, and report summoned token results
 - DnD5e spellbook validation for source-class, preparation-mode, and class-assignment issues
@@ -208,10 +209,11 @@ Priority 4 is complete in the current branch.
   - The official DnD5e award system already models XP and currency grants as first-class workflows.
 - Current state:
   - Implemented for direct distribution to party characters or explicit character lists in the
-    current branch.
+    current branch, and now also supports staging fresh awards on a primary party group actor before
+    later distribution.
   - The workflow follows the documented split-versus-each semantics, reports undistributed remainders,
-    and can validate the updated character builds after the award.
-  - Staging awards on a primary party group actor is still a future enhancement.
+    can validate the updated character builds after the award, and caps staged-party distribution by
+    what the group actor currently has.
 
 4. `run-dnd5e-summon-activity`
 
@@ -247,7 +249,7 @@ Priority 4 is complete in the current branch.
 
 ### Priority 5: Workflow Refinements
 
-Priority 5 is the current next focus area.
+Priority 5 is complete in the current branch.
 
 1. `support-primary-party-award-staging`
 
@@ -256,8 +258,13 @@ Priority 5 is the current next focus area.
   - preserve split remainders instead of dropping them
   - support award-now / distribute-later workflows
   - add clearer party-level audit history for staged rewards
-- Why later:
-  - The direct-to-character award workflow is already implemented and useful, so this is a refinement of the awards model rather than a missing foundation piece.
+- Current state:
+  - Implemented in the current branch.
+  - `award-dnd5e-party-resources` can now stage fresh awards on a primary party group actor, then
+    later distribute from the staged group balance to party or explicit character targets.
+  - Later staged distributions are capped by what the group actor currently has, preserve retained
+    split remainders on the group actor, and fail clearly when a unique party group cannot be
+    inferred without an explicit `partyIdentifier`.
 
 ## Gap Conclusion (DnD5e)
 
@@ -266,7 +273,7 @@ The repo now has the general actor and embedded-item write layer needed for prac
 DnD5e adds system-specific needs on top:
 
 - advancement and class-level orchestration
-- higher-level workflow refinements such as party-award staging on top of the now-complete core automation layer
+- higher-level workflow refinements and polish on top of the now-complete core automation layer
 
 The repo now has:
 
@@ -282,10 +289,10 @@ The repo now has:
 - world item and item-compendium authoring workflows
 - DnD5e character build validation for classes, spellbook state, proficiencies, and unresolved advancements
 - scoped actor and owned-item patch transactions with rollback for larger automated changes
+- DnD5e party-award staging on primary group actors with later capped distribution to characters
 
-The next most valuable gaps are now workflow refinements on top of this foundation, starting with
-primary-party award staging and other workflow-completeness improvements rather than missing core
-write surfaces.
+The next most valuable gaps are now workflow-completeness improvements and additional rule-aware
+automation on top of this foundation rather than missing core write surfaces.
 
 ## Historical Archive
 
