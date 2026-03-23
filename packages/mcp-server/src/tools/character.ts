@@ -6,6 +6,7 @@ import type {
   FoundryApplyCharacterPatchTransactionRequest,
   FoundryApplyCharacterPatchTransactionResponse,
   FoundryActorDocumentBase,
+  FoundryActorCreationResult,
   FoundryActorSystemBase,
   FoundryBatchUpdateActorEmbeddedItemsRequest,
   FoundryBatchUpdateActorEmbeddedItemsResponse,
@@ -496,6 +497,20 @@ function createSpellPreparationPlansInputSchema(description: string): Record<str
 function parseCompendiumDocumentUuid(uuid: string): { packId: string; documentId: string } | null {
   const parts = uuid.split('.');
   if (parts.length < 4 || parts[0] !== 'Compendium') {
+    return null;
+  }
+
+  return {
+    packId: `${parts[1]}.${parts[2]}`,
+    documentId: parts[parts.length - 1],
+  };
+}
+
+function parseCompendiumActorSourceUuid(
+  uuid: string
+): { packId: string; documentId: string } | null {
+  const parts = uuid.split('.');
+  if (parts.length < 5 || parts[0] !== 'Compendium' || parts[3] !== 'Actor') {
     return null;
   }
 
@@ -2409,7 +2424,7 @@ export class CharacterTools {
       {
         name: 'create-character-companion',
         description:
-          'Create or link a persistent companion or familiar actor for a character. Supports cloning a compendium actor or linking an existing world actor, and can optionally place the companion on the current scene.',
+          'Link a persistent companion or familiar actor to an owner character. Supports cloning a compendium actor or linking an existing world actor, and can optionally place the companion on the current scene. This is not for standalone character or NPC creation.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -3005,6 +3020,68 @@ export class CharacterTools {
             },
           },
           required: ['characterIdentifier', 'targetLevel'],
+        },
+      },
+      {
+        name: 'create-dnd5e-character-workflow',
+        description:
+          'DnD5e only: create a standalone world actor from a compendium Actor UUID, then run the class level-up workflow to the requested target level. This does not create companion links.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            sourceUuid: {
+              type: 'string',
+              description:
+                'Compendium Actor UUID used as creation template, for example Compendium.dnd5e.heroes.Actor.2Pdtnswo8Nj2nafY',
+            },
+            name: {
+              type: 'string',
+              description: 'Name for the created actor',
+            },
+            targetLevel: {
+              type: 'number',
+              description: 'Target DnD5e class level to reach using progression workflow',
+            },
+            classIdentifier: {
+              type: 'string',
+              description:
+                'Optional class item name or ID for explicit class targeting, recommended for multiclass characters',
+            },
+            advancementSelections: {
+              ...createAdvancementSelectionsInputSchema(
+                'Optional progression choices to apply during the level-up workflow.'
+              ),
+            },
+            biography: {
+              type: 'string',
+              description: 'Optional biography text to write to system.details.biography.value',
+            },
+            addToScene: {
+              type: 'boolean',
+              description: 'Whether to place the actor on the current scene when created',
+            },
+            placement: {
+              type: 'object',
+              properties: {
+                type: {
+                  type: 'string',
+                  enum: ['random', 'grid', 'center', 'coordinates'],
+                },
+                coordinates: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      x: { type: 'number' },
+                      y: { type: 'number' },
+                    },
+                    required: ['x', 'y'],
+                  },
+                },
+              },
+            },
+          },
+          required: ['sourceUuid', 'name', 'targetLevel'],
         },
       },
       {
@@ -7223,6 +7300,113 @@ export class CharacterTools {
       verification,
       validation: verification,
       ...(previewResult.warnings.length > 0 ? { warnings: previewResult.warnings } : {}),
+    };
+  }
+
+  async handleCreateDnD5eCharacterWorkflow(args: unknown): Promise<UnknownRecord> {
+    const advancementSelectionSchema = createAdvancementSelectionSchema();
+    const schema = z
+      .object({
+        sourceUuid: z.string().min(1, 'sourceUuid cannot be empty'),
+        name: z.string().min(1, 'name cannot be empty'),
+        targetLevel: z.number().int().positive(),
+        classIdentifier: z.string().min(1).optional(),
+        advancementSelections: z.array(advancementSelectionSchema).optional(),
+        biography: z.string().min(1).optional(),
+        addToScene: z.boolean().default(false),
+        placement: z
+          .object({
+            type: z.enum(['random', 'grid', 'center', 'coordinates']).default('grid'),
+            coordinates: z
+              .array(
+                z.object({
+                  x: z.number(),
+                  y: z.number(),
+                })
+              )
+              .optional(),
+          })
+          .optional(),
+      })
+      .strict();
+
+    const parsed = schema.parse(args);
+    const gameSystem = await this.getGameSystem();
+    if (gameSystem !== 'dnd5e') {
+      throw new Error(
+        'UNSUPPORTED_CAPABILITY: create-dnd5e-character-workflow is only available when the active system is dnd5e.'
+      );
+    }
+
+    const source = parseCompendiumActorSourceUuid(parsed.sourceUuid);
+    if (!source) {
+      throw new Error(
+        'sourceUuid must be a Compendium Actor UUID in the format Compendium.<pack>.<collection>.Actor.<id>'
+      );
+    }
+
+    const creationResult = await this.foundryClient.query<FoundryActorCreationResult>(
+      'maeinomatic-foundry-mcp.createActorFromCompendium',
+      {
+        packId: source.packId,
+        itemId: source.documentId,
+        customNames: [parsed.name],
+        quantity: 1,
+        addToScene: parsed.addToScene,
+        ...(parsed.placement !== undefined ? { placement: parsed.placement } : {}),
+      }
+    );
+
+    const actor = creationResult.actors?.[0];
+    if (!actor?.id) {
+      throw new Error('Failed to create actor from source UUID.');
+    }
+
+    if (parsed.biography !== undefined) {
+      await this.foundryClient.query<FoundryUpdateActorResponse>(
+        'maeinomatic-foundry-mcp.updateActor',
+        {
+          identifier: actor.id,
+          updates: {
+            'system.details.biography.value': parsed.biography,
+          },
+          reason: 'create-dnd5e-character-workflow biography update',
+        }
+      );
+    }
+
+    const workflowResult = await this.handleCompleteDnD5eLevelUpWorkflow({
+      characterIdentifier: actor.id,
+      targetLevel: parsed.targetLevel,
+      ...(parsed.classIdentifier !== undefined ? { classIdentifier: parsed.classIdentifier } : {}),
+      ...(parsed.advancementSelections !== undefined
+        ? { advancementSelections: parsed.advancementSelections }
+        : {}),
+    });
+
+    return {
+      success:
+        workflowResult &&
+        typeof workflowResult === 'object' &&
+        (workflowResult as Record<string, unknown>).success === true,
+      linked: false,
+      source: {
+        sourceUuid: parsed.sourceUuid,
+        packId: source.packId,
+        itemId: source.documentId,
+      },
+      actor: {
+        id: actor.id,
+        name: actor.name,
+        type: actor.type,
+      },
+      created: {
+        addToScene: parsed.addToScene,
+        ...(creationResult.tokensPlaced !== undefined
+          ? { tokensPlaced: creationResult.tokensPlaced }
+          : {}),
+      },
+      progression: workflowResult,
     };
   }
 

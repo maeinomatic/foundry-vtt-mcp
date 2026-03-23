@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { FoundryClient } from '../foundry-client.js';
 import type {
   FoundryActorCreationResult,
+  FoundryCreateCharacterActorRequest,
   FoundryCreateActorFromCompendiumRequest,
   FoundryCompendiumEntryFull,
   FoundryDocumentBase,
@@ -17,6 +18,23 @@ export interface ActorCreationToolsOptions {
 }
 
 type NamedEntity = Pick<FoundryDocumentBase, 'name'>;
+
+function parseCompendiumActorUuid(sourceUuid: string): { packId: string; itemId: string } | null {
+  const parts = sourceUuid.split('.');
+  if (parts.length < 5 || parts[0] !== 'Compendium') {
+    return null;
+  }
+
+  const documentType = parts[3];
+  if (documentType !== 'Actor') {
+    return null;
+  }
+
+  return {
+    packId: `${parts[1]}.${parts[2]}`,
+    itemId: parts[parts.length - 1],
+  };
+}
 
 export class ActorCreationTools {
   private foundryClient: FoundryClient;
@@ -37,7 +55,7 @@ export class ActorCreationTools {
       {
         name: 'create-actor-from-compendium',
         description:
-          'Create one or more actors from a specific compendium entry with custom names. Use search-compendium first to find the exact creature you want, then use this tool with the packId and itemId from the search results.',
+          'Create one or more standalone world actors from a specific compendium entry with custom names. Use search-compendium first to find the exact creature you want, then use this tool with the packId and itemId from the search results.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -100,6 +118,57 @@ export class ActorCreationTools {
         },
       },
       {
+        name: 'create-character-actor',
+        description:
+          'Create a standalone character or NPC actor from a compendium Actor UUID. This does not create companion/familiar links.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            sourceUuid: {
+              type: 'string',
+              description:
+                'Compendium Actor UUID (e.g., "Compendium.dnd5e.heroes.Actor.2Pdtnswo8Nj2nafY")',
+            },
+            name: {
+              type: 'string',
+              description: 'Name for the new world actor',
+            },
+            addToScene: {
+              type: 'boolean',
+              description: 'Whether to place the created actor on the active scene',
+              default: false,
+            },
+            placement: {
+              type: 'object',
+              description: 'Token placement options (only used when addToScene is true)',
+              properties: {
+                type: {
+                  type: 'string',
+                  enum: ['random', 'grid', 'center', 'coordinates'],
+                  description: 'Placement strategy',
+                  default: 'grid',
+                },
+                coordinates: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      x: { type: 'number', description: 'X coordinate in pixels' },
+                      y: { type: 'number', description: 'Y coordinate in pixels' },
+                    },
+                    required: ['x', 'y'],
+                  },
+                  description:
+                    'Specific coordinates for each token (required when type is "coordinates")',
+                },
+              },
+              required: ['type'],
+            },
+          },
+          required: ['sourceUuid', 'name'],
+        },
+      },
+      {
         name: 'get-compendium-entry-full',
         description:
           'Retrieve complete stat block data including items, spells, and abilities for actor creation',
@@ -119,6 +188,94 @@ export class ActorCreationTools {
         },
       },
     ];
+  }
+
+  async handleCreateCharacterActor(args: unknown): Promise<UnknownRecord> {
+    const schema = z
+      .object({
+        sourceUuid: z.string().min(1, 'sourceUuid cannot be empty'),
+        name: z.string().min(1, 'name cannot be empty'),
+        addToScene: z.boolean().default(false),
+        placement: z
+          .object({
+            type: z.enum(['random', 'grid', 'center', 'coordinates']).default('grid'),
+            coordinates: z
+              .array(
+                z.object({
+                  x: z.number(),
+                  y: z.number(),
+                })
+              )
+              .optional(),
+          })
+          .optional(),
+      })
+      .strict();
+
+    const parsed = schema.parse(args);
+    if (!parseCompendiumActorUuid(parsed.sourceUuid)) {
+      throw new Error(
+        'sourceUuid must be a Compendium Actor UUID in the format Compendium.<pack>.<collection>.Actor.<id>'
+      );
+    }
+
+    const normalizedPlacement =
+      parsed.placement !== undefined
+        ? {
+            type: parsed.placement.type,
+            ...(parsed.placement.coordinates !== undefined
+              ? { coordinates: parsed.placement.coordinates }
+              : {}),
+          }
+        : undefined;
+
+    const request: FoundryCreateCharacterActorRequest = {
+      sourceUuid: parsed.sourceUuid,
+      name: parsed.name,
+      addToScene: parsed.addToScene,
+      ...(normalizedPlacement ? { placement: normalizedPlacement } : {}),
+    };
+
+    const creationResultRaw: unknown = await this.foundryClient.query(
+      'maeinomatic-foundry-mcp.createCharacterActor',
+      request
+    );
+    const creationResultSchema = z.object({
+      success: z.boolean(),
+      linked: z.literal(false),
+      actorId: z.string(),
+      actorName: z.string(),
+      actorType: z.string(),
+      sourceUuid: z.string(),
+      packId: z.string(),
+      itemId: z.string(),
+      tokensPlaced: z.number().optional(),
+      tokenIds: z.array(z.string()).optional(),
+      warnings: z.array(z.string()).optional(),
+    });
+    const creationResult = creationResultSchema.parse(creationResultRaw);
+
+    return {
+      success: creationResult.success,
+      kind: 'standalone-actor',
+      linked: false,
+      actor: {
+        id: creationResult.actorId,
+        name: creationResult.actorName,
+        type: creationResult.actorType,
+      },
+      source: {
+        sourceUuid: creationResult.sourceUuid,
+        packId: creationResult.packId,
+        itemId: creationResult.itemId,
+      },
+      addToScene: parsed.addToScene,
+      ...(creationResult.tokensPlaced !== undefined
+        ? { tokensPlaced: creationResult.tokensPlaced }
+        : {}),
+      ...(creationResult.tokenIds !== undefined ? { tokenIds: creationResult.tokenIds } : {}),
+      ...(creationResult.warnings !== undefined ? { warnings: creationResult.warnings } : {}),
+    };
   }
 
   /**
@@ -182,7 +339,7 @@ export class ActorCreationTools {
       };
 
       // Create the actors via Foundry module using exact pack/item IDs
-      const result = await this.foundryClient.query(
+      const result = await this.foundryClient.query<FoundryActorCreationResult>(
         'maeinomatic-foundry-mcp.createActorFromCompendium',
         request
       );
@@ -228,7 +385,7 @@ export class ActorCreationTools {
         packId,
         documentId: entryId,
       };
-      const fullEntry = await this.foundryClient.query(
+      const fullEntry = await this.foundryClient.query<FoundryCompendiumEntryFull>(
         'maeinomatic-foundry-mcp.getCompendiumDocumentFull',
         request
       );

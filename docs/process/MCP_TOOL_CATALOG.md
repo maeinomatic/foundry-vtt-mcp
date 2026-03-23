@@ -77,6 +77,8 @@ execution.
 - `add-character-item`
 - `update-character-item`
 - `remove-character-item`
+- `create-character-actor`
+- `create-dnd5e-character-workflow`
 - `create-world-item`
 - `update-world-item`
 - `create-compendium-item`
@@ -89,7 +91,7 @@ execution.
 ### General Foundry Linked-Actor Lifecycle
 
 These are generic linked-actor workflows even if "companion" and "familiar"
-sound DnD-flavored.
+sound DnD-flavored. They are not standalone actor creation tools.
 
 - `create-character-companion`
 - `list-character-companions`
@@ -157,6 +159,12 @@ Add a workflow tool only when all of the following are true:
 2. The workflow meaningfully reduces invalid intermediate states.
 3. The workflow can return a predictable result envelope.
 4. The workflow still composes cleanly with the primitive layer.
+
+### Character Creation Decision Tree
+
+- Standalone actor creation (no owner link): `create-character-actor`
+- Standalone DnD5e actor + level progression in one flow: `create-dnd5e-character-workflow`
+- Owner-linked familiar/companion lifecycle: `create-character-companion` and related companion tools
 
 ### Current Direction
 

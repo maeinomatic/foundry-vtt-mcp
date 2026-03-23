@@ -25,6 +25,44 @@ describe('CharacterTools', () => {
     clearSystemCache();
   });
 
+  it('requires targetLevel for create-dnd5e-character-workflow', async () => {
+    const query = vi.fn();
+
+    const tools = new CharacterTools({
+      foundryClient: { query } as unknown as FoundryClient,
+      logger: createLoggerStub(),
+    });
+
+    await expect(
+      tools.handleCreateDnD5eCharacterWorkflow({
+        sourceUuid: 'Compendium.dnd5e.heroes.Actor.2Pdtnswo8Nj2nafY',
+        name: 'Bram Ironfield',
+      })
+    ).rejects.toThrow();
+
+    expect(query).not.toHaveBeenCalled();
+  });
+
+  it('rejects companion-specific fields for create-dnd5e-character-workflow', async () => {
+    const query = vi.fn();
+
+    const tools = new CharacterTools({
+      foundryClient: { query } as unknown as FoundryClient,
+      logger: createLoggerStub(),
+    });
+
+    await expect(
+      tools.handleCreateDnD5eCharacterWorkflow({
+        sourceUuid: 'Compendium.dnd5e.heroes.Actor.2Pdtnswo8Nj2nafY',
+        name: 'Bram Ironfield',
+        targetLevel: 2,
+        role: 'companion',
+      })
+    ).rejects.toThrow();
+
+    expect(query).not.toHaveBeenCalled();
+  });
+
   it('uses the shared character-info bridge request shape', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
       if (method === 'maeinomatic-foundry-mcp.getCharacterInfo') {
