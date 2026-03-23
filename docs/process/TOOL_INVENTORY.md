@@ -59,6 +59,7 @@ For broader character management, the current toolset now supports:
 - DnD5e spell source-class reassignment for multiclass organization
 - DnD5e bulk spell source-class reassignment
 - DnD5e bulk prepared-spell management for rest-based spell changes
+- DnD5e short-rest and long-rest workflow execution with optional post-rest spell preparation plans
 - DnD5e spellbook validation for source-class, preparation-mode, and class-assignment issues
 - creating or linking persistent character companions and familiars
 - listing linked companions and familiars and whether they are already active on the scene
@@ -134,6 +135,86 @@ Implementation notes:
 - `preview-character-progression` continues to satisfy the dry-run level-up requirement, so a separate `preview-dnd5e-level-up` tool remains unnecessary.
 - `validate-dnd5e-character-build` checks class levels, spellbook integrity, supported proficiency ranges, and unresolved advancement steps against the current actor state.
 - `apply-character-patch-transaction` is intentionally scoped to actor and owned-item mutations that can be validated up front and rolled back with captured snapshots if a later step fails.
+
+## Next Direction: Higher-Level Rule-Aware Automation
+
+The next phase should build workflow tools on top of the current primitive write layer,
+not bypass it.
+
+Architecture rules for this phase:
+
+- Workflow tools should orchestrate existing validated primitives such as progression preview,
+  advancement choice application, actor updates, item updates, and spellbook tools.
+- Rule-heavy behavior should remain system-specific through adapter capabilities and module-side
+  system services, not leak back into core tool routing.
+- Every automation flow should follow a predictable lifecycle where possible:
+  preview -> validate -> apply -> verify -> report
+- Deterministic steps may auto-run, but ambiguous or invalid choices must still fail clearly and
+  return actionable next steps.
+- Prefer official Foundry and DnD5e workflow surfaces when they exist, especially document APIs,
+  advancement-manager behavior, activity workflows, and documented hook points.
+
+### Priority 4: Workflow Automation
+
+1. `run-dnd5e-rest-workflow`
+
+- Goal: Handle short-rest and long-rest bookkeeping as one MCP workflow.
+- Scope:
+  - prepared-spell refresh for rest-based casters
+  - spell slot recovery
+  - hit die and HP recovery handling
+  - rest result summary and validation
+- Why first:
+  - The official DnD5e hooks expose `preShortRest`, `preLongRest`, `preRestCompleted`, and
+    `restCompleted`, so this is a natural rule-aware workflow boundary rather than an invented one.
+- Current state:
+  - Implemented in the current branch.
+  - The workflow delegates to the system rest API, returns before/after resource summaries, and can
+    chain post-rest prepared-spell updates in the same MCP call.
+
+2. `complete-dnd5e-level-up-workflow`
+
+- Goal: Turn the current preview / options / apply / finalize primitives into one guided orchestration flow.
+- Scope:
+  - accept a structured set of advancement selections
+  - auto-apply deterministic follow-up steps
+  - stop only on unresolved or invalid choices
+  - return a final applied-changes summary
+- Why next:
+  - The official DnD5e advancement hooks and manager lifecycle give us a stable completion boundary.
+
+3. `award-dnd5e-party-resources`
+
+- Goal: Automate the step between encounter/session outcomes and actor progression.
+- Scope:
+  - XP awards
+  - currency awards
+  - optional group-first distribution model
+  - follow-up validation for level-up readiness
+- Why next:
+  - The official DnD5e award system already models XP and currency grants as first-class workflows.
+
+4. `run-dnd5e-summon-activity`
+
+- Goal: Bridge DnD5e summon activities into MCP as a rule-aware workflow instead of only generic linked companions.
+- Scope:
+  - summon profile selection
+  - CR/type filtering or direct-link profile resolution
+  - summon placement and result reporting
+  - surfaced summon-specific choices where the activity allows them
+- Why next:
+  - The official DnD5e Summon activity is richer than our generic companion lifecycle and has its own
+    profile, placement, and creature-modification model.
+
+5. `organize-dnd5e-spellbook-workflow`
+
+- Goal: Turn spell validation plus source-class/preparation tools into one cleanup workflow.
+- Scope:
+  - detect invalid class assignments
+  - reassign spells where the target is unambiguous
+  - report remaining ambiguous or illegal states
+- Why later:
+  - The primitives are already present, so this is mainly orchestration and safety logic.
 
 ## Gap Conclusion (DnD5e)
 

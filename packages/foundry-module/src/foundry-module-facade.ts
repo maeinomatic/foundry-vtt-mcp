@@ -14,6 +14,7 @@ import { FoundryActorProgressionService } from './services/actor-progression-ser
 import { FoundryActorUpdateService } from './services/actor-update-service.js';
 import { FoundryCharacterBuildValidationService } from './services/character-build-validation-service.js';
 import { FoundryCharacterPatchTransactionService } from './services/character-patch-transaction-service.js';
+import { FoundryCharacterRestWorkflowService } from './services/character-rest-workflow-service.js';
 import { FoundryCharacterService } from './services/character-service.js';
 import { FoundryCompanionService } from './services/companion-service.js';
 import { FoundryCompendiumService } from './services/compendium-service.js';
@@ -73,6 +74,8 @@ import type {
   FoundrySearchCharacterItemsResponse,
   FoundrySummonCharacterCompanionRequest,
   FoundrySummonCharacterCompanionResponse,
+  FoundryRunCharacterRestWorkflowRequest,
+  FoundryRunCharacterRestWorkflowResponse,
   FoundryValidateCharacterBuildRequest,
   FoundryValidateCharacterBuildResponse,
   FoundrySyncCharacterCompanionProgressionRequest,
@@ -129,6 +132,7 @@ export class FoundryModuleFacade {
   private actorUpdateService: FoundryActorUpdateService;
   private characterBuildValidationService: FoundryCharacterBuildValidationService;
   private characterPatchTransactionService: FoundryCharacterPatchTransactionService;
+  private characterRestWorkflowService: FoundryCharacterRestWorkflowService;
   private characterService: FoundryCharacterService;
   private companionService: FoundryCompanionService;
   private compendiumService: FoundryCompendiumService;
@@ -215,6 +219,18 @@ export class FoundryModuleFacade {
       findActorByIdentifier: (identifier: string): ActorLookupLike | null =>
         this.findActorByIdentifier(identifier),
       validateFoundryState: (): void => this.validateFoundryState(),
+    });
+    this.characterRestWorkflowService = new FoundryCharacterRestWorkflowService({
+      auditLog: (
+        action: string,
+        data: unknown,
+        status: 'success' | 'failure',
+        errorMessage?: string
+      ): void => this.auditLog(action, data, status, errorMessage),
+      findActorByIdentifier: (identifier: string): ActorLookupLike | null =>
+        this.findActorByIdentifier(identifier),
+      validateFoundryState: (): void => this.validateFoundryState(),
+      getSystemId: (): string => game.system?.id ?? 'unknown',
     });
     this.characterService = new FoundryCharacterService({
       auditLog: (
@@ -664,6 +680,12 @@ export class FoundryModuleFacade {
     request: FoundryApplyCharacterPatchTransactionRequest
   ): Promise<FoundryApplyCharacterPatchTransactionResponse> {
     return this.characterPatchTransactionService.applyCharacterPatchTransaction(request);
+  }
+
+  async runCharacterRestWorkflow(
+    request: FoundryRunCharacterRestWorkflowRequest
+  ): Promise<FoundryRunCharacterRestWorkflowResponse> {
+    return this.characterRestWorkflowService.runCharacterRestWorkflow(request);
   }
 
   async updateActorEmbeddedItem(

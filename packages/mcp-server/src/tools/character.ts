@@ -37,6 +37,8 @@ import type {
   FoundrySearchCharacterItemsResponse,
   FoundrySummonCharacterCompanionRequest,
   FoundrySummonCharacterCompanionResponse,
+  FoundryRunCharacterRestWorkflowRequest,
+  FoundryRunCharacterRestWorkflowResponse,
   FoundrySyncCharacterCompanionProgressionRequest,
   FoundrySyncCharacterCompanionProgressionResponse,
   FoundryUnlinkCharacterCompanionRequest,
@@ -1314,6 +1316,71 @@ export class CharacterTools {
             },
           },
           required: ['actorIdentifier', 'mode', 'spellIdentifiers'],
+        },
+      },
+      {
+        name: 'run-dnd5e-rest-workflow',
+        description:
+          'DnD5e only: run a short-rest or long-rest workflow through the system rest API, then optionally apply post-rest spell preparation plans for prepared casters in the same MCP call.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            actorIdentifier: {
+              type: 'string',
+              description: 'Character name or ID',
+            },
+            restType: {
+              type: 'string',
+              enum: ['short', 'long'],
+              description: 'Which DnD5e rest workflow to run',
+            },
+            suppressChat: {
+              type: 'boolean',
+              description:
+                'Suppress chat output where the underlying rest workflow supports it. Defaults to true for MCP.',
+            },
+            newDay: {
+              type: 'boolean',
+              description:
+                'Optional DnD5e long-rest flag for advancing to a new day when the system rest API supports it.',
+            },
+            spellPreparationPlans: {
+              type: 'array',
+              description:
+                'Optional post-rest spell preparation operations to apply after the rest succeeds.',
+              items: {
+                type: 'object',
+                properties: {
+                  mode: {
+                    type: 'string',
+                    enum: ['replace', 'prepare', 'unprepare'],
+                    description:
+                      'replace resets prepared flags within the scoped spellbook, while prepare/unprepare only patch the listed spells',
+                  },
+                  spellIdentifiers: {
+                    type: 'array',
+                    items: { type: 'string' },
+                    description: 'Owned spell names or IDs affected by the preparation operation',
+                  },
+                  sourceClass: {
+                    type: 'string',
+                    description:
+                      'Optional source class name or ID to scope the spellbook, strongly recommended for multiclass prepared casters',
+                  },
+                  reason: {
+                    type: 'string',
+                    description: 'Optional audit reason for this specific post-rest spell update',
+                  },
+                },
+                required: ['mode', 'spellIdentifiers'],
+              },
+            },
+            reason: {
+              type: 'string',
+              description: 'Optional audit reason for the rest workflow',
+            },
+          },
+          required: ['actorIdentifier', 'restType'],
         },
       },
       {
@@ -3596,6 +3663,114 @@ export class CharacterTools {
               ? false
               : undefined,
       })),
+    };
+  }
+
+  async handleRunDnD5eRestWorkflow(args: unknown): Promise<UnknownRecord> {
+    const spellPreparationPlanSchema = z
+      .object({
+        mode: z.enum(['replace', 'prepare', 'unprepare']),
+        spellIdentifiers: z.array(z.string().min(1)).default([]),
+        sourceClass: z.string().min(1).optional(),
+        reason: z.string().min(1).optional(),
+      })
+      .superRefine((value, ctx) => {
+        if (value.mode !== 'replace' && value.spellIdentifiers.length === 0) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message:
+              'spellIdentifiers must contain at least one spell for prepare or unprepare mode',
+            path: ['spellIdentifiers'],
+          });
+        }
+      });
+
+    const schema = z.object({
+      actorIdentifier: z.string().min(1, 'Actor identifier cannot be empty'),
+      restType: z.enum(['short', 'long']),
+      suppressChat: z.boolean().default(true),
+      newDay: z.boolean().optional(),
+      spellPreparationPlans: z.array(spellPreparationPlanSchema).optional(),
+      reason: z.string().min(1).optional(),
+    });
+
+    const parsed = schema.parse(args);
+    const gameSystem = await this.getGameSystem();
+    if (gameSystem !== 'dnd5e') {
+      throw new Error(
+        'UNSUPPORTED_CAPABILITY: run-dnd5e-rest-workflow is only available when the active system is dnd5e.'
+      );
+    }
+
+    const restResult = await this.foundryClient.query<FoundryRunCharacterRestWorkflowResponse>(
+      'foundry-mcp-bridge.runCharacterRestWorkflow',
+      {
+        actorIdentifier: parsed.actorIdentifier,
+        restType: parsed.restType,
+        suppressChat: parsed.suppressChat,
+        ...(parsed.newDay !== undefined ? { newDay: parsed.newDay } : {}),
+        ...(parsed.reason !== undefined ? { reason: parsed.reason } : {}),
+      } satisfies FoundryRunCharacterRestWorkflowRequest
+    );
+
+    const spellPreparationUpdates: UnknownRecord[] = [];
+    const warnings = [...(restResult.warnings ?? [])];
+
+    for (const plan of parsed.spellPreparationPlans ?? []) {
+      try {
+        const preparationResult = await this.handleSetDnD5ePreparedSpells({
+          actorIdentifier: parsed.actorIdentifier,
+          mode: plan.mode,
+          spellIdentifiers: plan.spellIdentifiers,
+          ...(plan.sourceClass !== undefined ? { sourceClass: plan.sourceClass } : {}),
+          reason: plan.reason ?? parsed.reason ?? `Post-${parsed.restType}-rest spell preparation`,
+        });
+
+        spellPreparationUpdates.push(preparationResult);
+      } catch (error) {
+        warnings.push(
+          `The ${parsed.restType}-rest completed, but a post-rest spell preparation step failed: ${
+            error instanceof Error ? error.message : 'Unknown error'
+          }`
+        );
+
+        return {
+          success: false,
+          partialSuccess: true,
+          restCompleted: true,
+          character: {
+            id: restResult.actorId,
+            name: restResult.actorName,
+            type: restResult.actorType,
+          },
+          rest: {
+            type: restResult.restType,
+            before: restResult.before,
+            after: restResult.after,
+            changes: restResult.changes,
+          },
+          ...(spellPreparationUpdates.length > 0 ? { spellPreparationUpdates } : {}),
+          warnings,
+        };
+      }
+    }
+
+    return {
+      success: true,
+      restCompleted: true,
+      character: {
+        id: restResult.actorId,
+        name: restResult.actorName,
+        type: restResult.actorType,
+      },
+      rest: {
+        type: restResult.restType,
+        before: restResult.before,
+        after: restResult.after,
+        changes: restResult.changes,
+      },
+      ...(spellPreparationUpdates.length > 0 ? { spellPreparationUpdates } : {}),
+      ...(warnings.length > 0 ? { warnings } : {}),
     };
   }
 

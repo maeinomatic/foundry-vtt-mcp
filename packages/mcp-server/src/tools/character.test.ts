@@ -1787,6 +1787,196 @@ describe('CharacterTools', () => {
     );
   });
 
+  it('uses the shared run-dnd5e-rest-workflow bridge request shape and applies post-rest spell preparation plans', async () => {
+    const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
+      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+        return Promise.resolve({ system: 'dnd5e' });
+      }
+
+      if (method === 'foundry-mcp-bridge.runCharacterRestWorkflow') {
+        expect(data).toEqual({
+          actorIdentifier: 'Laeral',
+          restType: 'long',
+          suppressChat: true,
+          newDay: true,
+          reason: 'Overnight recovery',
+        });
+
+        return Promise.resolve({
+          success: true,
+          system: 'dnd5e',
+          actorId: 'actor-3',
+          actorName: 'Laeral',
+          actorType: 'character',
+          restType: 'long',
+          before: {
+            hitPoints: { current: 18, max: 32, temp: 5 },
+            spellSlots: [{ key: 'spell1', value: 1, max: 4 }],
+          },
+          after: {
+            hitPoints: { current: 32, max: 32, temp: 0 },
+            spellSlots: [{ key: 'spell1', value: 4, max: 4 }],
+          },
+          changes: {
+            hitPointsChanged: true,
+            inspirationChanged: false,
+            exhaustionChanged: false,
+            deathSavesChanged: false,
+            changedSpellSlots: [
+              {
+                key: 'spell1',
+                before: { key: 'spell1', value: 1, max: 4 },
+                after: { key: 'spell1', value: 4, max: 4 },
+              },
+            ],
+            changedClassHitDice: [],
+          },
+          warnings: ['Review optional rest-time choices after automation.'],
+        });
+      }
+
+      if (method === 'foundry-mcp-bridge.getCharacterInfo') {
+        expect(data).toEqual({ identifier: 'Laeral' });
+        return Promise.resolve({
+          id: 'actor-3',
+          name: 'Laeral',
+          type: 'character',
+          system: {},
+          items: [
+            {
+              id: 'class-wizard',
+              name: 'Wizard',
+              type: 'class',
+              system: {
+                spellcasting: {
+                  progression: 'full',
+                  type: 'prepared',
+                },
+              },
+            },
+            {
+              id: 'spell-fireball',
+              name: 'Fireball',
+              type: 'spell',
+              system: {
+                sourceClass: 'class-wizard',
+                preparation: {
+                  prepared: false,
+                },
+              },
+            },
+            {
+              id: 'spell-shield',
+              name: 'Shield',
+              type: 'spell',
+              system: {
+                sourceClass: 'class-wizard',
+                preparation: {
+                  prepared: true,
+                },
+              },
+            },
+          ],
+          effects: [],
+        });
+      }
+
+      if (method === 'foundry-mcp-bridge.batchUpdateActorEmbeddedItems') {
+        expect(data).toEqual({
+          actorIdentifier: 'Laeral',
+          updates: [
+            {
+              itemIdentifier: 'spell-fireball',
+              itemType: 'spell',
+              updates: {
+                'system.preparation.prepared': true,
+              },
+            },
+            {
+              itemIdentifier: 'spell-shield',
+              itemType: 'spell',
+              updates: {
+                'system.preparation.prepared': false,
+              },
+            },
+          ],
+          reason: 'Overnight recovery',
+        });
+
+        return Promise.resolve({
+          success: true,
+          actorId: 'actor-3',
+          actorName: 'Laeral',
+          updatedItems: [
+            {
+              itemId: 'spell-fireball',
+              itemName: 'Fireball',
+              itemType: 'spell',
+              appliedUpdates: {
+                'system.preparation.prepared': true,
+              },
+              updatedFields: ['system.preparation.prepared'],
+            },
+            {
+              itemId: 'spell-shield',
+              itemName: 'Shield',
+              itemType: 'spell',
+              appliedUpdates: {
+                'system.preparation.prepared': false,
+              },
+              updatedFields: ['system.preparation.prepared'],
+            },
+          ],
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected query: ${method}`));
+    });
+
+    const tools = new CharacterTools({
+      foundryClient: { query } as unknown as FoundryClient,
+      logger: createLoggerStub(),
+    });
+
+    const result = (await tools.handleRunDnD5eRestWorkflow({
+      actorIdentifier: 'Laeral',
+      restType: 'long',
+      suppressChat: true,
+      newDay: true,
+      reason: 'Overnight recovery',
+      spellPreparationPlans: [
+        {
+          mode: 'replace',
+          sourceClass: 'Wizard',
+          spellIdentifiers: ['Fireball'],
+        },
+      ],
+    })) as Record<string, unknown>;
+
+    expect(result).toMatchObject({
+      success: true,
+      restCompleted: true,
+      character: {
+        id: 'actor-3',
+        name: 'Laeral',
+        type: 'character',
+      },
+      rest: {
+        type: 'long',
+        changes: {
+          hitPointsChanged: true,
+          changedSpellSlots: [
+            {
+              key: 'spell1',
+            },
+          ],
+        },
+      },
+      warnings: ['Review optional rest-time choices after automation.'],
+    });
+    expect(result).toHaveProperty('spellPreparationUpdates');
+  });
+
   it('exposes DnD5e progression preview as a dedicated tool response', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
       if (method === 'foundry-mcp-bridge.getCharacterInfo') {

@@ -45,6 +45,8 @@ import type {
   FoundrySearchCharacterItemsRequest,
   FoundrySummonCharacterCompanionRequest,
   FoundrySummonCharacterCompanionResponse,
+  FoundryRunCharacterRestWorkflowRequest,
+  FoundryRunCharacterRestWorkflowResponse,
   FoundryValidateCharacterBuildRequest,
   FoundryValidateCharacterBuildResponse,
   FoundrySyncCharacterCompanionProgressionRequest,
@@ -217,6 +219,8 @@ export class QueryHandlers {
       this.handleApplyCharacterAdvancementChoice.bind(this);
     CONFIG.queries[`${modulePrefix}.validateCharacterBuild`] =
       this.handleValidateCharacterBuild.bind(this);
+    CONFIG.queries[`${modulePrefix}.runCharacterRestWorkflow`] =
+      this.handleRunCharacterRestWorkflow.bind(this);
     CONFIG.queries[`${modulePrefix}.updateActor`] = this.handleUpdateActor.bind(this);
     CONFIG.queries[`${modulePrefix}.createActorEmbeddedItem`] =
       this.handleCreateActorEmbeddedItem.bind(this);
@@ -779,6 +783,44 @@ export class QueryHandlers {
     } catch (error) {
       throw new Error(
         `Failed to validate character build: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+    }
+  }
+
+  /**
+   * Handle character rest workflow request
+   */
+  private async handleRunCharacterRestWorkflow(
+    data: FoundryRunCharacterRestWorkflowRequest
+  ): Promise<FoundryRunCharacterRestWorkflowResponse | QueryErrorResult> {
+    try {
+      const gmCheck = this.validateGMAccess();
+      if (!gmCheck.allowed) {
+        return { error: 'Access denied', success: false };
+      }
+
+      this.dataAccess.validateFoundryState();
+
+      const permissionCheck = await this.dataAccess.validateWritePermissions('updateActor');
+      if (!permissionCheck.allowed) {
+        return {
+          error: permissionCheck.reason ?? 'Actor update not allowed',
+          success: false,
+        };
+      }
+
+      if (!data.actorIdentifier) {
+        throw new Error('actorIdentifier is required');
+      }
+
+      if (data.restType !== 'short' && data.restType !== 'long') {
+        throw new Error('restType must be "short" or "long"');
+      }
+
+      return await this.dataAccess.runCharacterRestWorkflow(data);
+    } catch (error) {
+      throw new Error(
+        `Failed to run character rest workflow: ${error instanceof Error ? error.message : 'Unknown error'}`
       );
     }
   }

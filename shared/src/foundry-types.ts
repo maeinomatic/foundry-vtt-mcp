@@ -564,6 +564,83 @@ export interface FoundryApplyCharacterPatchTransactionResponse extends UnknownRe
   warnings?: string[];
 }
 
+export interface FoundryCharacterRestHitPointState extends UnknownRecord {
+  current?: number;
+  max?: number;
+  temp?: number;
+}
+
+export interface FoundryCharacterRestDeathSaveState extends UnknownRecord {
+  success?: number;
+  failure?: number;
+}
+
+export interface FoundryCharacterRestSpellSlotState extends UnknownRecord {
+  key: string;
+  value?: number;
+  max?: number;
+  override?: number;
+}
+
+export interface FoundryCharacterRestClassHitDieState extends UnknownRecord {
+  classId: string;
+  className: string;
+  levels?: number;
+  spent?: number;
+  available?: number;
+  denomination?: string;
+}
+
+export interface FoundryCharacterRestState extends UnknownRecord {
+  hitPoints?: FoundryCharacterRestHitPointState;
+  inspiration?: boolean;
+  exhaustion?: number;
+  deathSaves?: FoundryCharacterRestDeathSaveState;
+  spellSlots?: FoundryCharacterRestSpellSlotState[];
+  classHitDice?: FoundryCharacterRestClassHitDieState[];
+}
+
+export interface FoundryCharacterRestSpellSlotChange extends UnknownRecord {
+  key: string;
+  before?: FoundryCharacterRestSpellSlotState;
+  after?: FoundryCharacterRestSpellSlotState;
+}
+
+export interface FoundryCharacterRestClassHitDieChange extends UnknownRecord {
+  classId: string;
+  className: string;
+  before?: FoundryCharacterRestClassHitDieState;
+  after?: FoundryCharacterRestClassHitDieState;
+}
+
+export interface FoundryRunCharacterRestWorkflowRequest {
+  actorIdentifier: string;
+  restType: 'short' | 'long';
+  suppressChat?: boolean;
+  newDay?: boolean;
+  reason?: string;
+}
+
+export interface FoundryRunCharacterRestWorkflowResponse extends UnknownRecord {
+  success: boolean;
+  system: string;
+  actorId: string;
+  actorName: string;
+  actorType: string;
+  restType: 'short' | 'long';
+  before: FoundryCharacterRestState;
+  after: FoundryCharacterRestState;
+  changes: {
+    hitPointsChanged: boolean;
+    inspirationChanged: boolean;
+    exhaustionChanged: boolean;
+    deathSavesChanged: boolean;
+    changedSpellSlots: FoundryCharacterRestSpellSlotChange[];
+    changedClassHitDice: FoundryCharacterRestClassHitDieChange[];
+  };
+  warnings?: string[];
+}
+
 export interface FoundryCreateActorEmbeddedItemData extends UnknownRecord {
   name: string;
   type: string;

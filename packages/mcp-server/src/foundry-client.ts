@@ -53,6 +53,8 @@ import type {
   FoundrySearchCharacterItemsResponse,
   FoundrySummonCharacterCompanionRequest,
   FoundrySummonCharacterCompanionResponse,
+  FoundryRunCharacterRestWorkflowRequest,
+  FoundryRunCharacterRestWorkflowResponse,
   FoundrySyncCharacterCompanionProgressionRequest,
   FoundrySyncCharacterCompanionProgressionResponse,
   FoundryUnlinkCharacterCompanionRequest,
@@ -197,6 +199,10 @@ export class FoundryClient {
     method: 'foundry-mcp-bridge.validateCharacterBuild',
     data: FoundryValidateCharacterBuildRequest
   ): Promise<FoundryValidateCharacterBuildResponse>;
+  async query(
+    method: 'foundry-mcp-bridge.runCharacterRestWorkflow',
+    data: FoundryRunCharacterRestWorkflowRequest
+  ): Promise<FoundryRunCharacterRestWorkflowResponse>;
   async query(
     method: 'foundry-mcp-bridge.updateActorEmbeddedItem',
     data: FoundryUpdateActorEmbeddedItemRequest
