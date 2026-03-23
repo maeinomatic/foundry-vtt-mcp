@@ -17,6 +17,64 @@ function createLoggerStub(): Logger {
 }
 
 describe('ActorCreationTools', () => {
+  it('rejects companion-specific fields for standalone create-character-actor', async () => {
+    const query = vi.fn();
+
+    const tools = new ActorCreationTools({
+      foundryClient: { query } as unknown as FoundryClient,
+      logger: createLoggerStub(),
+    });
+
+    await expect(
+      tools.handleCreateCharacterActor({
+        sourceUuid: 'Compendium.dnd5e.heroes.Actor.2Pdtnswo8Nj2nafY',
+        name: 'Bram Ironfield',
+        role: 'companion',
+      })
+    ).rejects.toThrow();
+
+    expect(query).not.toHaveBeenCalled();
+  });
+
+  it('creates a standalone actor from sourceUuid through create-character-actor', async () => {
+    const query = vi.fn().mockResolvedValue({
+      success: true,
+      linked: false,
+      actorId: 'actor-standalone-1',
+      actorName: 'Bram Ironfield',
+      actorType: 'character',
+      sourceUuid: 'Compendium.dnd5e.heroes.Actor.2Pdtnswo8Nj2nafY',
+      packId: 'dnd5e.heroes',
+      itemId: '2Pdtnswo8Nj2nafY',
+      tokensPlaced: 0,
+    });
+
+    const tools = new ActorCreationTools({
+      foundryClient: { query } as unknown as FoundryClient,
+      logger: createLoggerStub(),
+    });
+
+    const result = (await tools.handleCreateCharacterActor({
+      sourceUuid: 'Compendium.dnd5e.heroes.Actor.2Pdtnswo8Nj2nafY',
+      name: 'Bram Ironfield',
+      addToScene: false,
+    })) as Record<string, unknown>;
+
+    expect(query).toHaveBeenCalledWith('maeinomatic-foundry-mcp.createCharacterActor', {
+      sourceUuid: 'Compendium.dnd5e.heroes.Actor.2Pdtnswo8Nj2nafY',
+      name: 'Bram Ironfield',
+      addToScene: false,
+    });
+
+    expect(result.kind).toBe('standalone-actor');
+    expect(result.linked).toBe(false);
+    expect(result.actor).toMatchObject({
+      id: 'actor-standalone-1',
+      name: 'Bram Ironfield',
+      type: 'character',
+    });
+  });
+
   it('sends the normalized actor creation bridge request and formats the result', async () => {
     const query = vi.fn().mockResolvedValue({
       success: true,

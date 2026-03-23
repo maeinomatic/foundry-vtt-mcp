@@ -20,6 +20,8 @@ import type {
   FoundryCompendiumSearchResult,
   FoundryConnectionInfo,
   FoundryCreateActorFromCompendiumRequest,
+  FoundryCreateCharacterActorRequest,
+  FoundryCreateCharacterActorResponse,
   FoundryCreateActorEmbeddedItemRequest,
   FoundryCreateActorEmbeddedItemResponse,
   FoundryCreateCharacterCompanionRequest,
@@ -253,6 +255,10 @@ export class FoundryClient {
     method: 'maeinomatic-foundry-mcp.createActorFromCompendium',
     data: FoundryCreateActorFromCompendiumRequest
   ): Promise<FoundryActorCreationResult>;
+  async query(
+    method: 'maeinomatic-foundry-mcp.createCharacterActor',
+    data: FoundryCreateCharacterActorRequest
+  ): Promise<FoundryCreateCharacterActorResponse>;
   async query(
     method: 'maeinomatic-foundry-mcp.listActors',
     data?: FoundryListActorsRequest

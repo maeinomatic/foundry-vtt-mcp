@@ -45,6 +45,8 @@ import type {
   FoundryCharacterInfo,
   FoundryCreateActorEmbeddedItemRequest,
   FoundryCreateActorEmbeddedItemResponse,
+  FoundryCreateCharacterActorRequest,
+  FoundryCreateCharacterActorResponse,
   FoundryCreateCharacterCompanionRequest,
   FoundryCreateCharacterCompanionResponse,
   FoundryCreateCompendiumItemRequest,
@@ -128,6 +130,18 @@ type CompendiumSearchFilters = FoundryCompendiumSearchFilters;
 type CompendiumSearchResult = FoundryCompendiumSearchResult<Record<string, unknown>>;
 type CreatureSearchCriteria = FoundryCreatureSearchCriteria;
 type CreatureSearchResponse = FoundryCreatureSearchResponse<Record<string, unknown>>;
+
+function parseCompendiumActorUuid(sourceUuid: string): { packId: string; itemId: string } | null {
+  const parts = sourceUuid.split('.');
+  if (parts.length < 5 || parts[0] !== 'Compendium' || parts[3] !== 'Actor') {
+    return null;
+  }
+
+  return {
+    packId: `${parts[1]}.${parts[2]}`,
+    itemId: parts[parts.length - 1],
+  };
+}
 
 export class FoundryModuleFacade {
   private moduleId: string = MODULE_ID;
@@ -676,6 +690,48 @@ export class FoundryModuleFacade {
     request: CompendiumEntryActorCreationRequest
   ): Promise<ActorCreationResult> {
     return this.actorCreationService.createActorFromCompendiumEntry(request);
+  }
+
+  async createCharacterActor(
+    request: FoundryCreateCharacterActorRequest
+  ): Promise<FoundryCreateCharacterActorResponse> {
+    const parsed = parseCompendiumActorUuid(request.sourceUuid);
+    if (!parsed) {
+      throw new Error(
+        'sourceUuid must be a Compendium Actor UUID in the format Compendium.<pack>.<collection>.Actor.<id>'
+      );
+    }
+
+    const creationResult = await this.actorCreationService.createActorFromCompendiumEntry({
+      packId: parsed.packId,
+      itemId: parsed.itemId,
+      customNames: [request.name],
+      quantity: 1,
+      addToScene: request.addToScene ?? false,
+      ...(request.placement !== undefined ? { placement: request.placement } : {}),
+    });
+
+    const actor = creationResult.actors?.[0];
+    if (!actor?.id) {
+      throw new Error('Failed to create standalone character actor from source UUID.');
+    }
+
+    return {
+      success: creationResult.success,
+      linked: false,
+      actorId: actor.id,
+      actorName: actor.name,
+      actorType: actor.type,
+      sourceUuid: request.sourceUuid,
+      packId: parsed.packId,
+      itemId: parsed.itemId,
+      ...(creationResult.tokensPlaced !== undefined
+        ? { tokensPlaced: creationResult.tokensPlaced }
+        : {}),
+      ...(creationResult.errors && creationResult.errors.length > 0
+        ? { warnings: creationResult.errors }
+        : {}),
+    };
   }
 
   async previewCharacterProgression(

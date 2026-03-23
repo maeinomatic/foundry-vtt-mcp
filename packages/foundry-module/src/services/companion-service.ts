@@ -642,6 +642,15 @@ export class FoundryCompanionService {
     });
 
     const warnings: string[] = [];
+    if (
+      request.customName !== undefined &&
+      /\blevel\s*\d+\b/i.test(request.customName) &&
+      request.notes === undefined
+    ) {
+      warnings.push(
+        'Companion name looks like standalone character leveling intent (for example "Level 5"). Use standalone actor creation workflows when you do not want an owner-linked companion.'
+      );
+    }
     let tokensPlaced = 0;
     let tokenIds: string[] = [];
 

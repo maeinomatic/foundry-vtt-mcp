@@ -1767,6 +1767,11 @@ async function startBackend(): Promise<void> {
 
                     break;
 
+                  case 'create-dnd5e-character-workflow':
+                    result = await characterTools.handleCreateDnD5eCharacterWorkflow(args);
+
+                    break;
+
                   case 'award-dnd5e-party-resources':
                     result = await characterTools.handleAwardDnD5ePartyResources(args);
 
@@ -1910,6 +1915,11 @@ async function startBackend(): Promise<void> {
 
                   case 'create-actor-from-compendium':
                     result = await actorCreationTools.handleCreateActorFromCompendium(args);
+
+                    break;
+
+                  case 'create-character-actor':
+                    result = await actorCreationTools.handleCreateCharacterActor(args);
 
                     break;
 

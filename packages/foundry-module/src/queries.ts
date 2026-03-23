@@ -12,6 +12,8 @@ import type {
   FoundryBatchUpdateActorEmbeddedItemsResponse,
   FoundryCharacterInfo,
   FoundryCreateActorFromCompendiumRequest,
+  FoundryCreateCharacterActorRequest,
+  FoundryCreateCharacterActorResponse,
   FoundryCreateActorEmbeddedItemRequest,
   FoundryCreateActorEmbeddedItemResponse,
   FoundryCreateCharacterCompanionRequest,
@@ -215,6 +217,8 @@ export class QueryHandlers {
     // Phase 2 & 3: Write operation queries
     CONFIG.queries[`${modulePrefix}.createActorFromCompendium`] =
       this.handleCreateActorFromCompendium.bind(this);
+    CONFIG.queries[`${modulePrefix}.createCharacterActor`] =
+      this.handleCreateCharacterActor.bind(this);
     CONFIG.queries[`${modulePrefix}.previewCharacterProgression`] =
       this.handlePreviewCharacterProgression.bind(this);
     CONFIG.queries[`${modulePrefix}.getCharacterAdvancementOptions`] =
@@ -617,6 +621,41 @@ export class QueryHandlers {
     } catch (error) {
       throw new Error(
         `Failed to create actor from compendium: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+    }
+  }
+
+  private async handleCreateCharacterActor(
+    data: FoundryCreateCharacterActorRequest
+  ): Promise<FoundryCreateCharacterActorResponse | QueryErrorResult> {
+    try {
+      const gmCheck = this.validateGMAccess();
+      if (!gmCheck.allowed) {
+        return { error: 'Access denied', success: false };
+      }
+
+      this.dataAccess.validateFoundryState();
+
+      const permissionCheck = await this.dataAccess.validateWritePermissions('createActor');
+      if (!permissionCheck.allowed) {
+        return {
+          error: permissionCheck.reason ?? 'Actor creation not allowed',
+          success: false,
+        };
+      }
+
+      if (!data.sourceUuid) {
+        throw new Error('sourceUuid is required');
+      }
+
+      if (!data.name) {
+        throw new Error('name is required');
+      }
+
+      return await this.dataAccess.createCharacterActor(data);
+    } catch (error) {
+      throw new Error(
+        `Failed to create standalone character actor: ${error instanceof Error ? error.message : 'Unknown error'}`
       );
     }
   }

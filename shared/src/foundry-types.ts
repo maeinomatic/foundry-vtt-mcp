@@ -933,6 +933,54 @@ export interface FoundryCreateActorFromCompendiumRequest {
   placement?: FoundryTokenPlacementOptions;
 }
 
+export interface FoundryCreateCharacterActorRequest {
+  sourceUuid: string;
+  name: string;
+  addToScene?: boolean;
+  placement?: FoundryTokenPlacementOptions;
+}
+
+export interface FoundryCreateCharacterActorResponse extends UnknownRecord {
+  success: boolean;
+  linked: false;
+  actorId: string;
+  actorName: string;
+  actorType: string;
+  sourceUuid: string;
+  packId: string;
+  itemId: string;
+  tokensPlaced?: number;
+  tokenIds?: string[];
+  warnings?: string[];
+}
+
+export interface FoundryCreateDnD5eCharacterWorkflowRequest {
+  sourceUuid: string;
+  name: string;
+  targetLevel: number;
+  classIdentifier?: string;
+  advancementSelections?: Array<FoundryApplyCharacterAdvancementChoiceRequest['choice']>;
+  biography?: string;
+  addToScene?: boolean;
+  placement?: FoundryTokenPlacementOptions;
+}
+
+export interface FoundryCreateDnD5eCharacterWorkflowResponse extends UnknownRecord {
+  success: boolean;
+  workflowStatus: 'completed' | 'needs-choices' | 'failed';
+  linked: false;
+  actorId: string;
+  actorName: string;
+  actorType: string;
+  sourceUuid: string;
+  targetLevel: number;
+  classIdentifier?: string;
+  requiresChoices?: boolean;
+  pendingAdvancements?: FoundryProgressionPreviewStep[];
+  warnings?: string[];
+  message?: string;
+}
+
 export interface FoundryCreateCharacterCompanionRequest {
   ownerActorIdentifier: string;
   role: FoundryCompanionRole;
