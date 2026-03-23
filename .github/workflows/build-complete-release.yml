@@ -355,8 +355,10 @@ jobs:
             echo "✓ Mac DMG distribution found"
             SIZE=$(du -h "MaeinomaticFoundryMCPServer-${VERSION_NO_V}.dmg" | cut -f1)
             echo "📊 DMG size: $SIZE"
-            # Copy with v prefix for artifact upload consistency
-            cp "MaeinomaticFoundryMCPServer-${VERSION_NO_V}.dmg" "MaeinomaticFoundryMCPServer-${VERSION}.dmg"
+            # Only copy if source and destination differ
+            if [ "MaeinomaticFoundryMCPServer-${VERSION_NO_V}.dmg" != "MaeinomaticFoundryMCPServer-${VERSION}.dmg" ]; then
+              cp "MaeinomaticFoundryMCPServer-${VERSION_NO_V}.dmg" "MaeinomaticFoundryMCPServer-${VERSION}.dmg"
+            fi
           else
             echo "❌ Mac DMG not found (expected: MaeinomaticFoundryMCPServer-${VERSION_NO_V}.dmg)"
             exit 1
