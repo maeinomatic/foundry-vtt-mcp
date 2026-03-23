@@ -1787,6 +1787,566 @@ describe('CharacterTools', () => {
     );
   });
 
+  it('organizes a DnD5e spellbook by auto-fixing safe source-class and preparation issues', async () => {
+    const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
+      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+        return Promise.resolve({ system: 'dnd5e' });
+      }
+
+      if (method === 'foundry-mcp-bridge.getCharacterInfo') {
+        expect(data).toEqual({ identifier: 'Laeral' });
+        const characterInfoCallCount = query.mock.calls.filter(
+          ([calledMethod]) => calledMethod === 'foundry-mcp-bridge.getCharacterInfo'
+        ).length;
+
+        if (characterInfoCallCount === 1) {
+          return Promise.resolve({
+            id: 'actor-spellbook-1',
+            name: 'Laeral',
+            type: 'character',
+            system: {},
+            items: [
+              {
+                id: 'class-sorcerer',
+                name: 'Sorcerer',
+                type: 'class',
+                system: {
+                  spellcasting: {
+                    progression: 'full',
+                    type: 'known',
+                  },
+                },
+              },
+              {
+                id: 'spell-magic-missile',
+                name: 'Magic Missile',
+                type: 'spell',
+                system: {
+                  sourceClass: 'lost-class',
+                },
+              },
+              {
+                id: 'spell-shield',
+                name: 'Shield',
+                type: 'spell',
+                system: {
+                  sourceClass: 'class-sorcerer',
+                  preparation: {
+                    prepared: true,
+                  },
+                },
+              },
+            ],
+            effects: [],
+          });
+        }
+
+        if (characterInfoCallCount === 2) {
+          return Promise.resolve({
+            id: 'actor-spellbook-1',
+            name: 'Laeral',
+            type: 'character',
+            system: {},
+            items: [
+              {
+                id: 'class-sorcerer',
+                name: 'Sorcerer',
+                type: 'class',
+                system: {
+                  spellcasting: {
+                    progression: 'full',
+                    type: 'known',
+                  },
+                },
+              },
+              {
+                id: 'spell-magic-missile',
+                name: 'Magic Missile',
+                type: 'spell',
+                system: {
+                  sourceClass: 'class-sorcerer',
+                },
+              },
+              {
+                id: 'spell-shield',
+                name: 'Shield',
+                type: 'spell',
+                system: {
+                  sourceClass: 'class-sorcerer',
+                  preparation: {
+                    prepared: true,
+                  },
+                },
+              },
+            ],
+            effects: [],
+          });
+        }
+
+        return Promise.resolve({
+          id: 'actor-spellbook-1',
+          name: 'Laeral',
+          type: 'character',
+          system: {},
+          items: [
+            {
+              id: 'class-sorcerer',
+              name: 'Sorcerer',
+              type: 'class',
+              system: {
+                spellcasting: {
+                  progression: 'full',
+                  type: 'known',
+                },
+              },
+            },
+            {
+              id: 'spell-magic-missile',
+              name: 'Magic Missile',
+              type: 'spell',
+              system: {
+                sourceClass: 'class-sorcerer',
+              },
+            },
+            {
+              id: 'spell-shield',
+              name: 'Shield',
+              type: 'spell',
+              system: {
+                sourceClass: 'class-sorcerer',
+              },
+            },
+          ],
+          effects: [],
+        });
+      }
+
+      if (method === 'foundry-mcp-bridge.batchUpdateActorEmbeddedItems') {
+        const batchCallCount = query.mock.calls.filter(
+          ([calledMethod]) => calledMethod === 'foundry-mcp-bridge.batchUpdateActorEmbeddedItems'
+        ).length;
+
+        if (batchCallCount === 1) {
+          expect(data).toEqual({
+            actorIdentifier: 'Laeral',
+            updates: [
+              {
+                itemIdentifier: 'spell-magic-missile',
+                itemType: 'spell',
+                updates: {
+                  'system.sourceClass': 'class-sorcerer',
+                },
+              },
+            ],
+            reason: 'dnd5e spellbook organization workflow',
+          });
+
+          return Promise.resolve({
+            success: true,
+            actorId: 'actor-spellbook-1',
+            actorName: 'Laeral',
+            updatedItems: [
+              {
+                itemId: 'spell-magic-missile',
+                itemName: 'Magic Missile',
+                itemType: 'spell',
+                appliedUpdates: {
+                  'system.sourceClass': 'class-sorcerer',
+                },
+                updatedFields: ['system.sourceClass'],
+              },
+            ],
+          });
+        }
+
+        expect(data).toEqual({
+          actorIdentifier: 'Laeral',
+          updates: [
+            {
+              itemIdentifier: 'spell-shield',
+              itemType: 'spell',
+              updates: {
+                'system.preparation.prepared': false,
+              },
+            },
+          ],
+          reason: 'dnd5e spellbook organization workflow',
+        });
+
+        return Promise.resolve({
+          success: true,
+          actorId: 'actor-spellbook-1',
+          actorName: 'Laeral',
+          updatedItems: [
+            {
+              itemId: 'spell-shield',
+              itemName: 'Shield',
+              itemType: 'spell',
+              appliedUpdates: {
+                'system.preparation.prepared': false,
+              },
+              updatedFields: ['system.preparation.prepared'],
+            },
+          ],
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected query: ${method}`));
+    });
+
+    const registry = new SystemRegistry();
+    registry.register(new DnD5eAdapter());
+
+    const tools = new CharacterTools({
+      foundryClient: { query } as unknown as FoundryClient,
+      logger: createLoggerStub(),
+      systemRegistry: registry,
+    });
+
+    const result = (await tools.handleOrganizeDnD5eSpellbookWorkflow({
+      actorIdentifier: 'Laeral',
+    })) as Record<string, unknown>;
+
+    expect(result).toMatchObject({
+      success: true,
+      workflowStatus: 'completed',
+      completed: true,
+      character: {
+        id: 'actor-spellbook-1',
+        name: 'Laeral',
+        type: 'character',
+      },
+      fixes: {
+        sourceClassAssignmentsApplied: 1,
+        preparationUpdatesApplied: 1,
+        spellPreparationPlansApplied: 0,
+      },
+      appliedSourceClassAssignments: [
+        {
+          spellId: 'spell-magic-missile',
+          spellName: 'Magic Missile',
+          classId: 'class-sorcerer',
+          className: 'Sorcerer',
+          appliedBy: 'auto',
+        },
+      ],
+      appliedPreparationUpdates: [
+        {
+          spellId: 'spell-shield',
+          spellName: 'Shield',
+          prepared: false,
+          appliedBy: 'auto',
+        },
+      ],
+      initialValidation: {
+        issues: [
+          expect.objectContaining({ code: 'unknown-source-class' }),
+          expect.objectContaining({ code: 'preparation-mode-mismatch' }),
+        ],
+      },
+      finalValidation: {
+        issues: [],
+      },
+    });
+  });
+
+  it('returns review-required guidance when a DnD5e spellbook issue is still ambiguous after safe fixes', async () => {
+    const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
+      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+        return Promise.resolve({ system: 'dnd5e' });
+      }
+
+      if (method === 'foundry-mcp-bridge.getCharacterInfo') {
+        expect(data).toEqual({ identifier: 'Laeral' });
+        return Promise.resolve({
+          id: 'actor-spellbook-2',
+          name: 'Laeral',
+          type: 'character',
+          system: {},
+          items: [
+            {
+              id: 'class-wizard',
+              name: 'Wizard',
+              type: 'class',
+              system: {
+                spellcasting: {
+                  progression: 'full',
+                  type: 'prepared',
+                },
+              },
+            },
+            {
+              id: 'class-cleric',
+              name: 'Cleric',
+              type: 'class',
+              system: {
+                spellcasting: {
+                  progression: 'full',
+                  type: 'prepared',
+                },
+              },
+            },
+            {
+              id: 'spell-shield',
+              name: 'Shield',
+              type: 'spell',
+              system: {
+                preparation: {
+                  prepared: true,
+                },
+              },
+            },
+          ],
+          effects: [],
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected query: ${method}`));
+    });
+
+    const registry = new SystemRegistry();
+    registry.register(new DnD5eAdapter());
+
+    const tools = new CharacterTools({
+      foundryClient: { query } as unknown as FoundryClient,
+      logger: createLoggerStub(),
+      systemRegistry: registry,
+    });
+
+    const result = (await tools.handleOrganizeDnD5eSpellbookWorkflow({
+      actorIdentifier: 'Laeral',
+    })) as Record<string, unknown>;
+
+    expect(result).toMatchObject({
+      success: false,
+      partialSuccess: false,
+      workflowStatus: 'needs-review',
+      reviewRequired: true,
+      character: {
+        id: 'actor-spellbook-2',
+        name: 'Laeral',
+        type: 'character',
+      },
+      fixes: {
+        sourceClassAssignmentsApplied: 0,
+        preparationUpdatesApplied: 0,
+      },
+      finalValidation: {
+        issues: [
+          expect.objectContaining({
+            code: 'missing-source-class',
+            spellId: 'spell-shield',
+            spellName: 'Shield',
+          }),
+        ],
+      },
+    });
+  });
+
+  it('applies explicit spell preparation plans during the DnD5e spellbook workflow', async () => {
+    const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
+      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+        return Promise.resolve({ system: 'dnd5e' });
+      }
+
+      if (method === 'foundry-mcp-bridge.getCharacterInfo') {
+        const characterInfoCallCount = query.mock.calls.filter(
+          ([calledMethod]) => calledMethod === 'foundry-mcp-bridge.getCharacterInfo'
+        ).length;
+
+        expect(data).toEqual({ identifier: 'Laeral' });
+
+        if (characterInfoCallCount <= 2) {
+          return Promise.resolve({
+            id: 'actor-spellbook-3',
+            name: 'Laeral',
+            type: 'character',
+            system: {},
+            items: [
+              {
+                id: 'class-wizard',
+                name: 'Wizard',
+                type: 'class',
+                system: {
+                  spellcasting: {
+                    progression: 'full',
+                    type: 'prepared',
+                  },
+                },
+              },
+              {
+                id: 'spell-fireball',
+                name: 'Fireball',
+                type: 'spell',
+                system: {
+                  sourceClass: 'class-wizard',
+                  preparation: {
+                    prepared: false,
+                  },
+                },
+              },
+              {
+                id: 'spell-shield',
+                name: 'Shield',
+                type: 'spell',
+                system: {
+                  sourceClass: 'class-wizard',
+                  preparation: {
+                    prepared: true,
+                  },
+                },
+              },
+            ],
+            effects: [],
+          });
+        }
+
+        return Promise.resolve({
+          id: 'actor-spellbook-3',
+          name: 'Laeral',
+          type: 'character',
+          system: {},
+          items: [
+            {
+              id: 'class-wizard',
+              name: 'Wizard',
+              type: 'class',
+              system: {
+                spellcasting: {
+                  progression: 'full',
+                  type: 'prepared',
+                },
+              },
+            },
+            {
+              id: 'spell-fireball',
+              name: 'Fireball',
+              type: 'spell',
+              system: {
+                sourceClass: 'class-wizard',
+                preparation: {
+                  prepared: true,
+                },
+              },
+            },
+            {
+              id: 'spell-shield',
+              name: 'Shield',
+              type: 'spell',
+              system: {
+                sourceClass: 'class-wizard',
+                preparation: {
+                  prepared: false,
+                },
+              },
+            },
+          ],
+          effects: [],
+        });
+      }
+
+      if (method === 'foundry-mcp-bridge.batchUpdateActorEmbeddedItems') {
+        expect(data).toEqual({
+          actorIdentifier: 'Laeral',
+          updates: [
+            {
+              itemIdentifier: 'spell-fireball',
+              itemType: 'spell',
+              updates: {
+                'system.preparation.prepared': true,
+              },
+            },
+            {
+              itemIdentifier: 'spell-shield',
+              itemType: 'spell',
+              updates: {
+                'system.preparation.prepared': false,
+              },
+            },
+          ],
+          reason: 'Spell prep cleanup',
+        });
+
+        return Promise.resolve({
+          success: true,
+          actorId: 'actor-spellbook-3',
+          actorName: 'Laeral',
+          updatedItems: [
+            {
+              itemId: 'spell-fireball',
+              itemName: 'Fireball',
+              itemType: 'spell',
+              appliedUpdates: {
+                'system.preparation.prepared': true,
+              },
+              updatedFields: ['system.preparation.prepared'],
+            },
+            {
+              itemId: 'spell-shield',
+              itemName: 'Shield',
+              itemType: 'spell',
+              appliedUpdates: {
+                'system.preparation.prepared': false,
+              },
+              updatedFields: ['system.preparation.prepared'],
+            },
+          ],
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected query: ${method}`));
+    });
+
+    const registry = new SystemRegistry();
+    registry.register(new DnD5eAdapter());
+
+    const tools = new CharacterTools({
+      foundryClient: { query } as unknown as FoundryClient,
+      logger: createLoggerStub(),
+      systemRegistry: registry,
+    });
+
+    const result = (await tools.handleOrganizeDnD5eSpellbookWorkflow({
+      actorIdentifier: 'Laeral',
+      spellPreparationPlans: [
+        {
+          mode: 'replace',
+          sourceClass: 'Wizard',
+          spellIdentifiers: ['Fireball'],
+          reason: 'Spell prep cleanup',
+        },
+      ],
+    })) as Record<string, unknown>;
+
+    expect(result).toMatchObject({
+      success: true,
+      workflowStatus: 'completed',
+      completed: true,
+      fixes: {
+        sourceClassAssignmentsApplied: 0,
+        preparationUpdatesApplied: 2,
+        spellPreparationPlansApplied: 1,
+      },
+      appliedPreparationUpdates: [
+        {
+          spellId: 'spell-fireball',
+          spellName: 'Fireball',
+          prepared: true,
+          appliedBy: 'explicit-plan',
+        },
+        {
+          spellId: 'spell-shield',
+          spellName: 'Shield',
+          prepared: false,
+          appliedBy: 'explicit-plan',
+        },
+      ],
+      finalValidation: {
+        issues: [],
+      },
+    });
+  });
+
   it('uses the shared run-dnd5e-rest-workflow bridge request shape and applies post-rest spell preparation plans', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
       if (method === 'foundry-mcp-bridge.getWorldInfo') {

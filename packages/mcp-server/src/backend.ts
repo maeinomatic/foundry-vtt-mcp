@@ -1748,6 +1748,11 @@ async function startBackend(): Promise<void> {
 
                     break;
 
+                  case 'organize-dnd5e-spellbook-workflow':
+                    result = await characterTools.handleOrganizeDnD5eSpellbookWorkflow(args);
+
+                    break;
+
                   case 'create-character-companion':
                     result = await characterTools.handleCreateCharacterCompanion(args);
 

@@ -65,6 +65,8 @@ For broader character management, the current toolset now supports:
 - DnD5e summon-activity workflow that can surface unresolved activity/profile choices, execute the
   selected summon activity through the system activity API, and report summoned token results
 - DnD5e spellbook validation for source-class, preparation-mode, and class-assignment issues
+- DnD5e spellbook organization workflow that applies explicit cleanup instructions, auto-fixes only
+  safe unambiguous source-class and prepared-flag issues, and reports any remaining ambiguous cases
 - creating or linking persistent character companions and familiars
 - listing linked companions and familiars and whether they are already active on the scene
 - summoning linked companions and familiars onto the active scene
@@ -234,6 +236,11 @@ Architecture rules for this phase:
   - report remaining ambiguous or illegal states
 - Why later:
   - The primitives are already present, so this is mainly orchestration and safety logic.
+- Current state:
+  - Implemented in the current branch.
+  - The workflow applies explicit source-class assignments or prepared-spell cleanup plans first,
+    auto-fixes only safe unambiguous source-class and preparation mismatches, then re-validates and
+    reports any remaining ambiguous spellbook issues for manual review.
 
 ### Priority 5: Workflow Refinements
 
@@ -254,7 +261,7 @@ The repo now has the general actor and embedded-item write layer needed for prac
 DnD5e adds system-specific needs on top:
 
 - advancement and class-level orchestration
-- higher-level multiclass spellbook validation and automation beyond the current source-class reassignment, bulk preparation, and validation tools
+- higher-level workflow refinements such as party-award staging on top of the now-complete core automation layer
 
 The repo now has:
 
@@ -263,14 +270,15 @@ The repo now has:
 - ability score and skill proficiency writes
 - batch embedded-item updates
 - DnD5e direct proficiency editing
-- practical DnD5e spell learning, single and bulk preparation changes, removal, slot updates, source-class reassignment, and spellbook validation
+- practical DnD5e spell learning, single and bulk preparation changes, removal, slot updates,
+  source-class reassignment, spellbook validation, and spellbook organization workflow cleanup
 - multiclass add-class flow
 - persistent companion and familiar lifecycle workflows including link updates, summon defaults, unlink, deletion, and sync operations
 - world item and item-compendium authoring workflows
 - DnD5e character build validation for classes, spellbook state, proficiencies, and unresolved advancements
 - scoped actor and owned-item patch transactions with rollback for larger automated changes
 
-The next most valuable gaps are now higher-level rule-aware automation on top of this foundation, not missing core write surfaces.
+The next most valuable gaps are now workflow refinements on top of this foundation, not missing core write surfaces.
 
 ## Historical Archive
 

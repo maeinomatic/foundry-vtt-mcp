@@ -67,6 +67,7 @@ import type {
   PreparedCharacterProgressionUpdate,
   SystemAdapter,
   SystemCharacterAction,
+  SystemSpellbookValidationIssue,
   SystemSpellcastingEntry,
 } from '../systems/types.js';
 import { detectGameSystem, type GameSystem } from '../utils/system-detection.js';
@@ -103,6 +104,41 @@ type CharacterInfoResponse = Omit<
   itemVariants?: unknown[];
   itemToggles?: unknown[];
 } & UnknownRecord;
+
+type DnD5eSpellcastingClassSummary = {
+  id: string;
+  name: string;
+  spellcastingType?: string;
+  spellcastingProgression?: string;
+};
+
+type SpellbookWorkflowValidationState = {
+  character: {
+    id: string;
+    name: string;
+    type: string;
+  };
+  characterData: CharacterInfoResponse;
+  classes: DnD5eSpellcastingClassSummary[];
+  summary: Record<string, unknown>;
+  issues: SystemSpellbookValidationIssue[];
+  recommendations?: string[];
+};
+
+type SpellbookSourceClassWorkflowUpdate = {
+  spellId: string;
+  spellName: string;
+  classId: string;
+  className: string;
+  appliedBy: 'explicit' | 'auto';
+};
+
+type SpellbookPreparedFlagWorkflowUpdate = {
+  spellId: string;
+  spellName: string;
+  prepared: boolean;
+  appliedBy: 'explicit-plan' | 'auto';
+};
 
 type EffectDuration = {
   type: string | undefined;
@@ -392,6 +428,65 @@ function createAdvancementSelectionsInputSchema(description: string): Record<str
         },
       },
       required: ['choice'],
+    },
+  };
+}
+
+function createSpellPreparationPlanSchema(): z.ZodEffects<
+  z.ZodObject<{
+    mode: z.ZodEnum<['replace', 'prepare', 'unprepare']>;
+    spellIdentifiers: z.ZodDefault<z.ZodArray<z.ZodString, 'many'>>;
+    sourceClass: z.ZodOptional<z.ZodString>;
+    reason: z.ZodOptional<z.ZodString>;
+  }>
+> {
+  return z
+    .object({
+      mode: z.enum(['replace', 'prepare', 'unprepare']),
+      spellIdentifiers: z.array(z.string().min(1)).default([]),
+      sourceClass: z.string().min(1).optional(),
+      reason: z.string().min(1).optional(),
+    })
+    .superRefine((value, ctx) => {
+      if (value.mode !== 'replace' && value.spellIdentifiers.length === 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'spellIdentifiers must contain at least one spell for prepare or unprepare mode',
+          path: ['spellIdentifiers'],
+        });
+      }
+    });
+}
+
+function createSpellPreparationPlansInputSchema(description: string): Record<string, unknown> {
+  return {
+    type: 'array',
+    description,
+    items: {
+      type: 'object',
+      properties: {
+        mode: {
+          type: 'string',
+          enum: ['replace', 'prepare', 'unprepare'],
+          description:
+            'replace resets prepared flags within the scoped spellbook, while prepare/unprepare only patch the listed spells',
+        },
+        spellIdentifiers: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Owned spell names or IDs affected by the preparation operation',
+        },
+        sourceClass: {
+          type: 'string',
+          description:
+            'Optional source class name or ID to scope the spellbook, strongly recommended for multiclass prepared casters',
+        },
+        reason: {
+          type: 'string',
+          description: 'Optional audit reason for this specific spell preparation operation',
+        },
+      },
+      required: ['mode', 'spellIdentifiers'],
     },
   };
 }
@@ -701,12 +796,9 @@ export class CharacterTools {
     return typeof preparation?.prepared === 'boolean' ? preparation.prepared : true;
   }
 
-  private getDnD5eSpellcastingClassSummaries(characterData: CharacterInfoResponse): Array<{
-    id: string;
-    name: string;
-    spellcastingType?: string;
-    spellcastingProgression?: string;
-  }> {
+  private getDnD5eSpellcastingClassSummaries(
+    characterData: CharacterInfoResponse
+  ): DnD5eSpellcastingClassSummary[] {
     return (characterData.items ?? [])
       .filter(item => item.type === 'class')
       .map(item => {
@@ -732,7 +824,7 @@ export class CharacterTools {
   private resolveDnD5eSpellcastingClass(
     characterData: CharacterInfoResponse,
     classIdentifier: string
-  ): { id: string; name: string; spellcastingType?: string; spellcastingProgression?: string } {
+  ): DnD5eSpellcastingClassSummary {
     const classes = this.getDnD5eSpellcastingClassSummaries(characterData);
     const target = classIdentifier.toLowerCase();
     const match = classes.find(
@@ -779,6 +871,234 @@ export class CharacterTools {
     return (
       normalized === sourceClass.id.toLowerCase() || normalized === sourceClass.name.toLowerCase()
     );
+  }
+
+  private async validateDnD5eSpellbookState(
+    actorIdentifier: string
+  ): Promise<SpellbookWorkflowValidationState> {
+    const { adapter, system } = await this.getRequiredSystemAdapter('DnD5e spellbook validation');
+    if (system !== 'dnd5e') {
+      throw new Error(
+        'UNSUPPORTED_CAPABILITY: DnD5e spellbook workflows are only available when the active system is dnd5e.'
+      );
+    }
+
+    if (!adapter.validateSpellbook) {
+      throw new Error(
+        'UNSUPPORTED_CAPABILITY: The active system adapter does not support DnD5e spellbook validation.'
+      );
+    }
+
+    const characterData = await this.getCharacterData(actorIdentifier);
+    const classes = this.getDnD5eSpellcastingClassSummaries(characterData);
+    const validation = adapter.validateSpellbook(characterData);
+
+    return {
+      character: {
+        id: characterData.id,
+        name: characterData.name,
+        type: characterData.type,
+      },
+      characterData,
+      classes,
+      summary: validation.summary,
+      issues: validation.issues,
+      ...(validation.recommendations ? { recommendations: validation.recommendations } : {}),
+    };
+  }
+
+  private buildAutoDnD5eSpellbookSourceAssignments(
+    state: SpellbookWorkflowValidationState,
+    excludedSpellIds: Set<string>
+  ): SpellbookSourceClassWorkflowUpdate[] {
+    const assignments: SpellbookSourceClassWorkflowUpdate[] = [];
+    const assignedSpellIds = new Set(excludedSpellIds);
+    const soleSpellcastingClass = state.classes.length === 1 ? state.classes[0] : null;
+    const preparedSpellcastingClasses = state.classes.filter(
+      classSummary => classSummary.spellcastingType === 'prepared'
+    );
+    const solePreparedSpellcastingClass =
+      preparedSpellcastingClasses.length === 1 ? preparedSpellcastingClasses[0] : null;
+
+    for (const issue of state.issues) {
+      const issueRecord = this.toRecord(issue);
+      if (!issueRecord) {
+        continue;
+      }
+
+      const code = typeof issueRecord.code === 'string' ? issueRecord.code : undefined;
+      const spellId =
+        typeof issueRecord.spellId === 'string'
+          ? issueRecord.spellId
+          : typeof issueRecord.itemId === 'string'
+            ? issueRecord.itemId
+            : undefined;
+      const spellName =
+        typeof issueRecord.spellName === 'string'
+          ? issueRecord.spellName
+          : typeof issueRecord.itemName === 'string'
+            ? issueRecord.itemName
+            : undefined;
+
+      if (!code || !spellId || !spellName || assignedSpellIds.has(spellId)) {
+        continue;
+      }
+
+      let targetClass: DnD5eSpellcastingClassSummary | null = null;
+      if (
+        (code === 'unknown-source-class' || code === 'non-spellcasting-source-class') &&
+        soleSpellcastingClass
+      ) {
+        targetClass = soleSpellcastingClass;
+      } else if (code === 'missing-source-class' && solePreparedSpellcastingClass) {
+        targetClass = solePreparedSpellcastingClass;
+      }
+
+      if (!targetClass) {
+        continue;
+      }
+
+      assignments.push({
+        spellId,
+        spellName,
+        classId: targetClass.id,
+        className: targetClass.name,
+        appliedBy: 'auto',
+      });
+      assignedSpellIds.add(spellId);
+    }
+
+    return assignments;
+  }
+
+  private buildAutoDnD5eSpellbookPreparedUpdates(
+    issues: SystemSpellbookValidationIssue[],
+    excludedSpellIds: Set<string>
+  ): SpellbookPreparedFlagWorkflowUpdate[] {
+    const updates: SpellbookPreparedFlagWorkflowUpdate[] = [];
+    const updatedSpellIds = new Set(excludedSpellIds);
+
+    for (const issue of issues) {
+      const issueRecord = this.toRecord(issue);
+      if (!issueRecord) {
+        continue;
+      }
+
+      const code = typeof issueRecord.code === 'string' ? issueRecord.code : undefined;
+      const spellId =
+        typeof issueRecord.spellId === 'string'
+          ? issueRecord.spellId
+          : typeof issueRecord.itemId === 'string'
+            ? issueRecord.itemId
+            : undefined;
+      const spellName =
+        typeof issueRecord.spellName === 'string'
+          ? issueRecord.spellName
+          : typeof issueRecord.itemName === 'string'
+            ? issueRecord.itemName
+            : undefined;
+
+      if (
+        code !== 'preparation-mode-mismatch' ||
+        !spellId ||
+        !spellName ||
+        updatedSpellIds.has(spellId)
+      ) {
+        continue;
+      }
+
+      updates.push({
+        spellId,
+        spellName,
+        prepared: false,
+        appliedBy: 'auto',
+      });
+      updatedSpellIds.add(spellId);
+    }
+
+    return updates;
+  }
+
+  private async applyDnD5eSpellbookSourceAssignments(params: {
+    actorIdentifier: string;
+    assignments: SpellbookSourceClassWorkflowUpdate[];
+    reason?: string;
+  }): Promise<SpellbookSourceClassWorkflowUpdate[]> {
+    if (params.assignments.length === 0) {
+      return [];
+    }
+
+    await this.foundryClient.query<FoundryBatchUpdateActorEmbeddedItemsResponse>(
+      'foundry-mcp-bridge.batchUpdateActorEmbeddedItems',
+      {
+        actorIdentifier: params.actorIdentifier,
+        updates: params.assignments.map(assignment => ({
+          itemIdentifier: assignment.spellId,
+          itemType: 'spell',
+          updates: {
+            'system.sourceClass': assignment.classId,
+          },
+        })),
+        ...(params.reason !== undefined ? { reason: params.reason } : {}),
+      } satisfies FoundryBatchUpdateActorEmbeddedItemsRequest
+    );
+
+    return params.assignments;
+  }
+
+  private async applyDnD5eSpellbookPreparedUpdates(params: {
+    actorIdentifier: string;
+    updates: SpellbookPreparedFlagWorkflowUpdate[];
+    reason?: string;
+  }): Promise<SpellbookPreparedFlagWorkflowUpdate[]> {
+    if (params.updates.length === 0) {
+      return [];
+    }
+
+    await this.foundryClient.query<FoundryBatchUpdateActorEmbeddedItemsResponse>(
+      'foundry-mcp-bridge.batchUpdateActorEmbeddedItems',
+      {
+        actorIdentifier: params.actorIdentifier,
+        updates: params.updates.map(update => ({
+          itemIdentifier: update.spellId,
+          itemType: 'spell',
+          updates: {
+            'system.preparation.prepared': update.prepared,
+          },
+        })),
+        ...(params.reason !== undefined ? { reason: params.reason } : {}),
+      } satisfies FoundryBatchUpdateActorEmbeddedItemsRequest
+    );
+
+    return params.updates;
+  }
+
+  private collectDnD5ePreparedSpellWorkflowUpdates(
+    result: UnknownRecord
+  ): SpellbookPreparedFlagWorkflowUpdate[] {
+    const updatedSpells = Array.isArray(result.updatedSpells) ? result.updatedSpells : [];
+    const updates: SpellbookPreparedFlagWorkflowUpdate[] = [];
+
+    for (const entry of updatedSpells) {
+      const record = this.toRecord(entry);
+      if (
+        !record ||
+        typeof record.id !== 'string' ||
+        typeof record.name !== 'string' ||
+        typeof record.prepared !== 'boolean'
+      ) {
+        continue;
+      }
+
+      updates.push({
+        spellId: record.id,
+        spellName: record.name,
+        prepared: record.prepared,
+        appliedBy: 'explicit-plan',
+      });
+    }
+
+    return updates;
   }
 
   /**
@@ -1633,35 +1953,9 @@ export class CharacterTools {
                 'Optional DnD5e long-rest flag for advancing to a new day when the system rest API supports it.',
             },
             spellPreparationPlans: {
-              type: 'array',
-              description:
-                'Optional post-rest spell preparation operations to apply after the rest succeeds.',
-              items: {
-                type: 'object',
-                properties: {
-                  mode: {
-                    type: 'string',
-                    enum: ['replace', 'prepare', 'unprepare'],
-                    description:
-                      'replace resets prepared flags within the scoped spellbook, while prepare/unprepare only patch the listed spells',
-                  },
-                  spellIdentifiers: {
-                    type: 'array',
-                    items: { type: 'string' },
-                    description: 'Owned spell names or IDs affected by the preparation operation',
-                  },
-                  sourceClass: {
-                    type: 'string',
-                    description:
-                      'Optional source class name or ID to scope the spellbook, strongly recommended for multiclass prepared casters',
-                  },
-                  reason: {
-                    type: 'string',
-                    description: 'Optional audit reason for this specific post-rest spell update',
-                  },
-                },
-                required: ['mode', 'spellIdentifiers'],
-              },
+              ...createSpellPreparationPlansInputSchema(
+                'Optional post-rest spell preparation operations to apply after the rest succeeds.'
+              ),
             },
             reason: {
               type: 'string',
@@ -2372,6 +2666,60 @@ export class CharacterTools {
             },
           },
           required: ['actorIdentifier', 'itemIdentifier'],
+        },
+      },
+      {
+        name: 'organize-dnd5e-spellbook-workflow',
+        description:
+          'DnD5e only: validate and organize a character spellbook by applying explicit source-class or preparation fixes, auto-fixing only safe unambiguous source-class and preparation mismatches, then reporting any remaining issues.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            actorIdentifier: {
+              type: 'string',
+              description: 'Character name or ID whose spellbook should be organized.',
+            },
+            sourceClassAssignments: {
+              type: 'array',
+              description:
+                'Optional explicit spell-to-class assignments to apply before the workflow attempts any safe automatic cleanup.',
+              items: {
+                type: 'object',
+                properties: {
+                  spellIdentifier: {
+                    type: 'string',
+                    description: 'Owned spell name or ID to reassign.',
+                  },
+                  classIdentifier: {
+                    type: 'string',
+                    description:
+                      'Owned spellcasting class name or ID to assign as the spell source.',
+                  },
+                },
+                required: ['spellIdentifier', 'classIdentifier'],
+              },
+            },
+            spellPreparationPlans: {
+              ...createSpellPreparationPlansInputSchema(
+                'Optional prepared-spell cleanup operations to run after source-class fixes and before final validation.'
+              ),
+            },
+            autoFixSourceClasses: {
+              type: 'boolean',
+              description:
+                'When true, auto-assign source classes only for spells where the correct target is unambiguous. Defaults to true.',
+            },
+            autoFixPreparationMismatches: {
+              type: 'boolean',
+              description:
+                'When true, auto-clear prepared flags for spells assigned to non-prepared spellcasting classes. Defaults to true.',
+            },
+            reason: {
+              type: 'string',
+              description: 'Optional audit reason for the spellbook organization workflow.',
+            },
+          },
+          required: ['actorIdentifier'],
         },
       },
     ];
@@ -4460,6 +4808,213 @@ export class CharacterTools {
       ...(result.tokenNames ? { tokenNames: result.tokenNames } : {}),
       ...(result.message ? { message: result.message } : {}),
       ...(result.warnings ? { warnings: result.warnings } : {}),
+    };
+  }
+
+  async handleOrganizeDnD5eSpellbookWorkflow(args: unknown): Promise<UnknownRecord> {
+    const schema = z.object({
+      actorIdentifier: z.string().min(1, 'Actor identifier cannot be empty'),
+      sourceClassAssignments: z
+        .array(
+          z.object({
+            spellIdentifier: z.string().min(1, 'Spell identifier cannot be empty'),
+            classIdentifier: z.string().min(1, 'Class identifier cannot be empty'),
+          })
+        )
+        .optional(),
+      spellPreparationPlans: z.array(createSpellPreparationPlanSchema()).optional(),
+      autoFixSourceClasses: z.boolean().default(true),
+      autoFixPreparationMismatches: z.boolean().default(true),
+      reason: z.string().min(1).optional(),
+    });
+
+    const parsed = schema.parse(args);
+
+    this.logger.info('Running DnD5e spellbook organization workflow', parsed);
+
+    const gameSystem = await this.getGameSystem();
+    if (gameSystem !== 'dnd5e') {
+      throw new Error(
+        'UNSUPPORTED_CAPABILITY: organize-dnd5e-spellbook-workflow is only available when the active system is dnd5e.'
+      );
+    }
+
+    const workflowReason = parsed.reason ?? 'dnd5e spellbook organization workflow';
+    const initialState = await this.validateDnD5eSpellbookState(parsed.actorIdentifier);
+    let currentState = initialState;
+
+    const appliedSourceClassAssignments: SpellbookSourceClassWorkflowUpdate[] = [];
+    const appliedPreparationUpdates: SpellbookPreparedFlagWorkflowUpdate[] = [];
+    const spellPreparationPlanResults: UnknownRecord[] = [];
+
+    try {
+      if ((parsed.sourceClassAssignments?.length ?? 0) > 0) {
+        const seenSpellIds = new Set<string>();
+        const explicitAssignments = parsed.sourceClassAssignments!.map(assignment => {
+          const spell = this.findDnD5eSpellItem(
+            currentState.characterData,
+            assignment.spellIdentifier
+          );
+          if (seenSpellIds.has(spell.id)) {
+            throw new Error(
+              `Spell "${spell.name}" was assigned more than once in sourceClassAssignments.`
+            );
+          }
+          seenSpellIds.add(spell.id);
+
+          const targetClass = this.resolveDnD5eSpellcastingClass(
+            currentState.characterData,
+            assignment.classIdentifier
+          );
+
+          return {
+            spellId: spell.id,
+            spellName: spell.name,
+            classId: targetClass.id,
+            className: targetClass.name,
+            appliedBy: 'explicit' as const,
+          };
+        });
+
+        appliedSourceClassAssignments.push(
+          ...(await this.applyDnD5eSpellbookSourceAssignments({
+            actorIdentifier: parsed.actorIdentifier,
+            assignments: explicitAssignments,
+            reason: workflowReason,
+          }))
+        );
+        currentState = await this.validateDnD5eSpellbookState(parsed.actorIdentifier);
+      }
+
+      if (parsed.autoFixSourceClasses) {
+        const autoAssignments = this.buildAutoDnD5eSpellbookSourceAssignments(
+          currentState,
+          new Set(appliedSourceClassAssignments.map(assignment => assignment.spellId))
+        );
+
+        if (autoAssignments.length > 0) {
+          appliedSourceClassAssignments.push(
+            ...(await this.applyDnD5eSpellbookSourceAssignments({
+              actorIdentifier: parsed.actorIdentifier,
+              assignments: autoAssignments,
+              reason: workflowReason,
+            }))
+          );
+          currentState = await this.validateDnD5eSpellbookState(parsed.actorIdentifier);
+        }
+      }
+
+      for (const plan of parsed.spellPreparationPlans ?? []) {
+        const preparationResult = await this.handleSetDnD5ePreparedSpells({
+          actorIdentifier: parsed.actorIdentifier,
+          mode: plan.mode,
+          spellIdentifiers: plan.spellIdentifiers,
+          ...(plan.sourceClass !== undefined ? { sourceClass: plan.sourceClass } : {}),
+          reason: plan.reason ?? workflowReason,
+        });
+
+        spellPreparationPlanResults.push(preparationResult);
+        appliedPreparationUpdates.push(
+          ...this.collectDnD5ePreparedSpellWorkflowUpdates(preparationResult)
+        );
+      }
+
+      if (spellPreparationPlanResults.length > 0) {
+        currentState = await this.validateDnD5eSpellbookState(parsed.actorIdentifier);
+      }
+
+      if (parsed.autoFixPreparationMismatches) {
+        const autoPreparedUpdates = this.buildAutoDnD5eSpellbookPreparedUpdates(
+          currentState.issues,
+          new Set(appliedPreparationUpdates.map(update => update.spellId))
+        );
+
+        if (autoPreparedUpdates.length > 0) {
+          appliedPreparationUpdates.push(
+            ...(await this.applyDnD5eSpellbookPreparedUpdates({
+              actorIdentifier: parsed.actorIdentifier,
+              updates: autoPreparedUpdates,
+              reason: workflowReason,
+            }))
+          );
+          currentState = await this.validateDnD5eSpellbookState(parsed.actorIdentifier);
+        }
+      }
+    } catch (error) {
+      currentState = await this.validateDnD5eSpellbookState(parsed.actorIdentifier);
+
+      return {
+        success: false,
+        partialSuccess:
+          appliedSourceClassAssignments.length > 0 ||
+          appliedPreparationUpdates.length > 0 ||
+          spellPreparationPlanResults.length > 0,
+        workflowStatus: 'partial-failure',
+        character: currentState.character,
+        classes: currentState.classes,
+        initialValidation: {
+          summary: initialState.summary,
+          issues: initialState.issues,
+          ...(initialState.recommendations
+            ? { recommendations: initialState.recommendations }
+            : {}),
+        },
+        finalValidation: {
+          summary: currentState.summary,
+          issues: currentState.issues,
+          ...(currentState.recommendations
+            ? { recommendations: currentState.recommendations }
+            : {}),
+        },
+        ...(appliedSourceClassAssignments.length > 0 ? { appliedSourceClassAssignments } : {}),
+        ...(appliedPreparationUpdates.length > 0 ? { appliedPreparationUpdates } : {}),
+        ...(spellPreparationPlanResults.length > 0
+          ? { spellPreparationPlans: spellPreparationPlanResults }
+          : {}),
+        message: error instanceof Error ? error.message : 'Unknown spellbook workflow error.',
+      };
+    }
+
+    const remainingIssues = currentState.issues;
+    const workflowCompleted = remainingIssues.length === 0;
+
+    return {
+      success: workflowCompleted,
+      partialSuccess:
+        !workflowCompleted &&
+        (appliedSourceClassAssignments.length > 0 ||
+          appliedPreparationUpdates.length > 0 ||
+          spellPreparationPlanResults.length > 0),
+      workflowStatus: workflowCompleted ? 'completed' : 'needs-review',
+      ...(workflowCompleted ? { completed: true } : { reviewRequired: true }),
+      character: currentState.character,
+      classes: currentState.classes,
+      initialValidation: {
+        summary: initialState.summary,
+        issues: initialState.issues,
+        ...(initialState.recommendations ? { recommendations: initialState.recommendations } : {}),
+      },
+      finalValidation: {
+        summary: currentState.summary,
+        issues: currentState.issues,
+        ...(currentState.recommendations ? { recommendations: currentState.recommendations } : {}),
+      },
+      fixes: {
+        sourceClassAssignmentsApplied: appliedSourceClassAssignments.length,
+        preparationUpdatesApplied: appliedPreparationUpdates.length,
+        spellPreparationPlansApplied: spellPreparationPlanResults.length,
+      },
+      ...(appliedSourceClassAssignments.length > 0 ? { appliedSourceClassAssignments } : {}),
+      ...(appliedPreparationUpdates.length > 0 ? { appliedPreparationUpdates } : {}),
+      ...(spellPreparationPlanResults.length > 0
+        ? { spellPreparationPlans: spellPreparationPlanResults }
+        : {}),
+      ...(!workflowCompleted
+        ? {
+            nextStep:
+              'Review the remaining spellbook issues and either provide explicit sourceClassAssignments or spellPreparationPlans, or use the lower-level DnD5e spellbook tools for the remaining ambiguous cases.',
+          }
+        : {}),
     };
   }
 
