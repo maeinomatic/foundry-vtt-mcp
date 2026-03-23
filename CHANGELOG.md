@@ -1,3 +1,12 @@
+## v0.6.5 (2026-03-23)
+
+### Maintenance
+
+- Version bump to 0.6.5 for release consistency and dependency alignment.
+- No user-facing changes; internal improvements and bugfixes only.
+
+---
+
 ## v0.6.2 (2025-12-03)
 
 ### New Features
