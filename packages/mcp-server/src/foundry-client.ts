@@ -95,15 +95,22 @@ export class FoundryClient {
   private config: Config['foundry'];
   private connector: FoundryConnector;
 
-  constructor(config: Config['foundry'], logger: Logger) {
+  constructor(
+    config: Config['foundry'],
+    logger: Logger,
+    onConnectionStateChange?: (state: 'connected' | 'disconnected') => void
+  ) {
     this.config = config;
     this.logger = logger.child({ component: 'FoundryClient' });
 
     // Initialize the socket connector
-    this.connector = new FoundryConnector({
+    const connectorOptions = {
       config: this.config,
       logger: this.logger,
-    });
+      ...(onConnectionStateChange ? { onConnectionStateChange } : {}),
+    };
+
+    this.connector = new FoundryConnector(connectorOptions);
   }
 
   async connect(): Promise<void> {
@@ -275,9 +282,19 @@ export class FoundryClient {
 
   async query(method: string, data?: unknown): Promise<unknown> {
     if (!this.connector.isConnected()) {
-      throw new Error(
-        'Foundry VTT module not connected. Please ensure Foundry is running and the MCP Bridge module is enabled.'
-      );
+      const connectionGraceMs = Math.min(this.config.connectionTimeout, 5000);
+
+      this.logger.debug('Foundry module disconnected, waiting briefly for reconnect', {
+        method,
+        graceMs: connectionGraceMs,
+      });
+
+      const connectedWithinGrace = await this.connector.waitForConnection(connectionGraceMs);
+      if (!connectedWithinGrace) {
+        throw new Error(
+          'Foundry VTT module not connected. Please ensure Foundry is running and the MCP Bridge module is enabled.'
+        );
+      }
     }
 
     this.logger.debug('Sending query to Foundry module', { method, data });

@@ -38,7 +38,7 @@ export async function detectGameSystem(
   foundryClient: FoundryClient,
   logger?: Logger
 ): Promise<GameSystem> {
-  if (cachedSystem) {
+  if (cachedSystem && cachedSystem !== 'other') {
     return cachedSystem;
   }
 
@@ -50,8 +50,18 @@ export async function detectGameSystem(
     const systemValue = worldInfoRecord?.system;
     const systemId = typeof systemValue === 'string' ? systemValue.toLowerCase() : '';
 
-    cachedSystemId = systemId || null;
-    cachedSystem = systemId || 'other';
+    if (!systemId) {
+      cachedSystemId = null;
+
+      if (logger) {
+        logger.warn('World info response did not include a system id; returning uncached fallback');
+      }
+
+      return 'other';
+    }
+
+    cachedSystemId = systemId;
+    cachedSystem = systemId;
 
     if (logger) {
       logger.info('Game system detected', { systemId, detectedAs: cachedSystem });
@@ -62,8 +72,9 @@ export async function detectGameSystem(
     if (logger) {
       logger.error('Failed to detect game system, defaulting to other', { error });
     }
-    cachedSystem = 'other';
-    return cachedSystem;
+    cachedSystem = null;
+    cachedSystemId = null;
+    return 'other';
   }
 }
 

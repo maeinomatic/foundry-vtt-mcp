@@ -105,10 +105,19 @@ export class CompendiumTools {
    * Get or detect the game system (cached)
    */
   private async getGameSystem(): Promise<GameSystem> {
-    if (!this.gameSystem) {
-      this.gameSystem = await detectGameSystem(this.foundryClient, this.logger);
+    if (!this.gameSystem || this.gameSystem === 'other') {
+      const detectedSystem = await detectGameSystem(this.foundryClient, this.logger);
+      if (detectedSystem !== 'other') {
+        this.gameSystem = detectedSystem;
+      } else if (!this.gameSystem) {
+        this.gameSystem = detectedSystem;
+      }
     }
     return this.gameSystem;
+  }
+
+  invalidateSystemCache(): void {
+    this.gameSystem = null;
   }
 
   private getSystemAdapter(gameSystem: GameSystem): SystemAdapter | null {
