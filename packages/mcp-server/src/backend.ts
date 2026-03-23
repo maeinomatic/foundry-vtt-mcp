@@ -1653,6 +1653,11 @@ async function startBackend(): Promise<void> {
 
                     break;
 
+                  case 'apply-character-patch-transaction':
+                    result = await characterTools.handleApplyCharacterPatchTransaction(args);
+
+                    break;
+
                   case 'add-character-item':
                     result = await characterTools.handleAddCharacterItem(args);
 
@@ -1705,6 +1710,11 @@ async function startBackend(): Promise<void> {
 
                   case 'validate-dnd5e-spellbook':
                     result = await characterTools.handleValidateDnD5eSpellbook(args);
+
+                    break;
+
+                  case 'validate-dnd5e-character-build':
+                    result = await characterTools.handleValidateDnD5eCharacterBuild(args);
 
                     break;
 

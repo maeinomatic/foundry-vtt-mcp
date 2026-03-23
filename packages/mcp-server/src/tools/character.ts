@@ -3,12 +3,15 @@ import { FoundryClient } from '../foundry-client.js';
 import type {
   FoundryApplyCharacterAdvancementChoiceRequest,
   FoundryApplyCharacterAdvancementChoiceResponse,
+  FoundryApplyCharacterPatchTransactionRequest,
+  FoundryApplyCharacterPatchTransactionResponse,
   FoundryActorDocumentBase,
   FoundryActorSystemBase,
   FoundryBatchUpdateActorEmbeddedItemsRequest,
   FoundryBatchUpdateActorEmbeddedItemsResponse,
   FoundryCharacterEffect,
   FoundryCharacterInfo,
+  FoundryCreateActorEmbeddedItemData,
   FoundryCreateActorEmbeddedItemRequest,
   FoundryCreateActorEmbeddedItemResponse,
   FoundryCreateCharacterCompanionRequest,
@@ -44,6 +47,8 @@ import type {
   FoundryUpdateActorResponse,
   FoundryUpdateCharacterCompanionLinkRequest,
   FoundryUpdateCharacterCompanionLinkResponse,
+  FoundryValidateCharacterBuildRequest,
+  FoundryValidateCharacterBuildResponse,
   UnknownRecord,
 } from '../foundry-types.js';
 import { Logger } from '../logger.js';
@@ -780,6 +785,74 @@ export class CharacterTools {
         },
       },
       {
+        name: 'apply-character-patch-transaction',
+        description:
+          'Apply a transactional character patch across actor fields and owned item changes with automatic rollback if a later step fails. Supports validation-only mode before making changes.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            actorIdentifier: {
+              type: 'string',
+              description: 'Character name or ID',
+            },
+            actorUpdates: {
+              type: 'object',
+              description:
+                'Optional differential actor update payload. Transactional patches only support stable existing paths so rollback can restore the original values.',
+            },
+            createItems: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  sourceUuid: { type: 'string' },
+                  itemData: { type: 'object' },
+                  overrides: { type: 'object' },
+                  itemType: { type: 'string' },
+                },
+              },
+              description:
+                'Optional owned items to create from a source UUID or raw itemData payload during the same transaction.',
+            },
+            updateItems: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  itemIdentifier: { type: 'string' },
+                  itemType: { type: 'string' },
+                  updates: { type: 'object' },
+                },
+                required: ['itemIdentifier', 'updates'],
+              },
+              description: 'Optional owned item updates to apply transactionally.',
+            },
+            deleteItems: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  itemIdentifier: { type: 'string' },
+                  itemType: { type: 'string' },
+                },
+                required: ['itemIdentifier'],
+              },
+              description: 'Optional owned items to delete transactionally.',
+            },
+            validateOnly: {
+              type: 'boolean',
+              description:
+                'When true, validate all requested operations and return the planned mutation summary without applying any changes.',
+            },
+            reason: {
+              type: 'string',
+              description: 'Optional audit reason for the transaction',
+            },
+          },
+          required: ['actorIdentifier'],
+        },
+      },
+      {
         name: 'add-character-item',
         description:
           'Add an owned item to a character from a source UUID or raw item data. Useful for gear, feats, spells, features, and other embedded items.',
@@ -1145,6 +1218,21 @@ export class CharacterTools {
         name: 'validate-dnd5e-spellbook',
         description:
           'DnD5e only: inspect a character spellbook for source-class mismatches, preparation-mode issues, and other spell state or organizational problems.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            actorIdentifier: {
+              type: 'string',
+              description: 'Character name or ID',
+            },
+          },
+          required: ['actorIdentifier'],
+        },
+      },
+      {
+        name: 'validate-dnd5e-character-build',
+        description:
+          'DnD5e only: validate a character build for class-level issues, spellbook problems, invalid proficiency values, and unresolved advancement steps at the current build state.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -2426,6 +2514,158 @@ export class CharacterTools {
     };
   }
 
+  async handleApplyCharacterPatchTransaction(args: unknown): Promise<UnknownRecord> {
+    const itemDataSchema = z
+      .object({
+        name: z.string().min(1, 'itemData.name cannot be empty'),
+        type: z.string().min(1, 'itemData.type cannot be empty'),
+        img: z.string().min(1).optional(),
+        system: z.record(z.string(), z.unknown()).optional(),
+        flags: z.record(z.string(), z.unknown()).optional(),
+        effects: z.array(z.unknown()).optional(),
+      })
+      .passthrough();
+
+    const schema = z
+      .object({
+        actorIdentifier: z.string().min(1, 'Actor identifier cannot be empty'),
+        actorUpdates: z.record(z.string(), z.unknown()).optional(),
+        createItems: z
+          .array(
+            z
+              .object({
+                sourceUuid: z.string().min(1).optional(),
+                itemData: itemDataSchema.optional(),
+                overrides: z.record(z.string(), z.unknown()).optional(),
+                itemType: z.string().min(1).optional(),
+              })
+              .refine(
+                value => (value.sourceUuid !== undefined) !== (value.itemData !== undefined),
+                'Each createItems entry must provide exactly one of sourceUuid or itemData'
+              )
+          )
+          .optional(),
+        updateItems: z
+          .array(
+            z.object({
+              itemIdentifier: z.string().min(1, 'itemIdentifier cannot be empty'),
+              itemType: z.string().min(1).optional(),
+              updates: z.record(z.string(), z.unknown()),
+            })
+          )
+          .optional(),
+        deleteItems: z
+          .array(
+            z.object({
+              itemIdentifier: z.string().min(1, 'itemIdentifier cannot be empty'),
+              itemType: z.string().min(1).optional(),
+            })
+          )
+          .optional(),
+        validateOnly: z.boolean().optional(),
+        reason: z.string().min(1).optional(),
+      })
+      .refine(
+        value =>
+          value.actorUpdates !== undefined ||
+          value.createItems !== undefined ||
+          value.updateItems !== undefined ||
+          value.deleteItems !== undefined,
+        'Provide at least one actor or owned-item mutation'
+      );
+
+    const parsed = schema.parse(args);
+    const normalizedCreateItems =
+      parsed.createItems?.map(entry => ({
+        ...(entry.sourceUuid !== undefined ? { sourceUuid: entry.sourceUuid } : {}),
+        ...(entry.itemData !== undefined
+          ? {
+              itemData: Object.fromEntries(
+                Object.entries(entry.itemData).filter(([, value]) => value !== undefined)
+              ) as FoundryCreateActorEmbeddedItemData,
+            }
+          : {}),
+        ...(entry.overrides !== undefined ? { overrides: entry.overrides } : {}),
+        ...(entry.itemType !== undefined ? { itemType: entry.itemType } : {}),
+      })) ?? undefined;
+
+    const request: FoundryApplyCharacterPatchTransactionRequest = {
+      actorIdentifier: parsed.actorIdentifier,
+      ...(parsed.actorUpdates !== undefined ? { actorUpdates: parsed.actorUpdates } : {}),
+      ...(normalizedCreateItems !== undefined ? { createItems: normalizedCreateItems } : {}),
+      ...(parsed.updateItems !== undefined
+        ? {
+            updateItems: parsed.updateItems.map(entry => ({
+              itemIdentifier: entry.itemIdentifier,
+              ...(entry.itemType !== undefined ? { itemType: entry.itemType } : {}),
+              updates: entry.updates,
+            })),
+          }
+        : {}),
+      ...(parsed.deleteItems !== undefined
+        ? {
+            deleteItems: parsed.deleteItems.map(entry => ({
+              itemIdentifier: entry.itemIdentifier,
+              ...(entry.itemType !== undefined ? { itemType: entry.itemType } : {}),
+            })),
+          }
+        : {}),
+      ...(parsed.validateOnly !== undefined ? { validateOnly: parsed.validateOnly } : {}),
+      ...(parsed.reason !== undefined ? { reason: parsed.reason } : {}),
+    };
+
+    const result = await this.foundryClient.query<FoundryApplyCharacterPatchTransactionResponse>(
+      'foundry-mcp-bridge.applyCharacterPatchTransaction',
+      request
+    );
+
+    return {
+      success: result.success,
+      transactionId: result.transactionId,
+      actor: {
+        id: result.actorId,
+        name: result.actorName,
+        type: result.actorType,
+      },
+      validateOnly: result.validateOnly,
+      plannedOperations: result.plannedOperations,
+      ...(result.actorUpdatedFields ? { actorUpdatedFields: result.actorUpdatedFields } : {}),
+      ...(result.createdItems
+        ? {
+            createdItems: result.createdItems.map(item => ({
+              id: item.itemId,
+              name: item.itemName,
+              type: item.itemType,
+              createdFrom: item.createdFrom,
+              ...(item.sourceUuid ? { sourceUuid: item.sourceUuid } : {}),
+            })),
+          }
+        : {}),
+      ...(result.updatedItems
+        ? {
+            updatedItems: result.updatedItems.map(item => ({
+              id: item.itemId,
+              name: item.itemName,
+              type: item.itemType,
+              updatedFields: item.updatedFields,
+            })),
+          }
+        : {}),
+      ...(result.deletedItems
+        ? {
+            deletedItems: result.deletedItems.map(item => ({
+              id: item.itemId,
+              name: item.itemName,
+              type: item.itemType,
+            })),
+          }
+        : {}),
+      ...(result.rolledBack !== undefined ? { rolledBack: result.rolledBack } : {}),
+      ...(result.rollbackErrors ? { rollbackErrors: result.rollbackErrors } : {}),
+      ...(result.warnings ? { warnings: result.warnings } : {}),
+    };
+  }
+
   async handleSetDnD5eProficiencies(args: unknown): Promise<UnknownRecord> {
     const schema = z.object({
       actorIdentifier: z.string().min(1, 'Actor identifier cannot be empty'),
@@ -3112,6 +3352,42 @@ export class CharacterTools {
       classes,
       issues: validation.issues,
       ...(validation.recommendations ? { recommendations: validation.recommendations } : {}),
+    };
+  }
+
+  async handleValidateDnD5eCharacterBuild(args: unknown): Promise<UnknownRecord> {
+    const schema = z.object({
+      actorIdentifier: z.string().min(1, 'Actor identifier cannot be empty'),
+    });
+
+    const parsed = schema.parse(args);
+    const gameSystem = await this.getGameSystem();
+    if (gameSystem !== 'dnd5e') {
+      throw new Error(
+        'UNSUPPORTED_CAPABILITY: validate-dnd5e-character-build is only available when the active system is dnd5e.'
+      );
+    }
+
+    const result = await this.foundryClient.query<FoundryValidateCharacterBuildResponse>(
+      'foundry-mcp-bridge.validateCharacterBuild',
+      {
+        actorIdentifier: parsed.actorIdentifier,
+      } satisfies FoundryValidateCharacterBuildRequest
+    );
+
+    return {
+      success: true,
+      character: {
+        id: result.actorId,
+        name: result.actorName,
+        type: result.actorType,
+      },
+      summary: result.summary,
+      issues: result.issues,
+      ...(result.outstandingAdvancements
+        ? { outstandingAdvancements: result.outstandingAdvancements }
+        : {}),
+      ...(result.recommendations ? { recommendations: result.recommendations } : {}),
     };
   }
 

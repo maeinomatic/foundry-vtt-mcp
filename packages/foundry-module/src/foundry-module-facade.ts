@@ -12,6 +12,8 @@ import {
 import { FoundryActorItemService } from './services/actor-item-service.js';
 import { FoundryActorProgressionService } from './services/actor-progression-service.js';
 import { FoundryActorUpdateService } from './services/actor-update-service.js';
+import { FoundryCharacterBuildValidationService } from './services/character-build-validation-service.js';
+import { FoundryCharacterPatchTransactionService } from './services/character-patch-transaction-service.js';
 import { FoundryCharacterService } from './services/character-service.js';
 import { FoundryCompanionService } from './services/companion-service.js';
 import { FoundryCompendiumService } from './services/compendium-service.js';
@@ -31,6 +33,8 @@ import {
 import type {
   FoundryApplyCharacterAdvancementChoiceRequest,
   FoundryApplyCharacterAdvancementChoiceResponse,
+  FoundryApplyCharacterPatchTransactionRequest,
+  FoundryApplyCharacterPatchTransactionResponse,
   FoundryBatchUpdateActorEmbeddedItemsRequest,
   FoundryBatchUpdateActorEmbeddedItemsResponse,
   FoundryCompendiumSearchFilters,
@@ -69,6 +73,8 @@ import type {
   FoundrySearchCharacterItemsResponse,
   FoundrySummonCharacterCompanionRequest,
   FoundrySummonCharacterCompanionResponse,
+  FoundryValidateCharacterBuildRequest,
+  FoundryValidateCharacterBuildResponse,
   FoundrySyncCharacterCompanionProgressionRequest,
   FoundrySyncCharacterCompanionProgressionResponse,
   FoundryUnlinkCharacterCompanionRequest,
@@ -121,6 +127,8 @@ export class FoundryModuleFacade {
   private actorItemService: FoundryActorItemService;
   private actorProgressionService: FoundryActorProgressionService;
   private actorUpdateService: FoundryActorUpdateService;
+  private characterBuildValidationService: FoundryCharacterBuildValidationService;
+  private characterPatchTransactionService: FoundryCharacterPatchTransactionService;
   private characterService: FoundryCharacterService;
   private companionService: FoundryCompanionService;
   private compendiumService: FoundryCompendiumService;
@@ -175,6 +183,29 @@ export class FoundryModuleFacade {
       getSystemId: (): string => game.system?.id ?? 'unknown',
     });
     this.actorUpdateService = new FoundryActorUpdateService({
+      auditLog: (
+        action: string,
+        data: unknown,
+        status: 'success' | 'failure',
+        errorMessage?: string
+      ): void => this.auditLog(action, data, status, errorMessage),
+      findActorByIdentifier: (identifier: string): ActorLookupLike | null =>
+        this.findActorByIdentifier(identifier),
+      validateFoundryState: (): void => this.validateFoundryState(),
+    });
+    this.characterBuildValidationService = new FoundryCharacterBuildValidationService({
+      auditLog: (
+        action: string,
+        data: unknown,
+        status: 'success' | 'failure',
+        errorMessage?: string
+      ): void => this.auditLog(action, data, status, errorMessage),
+      findActorByIdentifier: (identifier: string): ActorLookupLike | null =>
+        this.findActorByIdentifier(identifier),
+      validateFoundryState: (): void => this.validateFoundryState(),
+      getSystemId: (): string => game.system?.id ?? 'unknown',
+    });
+    this.characterPatchTransactionService = new FoundryCharacterPatchTransactionService({
       auditLog: (
         action: string,
         data: unknown,
@@ -619,8 +650,20 @@ export class FoundryModuleFacade {
     return this.actorProgressionService.applyCharacterAdvancementChoice(request);
   }
 
+  async validateCharacterBuild(
+    request: FoundryValidateCharacterBuildRequest
+  ): Promise<FoundryValidateCharacterBuildResponse> {
+    return this.characterBuildValidationService.validateCharacterBuild(request);
+  }
+
   async updateActor(request: FoundryUpdateActorRequest): Promise<FoundryUpdateActorResponse> {
     return this.actorUpdateService.updateActor(request);
+  }
+
+  async applyCharacterPatchTransaction(
+    request: FoundryApplyCharacterPatchTransactionRequest
+  ): Promise<FoundryApplyCharacterPatchTransactionResponse> {
+    return this.characterPatchTransactionService.applyCharacterPatchTransaction(request);
   }
 
   async updateActorEmbeddedItem(

@@ -17,7 +17,9 @@ This file is the live planning and gap-tracking document for the current repo st
 
 Current code reality in `packages/mcp-server/src/backend.ts`:
 
-- The backend currently registers **56 tools**.
+- The backend currently registers a broad MCP tool surface across character,
+  compendium, scene, creation, journal, ownership, token, dice, campaign, and
+  map workflows.
 - Token manipulation tools are implemented and routed.
 - DnD5e class progression, multiclass add-class flow, spellbook management, and companion/familiar workflows are implemented.
 
@@ -70,6 +72,8 @@ For broader character management, the current toolset now supports:
 - updating world items with direct patch payloads
 - creating item entries directly inside unlocked compendium packs
 - importing world items into item compendium packs
+- validating DnD5e character builds for level, spellbook, proficiency, and advancement issues
+- applying scoped actor and owned-item patch transactions with rollback
 
 ## DnD5e Missing Endpoint Tracker
 
@@ -118,20 +122,18 @@ Implementation notes:
 
 ### Priority 3: Validation and Transaction Safety
 
-#### Validation and Rule Guardrails
+Priority 3 is complete in the current branch.
 
-1. `validate-dnd5e-character-build`
+Implemented surfaces:
 
-- Purpose: Validate class levels, spell eligibility, proficiency constraints, and advancement completeness.
+- `validate-dnd5e-character-build`
+- `apply-character-patch-transaction`
 
-2. `preview-dnd5e-level-up`
+Implementation notes:
 
-- Purpose: Dry-run before mutations and return a diff of proposed changes.
-- Current state: Covered by `preview-character-progression`; keep this as a conceptual requirement rather than a missing tool name.
-
-3. `apply-character-patch-transaction`
-
-- Purpose: Transactional patch with rollback for multi-step updates.
+- `preview-character-progression` continues to satisfy the dry-run level-up requirement, so a separate `preview-dnd5e-level-up` tool remains unnecessary.
+- `validate-dnd5e-character-build` checks class levels, spellbook integrity, supported proficiency ranges, and unresolved advancement steps against the current actor state.
+- `apply-character-patch-transaction` is intentionally scoped to actor and owned-item mutations that can be validated up front and rolled back with captured snapshots if a later step fails.
 
 ## Gap Conclusion (DnD5e)
 
@@ -141,7 +143,6 @@ DnD5e adds system-specific needs on top:
 
 - advancement and class-level orchestration
 - higher-level multiclass spellbook validation and automation beyond the current source-class reassignment, bulk preparation, and validation tools
-- broader build validation and transactional safety for larger automated edits
 
 The repo now has:
 
@@ -154,8 +155,10 @@ The repo now has:
 - multiclass add-class flow
 - persistent companion and familiar lifecycle workflows including link updates, summon defaults, unlink, deletion, and sync operations
 - world item and item-compendium authoring workflows
+- DnD5e character build validation for classes, spellbook state, proficiencies, and unresolved advancements
+- scoped actor and owned-item patch transactions with rollback for larger automated changes
 
-The next most valuable gaps are now stronger validation and transaction boundaries around larger automated edits.
+The next most valuable gaps are now higher-level rule-aware automation on top of this foundation, not missing core write surfaces.
 
 ## Historical Archive
 

@@ -395,6 +395,47 @@ export interface FoundryPreviewCharacterProgressionResponse extends UnknownRecor
   warnings?: string[];
 }
 
+export interface FoundryOutstandingAdvancementStep extends UnknownRecord {
+  id: string;
+  level: number;
+  type: string;
+  title: string;
+  required: boolean;
+  sourceItemId?: string;
+  sourceItemName?: string;
+  sourceItemType?: string;
+}
+
+export interface FoundryCharacterBuildValidationIssue extends UnknownRecord {
+  severity: 'info' | 'warning' | 'error';
+  code: string;
+  message: string;
+  category?: 'class-levels' | 'spellbook' | 'proficiencies' | 'advancement';
+  classId?: string;
+  className?: string;
+  itemId?: string;
+  itemName?: string;
+  stepId?: string;
+  stepType?: string;
+  sourceItemId?: string;
+  sourceItemName?: string;
+}
+
+export interface FoundryValidateCharacterBuildRequest {
+  actorIdentifier: string;
+}
+
+export interface FoundryValidateCharacterBuildResponse extends UnknownRecord {
+  system: string;
+  actorId: string;
+  actorName: string;
+  actorType: string;
+  summary: Record<string, unknown>;
+  issues: FoundryCharacterBuildValidationIssue[];
+  outstandingAdvancements?: FoundryOutstandingAdvancementStep[];
+  recommendations?: string[];
+}
+
 export interface FoundryUpdateActorRequest {
   identifier: string;
   updates: UnknownRecord;
@@ -450,6 +491,77 @@ export interface FoundryBatchUpdateActorEmbeddedItemsResponse extends UnknownRec
     appliedUpdates: UnknownRecord;
     updatedFields: string[];
   }>;
+}
+
+export interface FoundryCharacterPatchTransactionCreateItemRequest {
+  sourceUuid?: string;
+  itemData?: FoundryCreateActorEmbeddedItemData;
+  overrides?: UnknownRecord;
+  itemType?: string;
+}
+
+export interface FoundryCharacterPatchTransactionUpdateItemRequest {
+  itemIdentifier: string;
+  itemType?: string;
+  updates: UnknownRecord;
+}
+
+export interface FoundryCharacterPatchTransactionDeleteItemRequest {
+  itemIdentifier: string;
+  itemType?: string;
+}
+
+export interface FoundryApplyCharacterPatchTransactionRequest {
+  actorIdentifier: string;
+  actorUpdates?: UnknownRecord;
+  createItems?: FoundryCharacterPatchTransactionCreateItemRequest[];
+  updateItems?: FoundryCharacterPatchTransactionUpdateItemRequest[];
+  deleteItems?: FoundryCharacterPatchTransactionDeleteItemRequest[];
+  validateOnly?: boolean;
+  reason?: string;
+}
+
+export interface FoundryCharacterPatchTransactionCreatedItem extends UnknownRecord {
+  itemId: string;
+  itemName: string;
+  itemType: string;
+  createdFrom: 'uuid' | 'raw';
+  sourceUuid?: string;
+}
+
+export interface FoundryCharacterPatchTransactionUpdatedItem extends UnknownRecord {
+  itemId: string;
+  itemName: string;
+  itemType: string;
+  updatedFields: string[];
+}
+
+export interface FoundryCharacterPatchTransactionDeletedItem extends UnknownRecord {
+  itemId: string;
+  itemName: string;
+  itemType: string;
+}
+
+export interface FoundryApplyCharacterPatchTransactionResponse extends UnknownRecord {
+  success: boolean;
+  transactionId: string;
+  actorId: string;
+  actorName: string;
+  actorType: string;
+  validateOnly: boolean;
+  plannedOperations: {
+    actorUpdated: boolean;
+    createdItemCount: number;
+    updatedItemCount: number;
+    deletedItemCount: number;
+  };
+  actorUpdatedFields?: string[];
+  createdItems?: FoundryCharacterPatchTransactionCreatedItem[];
+  updatedItems?: FoundryCharacterPatchTransactionUpdatedItem[];
+  deletedItems?: FoundryCharacterPatchTransactionDeletedItem[];
+  rolledBack?: boolean;
+  rollbackErrors?: string[];
+  warnings?: string[];
 }
 
 export interface FoundryCreateActorEmbeddedItemData extends UnknownRecord {

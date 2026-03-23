@@ -137,6 +137,11 @@ export class TransactionManager {
    * Rollback a specific action
    */
   private async rollbackAction(action: TransactionAction): Promise<void> {
+    if (typeof action.rollbackAction === 'function') {
+      await action.rollbackAction();
+      return;
+    }
+
     switch (action.type) {
       case 'create':
         await this.rollbackCreate(action);

@@ -4,6 +4,8 @@ import { FoundryConnector } from './foundry-connector.js';
 import type {
   FoundryApplyCharacterAdvancementChoiceRequest,
   FoundryApplyCharacterAdvancementChoiceResponse,
+  FoundryApplyCharacterPatchTransactionRequest,
+  FoundryApplyCharacterPatchTransactionResponse,
   FoundryActorSummary,
   FoundryActorCreationResult,
   FoundryBatchUpdateActorEmbeddedItemsRequest,
@@ -61,6 +63,8 @@ import type {
   FoundryUpdateActorResponse,
   FoundryUpdateCharacterCompanionLinkRequest,
   FoundryUpdateCharacterCompanionLinkResponse,
+  FoundryValidateCharacterBuildRequest,
+  FoundryValidateCharacterBuildResponse,
   FoundryUpdateWorldItemRequest,
   FoundryUpdateWorldItemResponse,
   UnknownRecord,
@@ -190,9 +194,17 @@ export class FoundryClient {
     data: FoundryApplyCharacterAdvancementChoiceRequest
   ): Promise<FoundryApplyCharacterAdvancementChoiceResponse>;
   async query(
+    method: 'foundry-mcp-bridge.validateCharacterBuild',
+    data: FoundryValidateCharacterBuildRequest
+  ): Promise<FoundryValidateCharacterBuildResponse>;
+  async query(
     method: 'foundry-mcp-bridge.updateActorEmbeddedItem',
     data: FoundryUpdateActorEmbeddedItemRequest
   ): Promise<FoundryUpdateActorEmbeddedItemResponse>;
+  async query(
+    method: 'foundry-mcp-bridge.applyCharacterPatchTransaction',
+    data: FoundryApplyCharacterPatchTransactionRequest
+  ): Promise<FoundryApplyCharacterPatchTransactionResponse>;
   async query(
     method: 'foundry-mcp-bridge.deleteActorEmbeddedItem',
     data: FoundryDeleteActorEmbeddedItemRequest

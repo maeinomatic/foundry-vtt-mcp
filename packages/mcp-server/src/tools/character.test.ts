@@ -574,6 +574,158 @@ describe('CharacterTools', () => {
     });
   });
 
+  it('uses the shared apply-character-patch-transaction bridge request shape', async () => {
+    const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
+      if (method === 'foundry-mcp-bridge.applyCharacterPatchTransaction') {
+        expect(data).toEqual({
+          actorIdentifier: 'Aldric',
+          actorUpdates: {
+            'system.attributes.hp.value': 22,
+          },
+          createItems: [
+            {
+              sourceUuid: 'Compendium.dnd5e.items.healing-potion',
+              itemType: 'consumable',
+            },
+          ],
+          updateItems: [
+            {
+              itemIdentifier: 'Longsword',
+              itemType: 'weapon',
+              updates: {
+                'system.equipped': true,
+              },
+            },
+          ],
+          deleteItems: [
+            {
+              itemIdentifier: 'Old Shield',
+              itemType: 'equipment',
+            },
+          ],
+          validateOnly: false,
+          reason: 'Apply a rest-and-rebuild patch',
+        });
+        return Promise.resolve({
+          success: true,
+          transactionId: 'tx-123',
+          actorId: 'actor-1',
+          actorName: 'Aldric',
+          actorType: 'character',
+          validateOnly: false,
+          plannedOperations: {
+            actorUpdated: true,
+            createdItemCount: 1,
+            updatedItemCount: 1,
+            deletedItemCount: 1,
+          },
+          actorUpdatedFields: ['system.attributes.hp.value'],
+          createdItems: [
+            {
+              itemId: 'item-potion-1',
+              itemName: 'Potion of Healing',
+              itemType: 'consumable',
+              createdFrom: 'uuid',
+              sourceUuid: 'Compendium.dnd5e.items.healing-potion',
+            },
+          ],
+          updatedItems: [
+            {
+              itemId: 'item-weapon-1',
+              itemName: 'Longsword',
+              itemType: 'weapon',
+              updatedFields: ['system.equipped'],
+            },
+          ],
+          deletedItems: [
+            {
+              itemId: 'item-shield-1',
+              itemName: 'Old Shield',
+              itemType: 'equipment',
+            },
+          ],
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected query: ${method}`));
+    });
+
+    const tools = new CharacterTools({
+      foundryClient: { query } as unknown as FoundryClient,
+      logger: createLoggerStub(),
+    });
+
+    const result = (await tools.handleApplyCharacterPatchTransaction({
+      actorIdentifier: 'Aldric',
+      actorUpdates: {
+        'system.attributes.hp.value': 22,
+      },
+      createItems: [
+        {
+          sourceUuid: 'Compendium.dnd5e.items.healing-potion',
+          itemType: 'consumable',
+        },
+      ],
+      updateItems: [
+        {
+          itemIdentifier: 'Longsword',
+          itemType: 'weapon',
+          updates: {
+            'system.equipped': true,
+          },
+        },
+      ],
+      deleteItems: [
+        {
+          itemIdentifier: 'Old Shield',
+          itemType: 'equipment',
+        },
+      ],
+      validateOnly: false,
+      reason: 'Apply a rest-and-rebuild patch',
+    })) as Record<string, unknown>;
+
+    expect(result).toMatchObject({
+      success: true,
+      transactionId: 'tx-123',
+      actor: {
+        id: 'actor-1',
+        name: 'Aldric',
+        type: 'character',
+      },
+      plannedOperations: {
+        actorUpdated: true,
+        createdItemCount: 1,
+        updatedItemCount: 1,
+        deletedItemCount: 1,
+      },
+      actorUpdatedFields: ['system.attributes.hp.value'],
+      createdItems: [
+        {
+          id: 'item-potion-1',
+          name: 'Potion of Healing',
+          type: 'consumable',
+          createdFrom: 'uuid',
+        },
+      ],
+      updatedItems: [
+        {
+          id: 'item-weapon-1',
+          name: 'Longsword',
+          type: 'weapon',
+          updatedFields: ['system.equipped'],
+        },
+      ],
+      deletedItems: [
+        {
+          id: 'item-shield-1',
+          name: 'Old Shield',
+          type: 'equipment',
+        },
+      ],
+    });
+  });
+
   it('routes DnD5e proficiency updates through adapter-prepared actor paths', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
       if (method === 'foundry-mcp-bridge.getWorldInfo') {
@@ -1827,6 +1979,118 @@ describe('CharacterTools', () => {
         {
           id: 'feat-war-caster',
           type: 'feat',
+        },
+      ],
+    });
+  });
+
+  it('uses the shared validate-dnd5e-character-build bridge request shape', async () => {
+    const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
+      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+        return Promise.resolve({ system: 'dnd5e' });
+      }
+
+      if (method === 'foundry-mcp-bridge.validateCharacterBuild') {
+        expect(data).toEqual({
+          actorIdentifier: 'Laeral',
+        });
+        return Promise.resolve({
+          system: 'dnd5e',
+          actorId: 'actor-3',
+          actorName: 'Laeral',
+          actorType: 'character',
+          summary: {
+            classCount: 2,
+            totalClassLevels: 8,
+            outstandingAdvancementCount: 1,
+            issueCount: 2,
+            errorCount: 1,
+            warningCount: 1,
+            infoCount: 0,
+          },
+          issues: [
+            {
+              severity: 'error',
+              code: 'outstanding-advancement',
+              category: 'advancement',
+              classId: 'class-wizard',
+              className: 'Wizard',
+              stepId: 'adv-asi-8',
+              stepType: 'AbilityScoreImprovement',
+              message:
+                'Required advancement "Ability Score Improvement" at level 8 is still unresolved.',
+            },
+            {
+              severity: 'warning',
+              code: 'preparation-mode-mismatch',
+              category: 'spellbook',
+              itemId: 'spell-fireball',
+              itemName: 'Fireball',
+              message:
+                'This spell is marked as prepared, but its source class "Wizard" uses spellcasting type "pact".',
+            },
+          ],
+          outstandingAdvancements: [
+            {
+              id: 'adv-asi-8',
+              level: 8,
+              type: 'AbilityScoreImprovement',
+              title: 'Ability Score Improvement',
+              required: true,
+              sourceItemId: 'class-wizard',
+              sourceItemName: 'Wizard',
+              sourceItemType: 'class',
+            },
+          ],
+          recommendations: [
+            'Use preview-character-progression, get-character-advancement-options, apply-character-advancement-choice, and update-character-progression to finish unresolved DnD5e advancement steps.',
+          ],
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected query: ${method}`));
+    });
+
+    const tools = new CharacterTools({
+      foundryClient: { query } as unknown as FoundryClient,
+      logger: createLoggerStub(),
+    });
+
+    const result = (await tools.handleValidateDnD5eCharacterBuild({
+      actorIdentifier: 'Laeral',
+    })) as Record<string, unknown>;
+
+    expect(result).toMatchObject({
+      success: true,
+      character: {
+        id: 'actor-3',
+        name: 'Laeral',
+        type: 'character',
+      },
+      summary: {
+        classCount: 2,
+        outstandingAdvancementCount: 1,
+      },
+      issues: [
+        expect.objectContaining({
+          code: 'outstanding-advancement',
+          category: 'advancement',
+        }),
+        expect.objectContaining({
+          code: 'preparation-mode-mismatch',
+          category: 'spellbook',
+        }),
+      ],
+      outstandingAdvancements: [
+        {
+          id: 'adv-asi-8',
+          level: 8,
+          type: 'AbilityScoreImprovement',
+          title: 'Ability Score Improvement',
+          required: true,
+          sourceItemId: 'class-wizard',
+          sourceItemName: 'Wizard',
+          sourceItemType: 'class',
         },
       ],
     });

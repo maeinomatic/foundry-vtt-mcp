@@ -5,6 +5,8 @@ import { notifyGM } from './gm-notifications.js';
 import type {
   FoundryApplyCharacterAdvancementChoiceRequest,
   FoundryApplyCharacterAdvancementChoiceResponse,
+  FoundryApplyCharacterPatchTransactionRequest,
+  FoundryApplyCharacterPatchTransactionResponse,
   FoundryActorCreationResult,
   FoundryBatchUpdateActorEmbeddedItemsRequest,
   FoundryBatchUpdateActorEmbeddedItemsResponse,
@@ -43,6 +45,8 @@ import type {
   FoundrySearchCharacterItemsRequest,
   FoundrySummonCharacterCompanionRequest,
   FoundrySummonCharacterCompanionResponse,
+  FoundryValidateCharacterBuildRequest,
+  FoundryValidateCharacterBuildResponse,
   FoundrySyncCharacterCompanionProgressionRequest,
   FoundrySyncCharacterCompanionProgressionResponse,
   FoundryUnlinkCharacterCompanionRequest,
@@ -211,11 +215,15 @@ export class QueryHandlers {
       this.handleGetCharacterAdvancementOptions.bind(this);
     CONFIG.queries[`${modulePrefix}.applyCharacterAdvancementChoice`] =
       this.handleApplyCharacterAdvancementChoice.bind(this);
+    CONFIG.queries[`${modulePrefix}.validateCharacterBuild`] =
+      this.handleValidateCharacterBuild.bind(this);
     CONFIG.queries[`${modulePrefix}.updateActor`] = this.handleUpdateActor.bind(this);
     CONFIG.queries[`${modulePrefix}.createActorEmbeddedItem`] =
       this.handleCreateActorEmbeddedItem.bind(this);
     CONFIG.queries[`${modulePrefix}.batchUpdateActorEmbeddedItems`] =
       this.handleBatchUpdateActorEmbeddedItems.bind(this);
+    CONFIG.queries[`${modulePrefix}.applyCharacterPatchTransaction`] =
+      this.handleApplyCharacterPatchTransaction.bind(this);
     CONFIG.queries[`${modulePrefix}.updateActorEmbeddedItem`] =
       this.handleUpdateActorEmbeddedItem.bind(this);
     CONFIG.queries[`${modulePrefix}.deleteActorEmbeddedItem`] =
@@ -750,6 +758,32 @@ export class QueryHandlers {
   }
 
   /**
+   * Handle character build validation request
+   */
+  private async handleValidateCharacterBuild(
+    data: FoundryValidateCharacterBuildRequest
+  ): Promise<FoundryValidateCharacterBuildResponse | QueryErrorResult> {
+    try {
+      const gmCheck = this.validateGMAccess();
+      if (!gmCheck.allowed) {
+        return { error: 'Access denied', success: false };
+      }
+
+      this.dataAccess.validateFoundryState();
+
+      if (!data.actorIdentifier) {
+        throw new Error('actorIdentifier is required');
+      }
+
+      return await this.dataAccess.validateCharacterBuild(data);
+    } catch (error) {
+      throw new Error(
+        `Failed to validate character build: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+    }
+  }
+
+  /**
    * Handle actor update request
    */
   private async handleUpdateActor(
@@ -882,6 +916,61 @@ export class QueryHandlers {
     } catch (error) {
       throw new Error(
         `Failed to batch update actor embedded items: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+    }
+  }
+
+  /**
+   * Handle transactional character patch request
+   */
+  private async handleApplyCharacterPatchTransaction(
+    data: FoundryApplyCharacterPatchTransactionRequest
+  ): Promise<FoundryApplyCharacterPatchTransactionResponse | QueryErrorResult> {
+    try {
+      const gmCheck = this.validateGMAccess();
+      if (!gmCheck.allowed) {
+        return { error: 'Access denied', success: false };
+      }
+
+      this.dataAccess.validateFoundryState();
+
+      const permissionCheck = await this.dataAccess.validateWritePermissions('updateActor');
+      if (!permissionCheck.allowed) {
+        return {
+          error: permissionCheck.reason ?? 'Character patch transaction not allowed',
+          success: false,
+        };
+      }
+
+      if (!data.actorIdentifier) {
+        throw new Error('actorIdentifier is required');
+      }
+
+      if (
+        data.actorUpdates !== undefined &&
+        (!data.actorUpdates ||
+          typeof data.actorUpdates !== 'object' ||
+          Array.isArray(data.actorUpdates))
+      ) {
+        throw new Error('actorUpdates must be an object when provided');
+      }
+
+      if (data.createItems !== undefined && !Array.isArray(data.createItems)) {
+        throw new Error('createItems must be an array when provided');
+      }
+
+      if (data.updateItems !== undefined && !Array.isArray(data.updateItems)) {
+        throw new Error('updateItems must be an array when provided');
+      }
+
+      if (data.deleteItems !== undefined && !Array.isArray(data.deleteItems)) {
+        throw new Error('deleteItems must be an array when provided');
+      }
+
+      return await this.dataAccess.applyCharacterPatchTransaction(data);
+    } catch (error) {
+      throw new Error(
+        `Failed to apply character patch transaction: ${error instanceof Error ? error.message : 'Unknown error'}`
       );
     }
   }
