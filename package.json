@@ -1,7 +1,7 @@
 {
   "name": "foundry-mcp-integration",
   "version": "0.6.3",
-  "description": "MCP server that bridges Foundry VTT game data with Claude Desktop",
+  "description": "Independently maintained MCP bridge for Foundry VTT with workflow-first automation and multi-system support",
   "private": true,
   "workspaces": [
     "packages/*",
@@ -53,11 +53,11 @@
     "node": ">=18.0.0",
     "npm": ">=9.0.0"
   },
-  "author": "Adam Dooley",
+  "author": "maeinomatic",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/adambdooley/foundry-vtt-mcp.git"
+    "url": "https://github.com/maeinomatic/foundry-vtt-mcp.git"
   },
   "keywords": [
     "foundry-vtt",

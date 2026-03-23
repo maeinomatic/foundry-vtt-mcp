@@ -13,6 +13,8 @@ Use this file to answer:
 Architecture source of truth:
 
 - [MCP_ADAPTER_ARCHITECTURE.md](./MCP_ADAPTER_ARCHITECTURE.md)
+- [../NOTICE.md](../../NOTICE.md)
+- [TECHNICAL_IDENTITY_PLAN.md](./TECHNICAL_IDENTITY_PLAN.md)
 
 ## Reading Guide
 

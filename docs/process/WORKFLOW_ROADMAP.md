@@ -15,6 +15,8 @@ Related docs:
 
 - [MCP_ADAPTER_ARCHITECTURE.md](./MCP_ADAPTER_ARCHITECTURE.md)
 - [MCP_TOOL_CATALOG.md](./MCP_TOOL_CATALOG.md)
+- [../../NOTICE.md](../../NOTICE.md)
+- [TECHNICAL_IDENTITY_PLAN.md](./TECHNICAL_IDENTITY_PLAN.md)
 
 ## Workflow Evaluation
 

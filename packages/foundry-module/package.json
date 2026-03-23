@@ -1,7 +1,7 @@
 {
   "name": "@foundry-mcp/module",
   "version": "0.6.3",
-  "description": "Foundry VTT module for MCP bridge integration",
+  "description": "Foundry VTT module for the independently maintained MCP bridge integration",
   "type": "module",
   "scripts": {
     "build": "tsc",

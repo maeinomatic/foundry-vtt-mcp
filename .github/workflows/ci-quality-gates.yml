@@ -1,4 +1,4 @@
-name: CI Quality Gates
+name: Maeinomatic CI Quality Gates
 
 # This workflow is the fast, repeatable quality gate for normal development.
 # It validates code health for the shared contract package, the MCP server,

@@ -1,4 +1,4 @@
-name: Build Complete Release
+name: Maeinomatic Build Complete Release
 
 # This is the publish pipeline.
 # It creates real release artifacts for the MCP server and Foundry module,
@@ -169,7 +169,7 @@ jobs:
           $standalonePackage = @{
             name = "foundry-mcp-server"
             version = "${{ steps.version.outputs.version }}".TrimStart('v')
-            description = "Foundry VTT MCP Server - Standalone Installation"
+            description = "Maeinomatic Foundry VTT MCP Server - Standalone Installation"
             main = "index.js"
             scripts = @{
               start = "node index.js"
@@ -183,7 +183,7 @@ jobs:
 
           # Create README for standalone
           $readmeLines = @(
-            "# Foundry MCP Server - Manual Installation",
+            "# Maeinomatic Foundry MCP Server - Manual Installation",
             "",
             "This package contains the standalone MCP server for manual installation on any platform.",
             "",
@@ -414,11 +414,11 @@ jobs:
 
             TAG="${VERSION_INPUT#v}"
             TAG="v$TAG"
-            RELEASE_NAME="Foundry MCP Server $TAG (Pre-release)"
+            RELEASE_NAME="Maeinomatic Foundry MCP Server $TAG (Pre-release)"
             IS_PRERELEASE=true
           else
             TAG="${{ github.ref_name }}"
-            RELEASE_NAME="Foundry MCP Server $TAG"
+            RELEASE_NAME="Maeinomatic Foundry MCP Server $TAG"
             IS_PRERELEASE=false
           fi
 
@@ -512,7 +512,7 @@ jobs:
           {
             "name": "foundry-mcp-server",
             "version": "$VERSION_NO_V",
-            "description": "Foundry VTT MCP Server - Standalone Installation",
+            "description": "Maeinomatic Foundry VTT MCP Server - Standalone Installation",
             "main": "index.js",
             "scripts": {
               "start": "node index.js"
@@ -525,7 +525,7 @@ jobs:
 
           # Create README
           cat > standalone-mcp-server/README.md << EOF
-          # Foundry MCP Server - Manual Installation
+          # Maeinomatic Foundry MCP Server - Manual Installation
 
           This package contains the standalone MCP server for manual installation on any platform.
 
@@ -556,9 +556,9 @@ jobs:
           target_commitish: ${{ github.sha }}
           name: ${{ steps.release_meta.outputs.release_name }}
           body: |
-            ## Foundry MCP Server ${{ steps.release_meta.outputs.tag }}
+            ## Maeinomatic Foundry MCP Server ${{ steps.release_meta.outputs.tag }}
 
-            Complete multi-platform distribution for Foundry MCP Server - AI-powered campaign management for Foundry VTT using Claude Desktop.
+            Complete multi-platform distribution for Maeinomatic Foundry MCP Server - AI-powered campaign management for Foundry VTT using Claude Desktop.
 
             ### 📦 Installation Options
 

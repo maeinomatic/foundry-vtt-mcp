@@ -398,7 +398,7 @@ const welcomeHTML = `<!DOCTYPE html>
 <head><meta charset="UTF-8"></head>
 <body>
 <h1>Welcome to Foundry MCP Server ${VERSION}</h1>
-<p>This installer will set up the Foundry MCP Bridge to connect Claude Desktop with your Foundry VTT game.</p>
+<p>This installer will set up the Maeinomatic Foundry MCP Bridge to connect Claude Desktop with your Foundry VTT game.</p>
 <h2>Components:</h2>
 <ul>
 <li><strong>MCP Server</strong> (Required) - Core server and Claude Desktop integration</li>
@@ -418,10 +418,10 @@ const conclusionHTML = `<!DOCTYPE html>
 <h2>Next Steps:</h2>
 <ol>
 <li>Restart Claude Desktop</li>
-<li>Launch Foundry VTT and enable "Foundry MCP Bridge" in Module Management</li>
+<li>Launch Foundry VTT and enable "Maeinomatic Foundry MCP Bridge" in Module Management</li>
 <li>Start chatting with Claude about your Foundry world!</li>
 </ol>
-<p>Documentation: <a href="https://github.com/adambdooley/foundry-vtt-mcp">github.com/adambdooley/foundry-vtt-mcp</a></p>
+<p>Documentation: <a href="https://github.com/maeinomatic/foundry-vtt-mcp">github.com/maeinomatic/foundry-vtt-mcp</a></p>
 </body>
 </html>
 `;

@@ -1,4 +1,4 @@
-name: Release Smoke Test
+name: Maeinomatic Release Smoke Test
 
 # This workflow does not publish anything.
 # It simulates the release packaging path so we can verify release file names,
@@ -125,7 +125,7 @@ jobs:
           {
             "name": "foundry-mcp-server",
             "version": "$VERSION_NO_V",
-            "description": "Foundry VTT MCP Server - Standalone Installation",
+            "description": "Maeinomatic Foundry VTT MCP Server - Standalone Installation",
             "main": "index.js",
             "scripts": {
               "start": "node index.js"
@@ -137,9 +137,9 @@ jobs:
           EOF
 
           cat > standalone-mcp-server/README.md << EOF
-          # Foundry MCP Server - Manual Installation
+          # Maeinomatic Foundry MCP Server - Manual Installation
 
-          Smoke-test package for release validation.
+          Smoke-test package for Maeinomatic release validation.
           Version: $VERSION
           EOF
 

@@ -16,13 +16,13 @@ This guide covers the complete installation of the Foundry VTT AI Model Integrat
 
 ### Option 1: Windows Installer (Recommended)
 
-1. Download the latest `FoundryMCPServer-Setup.exe` from [Releases](https://github.com/adambdooley/foundry-vtt-mcp/releases)
+1. Download the latest `FoundryMCPServer-Setup.exe` from [Releases](https://github.com/maeinomatic/foundry-vtt-mcp/releases)
 2. Run the installer - it will:
    - Install the MCP server with bundled Node.js runtime
    - Configure Claude Desktop automatically
    - Optionally install the Foundry module to your VTT installation
 3. Restart Claude Desktop
-4. Enable "Foundry MCP Bridge" in your Foundry Module Management
+4. Enable "Maeinomatic Foundry MCP Bridge" in your Foundry Module Management
 
 ### Option 2: Manual Installation
 
@@ -30,14 +30,14 @@ This guide covers the complete installation of the Foundry VTT AI Model Integrat
 
 1. Open Foundry VTT v13
 2. Select install module in the Foundry Add-ons menu
-3. At the bottom of the window, add the Manifest URL as: https://raw.githubusercontent.com/adambdooley/foundry-vtt-mcp/master/packages/foundry-module/module.json and click install
-4. Enable "Foundry MCP Bridge" in Module Management
+3. At the bottom of the window, add the Manifest URL as: https://raw.githubusercontent.com/maeinomatic/foundry-vtt-mcp/master/packages/foundry-module/module.json and click install
+4. Enable "Maeinomatic Foundry MCP Bridge" in Module Management
 
 #### Install the MCP Server
 
 ```bash
 # Clone repository
-git clone https://github.com/adambdooley/foundry-vtt-mcp.git
+git clone https://github.com/maeinomatic/foundry-vtt-mcp.git
 cd foundry-vtt-mcp
 
 # Install dependencies and build
@@ -78,7 +78,7 @@ Starting Claude Desktop will start the MCP Server.
 
 ### 2. Configure Foundry Module
 
-1. **In Foundry VTT**, go to **Settings** → **Module Settings** → **Foundry MCP Bridge**
+1. **In Foundry VTT**, go to **Settings** → **Module Settings** → **Maeinomatic Foundry MCP Bridge**
 2. **Enable MCP Bridge**: Toggle to "Enabled"
 3. **Configure connection settings**:
    - **MCP Host**: `localhost` (default) or set to a remote MCP server
@@ -92,7 +92,7 @@ Starting Claude Desktop will start the MCP Server.
 
 ### 1. Test MCP Server Connection
 
-1. **Check MCP Server status** in the Foundry MCP Bridge Module settings paged
+1. **Check MCP Server status** in the Maeinomatic Foundry MCP Bridge module settings page
 2. **Verify port 31415** is listening:
    - **Windows**: `netstat -an | findstr 31415`
    - **macOS/Linux**: `netstat -an | grep 31415`
@@ -114,14 +114,14 @@ Starting Claude Desktop will start the MCP Server.
 
 ### Support Channels
 
-- **GitHub Issues**: [Report bugs and feature requests](https://github.com/adambdooley/foundry-vtt-mcp/issues)
+- **GitHub Issues**: [Report bugs and feature requests](https://github.com/maeinomatic/foundry-vtt-mcp/issues)
 
 ## Uninstallation
 
 ### Windows
 
 1. **Disable module** in Foundry world settings
-2. **Run Foundry MCP Bridge Unistaller in Add or Remove Programs** (Windows Only)
+2. **Run the Foundry MCP Bridge uninstaller in Add or Remove Programs** (Windows Only)
 3. **Restart Claude Desktop**
 
 ### Manual
