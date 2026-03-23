@@ -142,10 +142,11 @@ Implementation notes:
 - `validate-dnd5e-character-build` checks class levels, spellbook integrity, supported proficiency ranges, and unresolved advancement steps against the current actor state.
 - `apply-character-patch-transaction` is intentionally scoped to actor and owned-item mutations that can be validated up front and rolled back with captured snapshots if a later step fails.
 
-## Next Direction: Higher-Level Rule-Aware Automation
+## Workflow Automation and Refinements
 
-The next phase should build workflow tools on top of the current primitive write layer,
-not bypass it.
+The repo has now completed the first higher-level workflow automation phase on top of the
+primitive write layer. The next work should refine and extend those workflows rather than
+adding more low-level write surfaces by default.
 
 Architecture rules for this phase:
 
@@ -161,6 +162,8 @@ Architecture rules for this phase:
   advancement-manager behavior, activity workflows, and documented hook points.
 
 ### Priority 4: Workflow Automation
+
+Priority 4 is complete in the current branch.
 
 1. `run-dnd5e-rest-workflow`
 
@@ -244,6 +247,8 @@ Architecture rules for this phase:
 
 ### Priority 5: Workflow Refinements
 
+Priority 5 is the current next focus area.
+
 1. `support-primary-party-award-staging`
 
 - Goal: Complete the DnD5e awards model by allowing rewards to be staged on a primary party group actor before distribution.
@@ -278,7 +283,9 @@ The repo now has:
 - DnD5e character build validation for classes, spellbook state, proficiencies, and unresolved advancements
 - scoped actor and owned-item patch transactions with rollback for larger automated changes
 
-The next most valuable gaps are now workflow refinements on top of this foundation, not missing core write surfaces.
+The next most valuable gaps are now workflow refinements on top of this foundation, starting with
+primary-party award staging and other workflow-completeness improvements rather than missing core
+write surfaces.
 
 ## Historical Archive
 
