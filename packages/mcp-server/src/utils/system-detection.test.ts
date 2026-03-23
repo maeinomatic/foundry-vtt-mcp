@@ -25,4 +25,19 @@ describe('system detection', () => {
     await expect(detectGameSystem(foundryClient)).resolves.toBe('other');
     expect(getCachedSystemId()).toBeNull();
   });
+
+  it('does not cache other after a transient detection failure', async () => {
+    const query = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('temporarily disconnected'))
+      .mockResolvedValueOnce({ system: 'dnd5e' });
+    const foundryClient = { query } as unknown as FoundryClient;
+
+    await expect(detectGameSystem(foundryClient)).resolves.toBe('other');
+    expect(getCachedSystemId()).toBeNull();
+
+    await expect(detectGameSystem(foundryClient)).resolves.toBe('dnd5e');
+    expect(getCachedSystemId()).toBe('dnd5e');
+    expect(query).toHaveBeenCalledTimes(2);
+  });
 });

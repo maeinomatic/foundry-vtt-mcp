@@ -16,6 +16,7 @@ import type {
 export interface FoundryConnectorOptions {
   config: Config['foundry'];
   logger: Logger;
+  onConnectionStateChange?: (state: 'connected' | 'disconnected') => void;
 }
 
 interface PendingQuery {
@@ -61,10 +62,16 @@ export class FoundryConnector {
   private activeConnectionType: 'websocket' | 'webrtc' | null = null;
   private pendingQueries = new Map<string, PendingQuery>();
   private queryIdCounter = 0;
+  private onConnectionStateChange: ((state: 'connected' | 'disconnected') => void) | null;
 
-  constructor({ config, logger }: FoundryConnectorOptions) {
+  constructor({ config, logger, onConnectionStateChange }: FoundryConnectorOptions) {
     this.config = config;
     this.logger = logger.child({ component: 'FoundryConnector' });
+    this.onConnectionStateChange = onConnectionStateChange ?? null;
+  }
+
+  private notifyConnectionStateChange(state: 'connected' | 'disconnected'): void {
+    this.onConnectionStateChange?.(state);
   }
 
   async start(): Promise<void> {
@@ -160,6 +167,7 @@ export class FoundryConnector {
         this.foundrySocket = ws;
         this.activeConnectionType = 'websocket';
         this.logger.info('Foundry module registered via WebSocket');
+        this.notifyConnectionStateChange('connected');
       }
 
       ws.on('close', () => {
@@ -167,6 +175,7 @@ export class FoundryConnector {
         if (this.activeConnectionType === 'websocket' && this.foundrySocket === ws) {
           this.foundrySocket = null;
           this.activeConnectionType = null;
+          this.notifyConnectionStateChange('disconnected');
           // Reject all pending queries
           this.pendingQueries.forEach(({ reject, timeout }) => {
             clearTimeout(timeout);
@@ -344,6 +353,7 @@ export class FoundryConnector {
 
       this.activeConnectionType = 'webrtc';
       this.logger.info('WebRTC connection established');
+      this.notifyConnectionStateChange('connected');
 
       // Close signaling WebSocket after handshake
       setTimeout(() => {
@@ -404,6 +414,7 @@ export class FoundryConnector {
 
       this.activeConnectionType = 'webrtc';
       this.logger.info('WebRTC connection established via HTTP signaling');
+      this.notifyConnectionStateChange('connected');
 
       // Send answer back via HTTP response
       res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -442,7 +453,7 @@ export class FoundryConnector {
       const timeout = setTimeout(() => {
         this.pendingQueries.delete(queryId);
         reject(new Error(`Query timeout: ${method}`));
-      }, 10000); // 10 second timeout
+      }, this.config.connectionTimeout);
 
       this.pendingQueries.set(queryId, {
         resolve: (value: unknown) => resolve(value as TResult),

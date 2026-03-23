@@ -1280,7 +1280,17 @@ async function startBackend(): Promise<void> {
 
   // Initialize Foundry client and tools
 
-  const foundryClient = new FoundryClient(config.foundry, logger);
+  const { clearSystemCache } = await import('./utils/system-detection.js');
+
+  let characterTools: CharacterTools | null = null;
+  let compendiumTools: CompendiumTools | null = null;
+
+  const foundryClient = new FoundryClient(config.foundry, logger, state => {
+    clearSystemCache();
+    characterTools?.invalidateSystemCache();
+    compendiumTools?.invalidateSystemCache();
+    logger.info('Cleared system caches after Foundry connection state change', { state });
+  });
 
   // Initialize system registry and register adapters
   const { getSystemRegistry } = await import('./systems/index.js');
@@ -1297,9 +1307,9 @@ async function startBackend(): Promise<void> {
     supportedSystems: systemRegistry.getSupportedSystems(),
   });
 
-  const characterTools = new CharacterTools({ foundryClient, logger, systemRegistry });
+  characterTools = new CharacterTools({ foundryClient, logger, systemRegistry });
 
-  const compendiumTools = new CompendiumTools({ foundryClient, logger, systemRegistry });
+  compendiumTools = new CompendiumTools({ foundryClient, logger, systemRegistry });
 
   const sceneTools = new SceneTools({ foundryClient, logger });
 

@@ -71,6 +71,80 @@ describe('CompendiumTools', () => {
     );
   });
 
+  it('retries system detection after a transient fallback to other', async () => {
+    const query = vi
+      .fn()
+      .mockImplementationOnce((method: string) => {
+        if (method === 'maeinomatic-foundry-mcp.getWorldInfo') {
+          return Promise.reject(new Error('temporarily disconnected'));
+        }
+
+        return Promise.reject(new Error(`Unexpected query: ${method}`));
+      })
+      .mockImplementation((method: string) => {
+        if (method === 'maeinomatic-foundry-mcp.getWorldInfo') {
+          return Promise.resolve({ system: 'dnd5e' });
+        }
+
+        return Promise.reject(new Error(`Unexpected query: ${method}`));
+      });
+
+    const foundryClient = { query } as unknown as FoundryClient;
+    const systemRegistry = new SystemRegistry();
+    systemRegistry.register(new DnD5eAdapter());
+
+    const tools = new CompendiumTools({
+      foundryClient,
+      logger: createLoggerStub(),
+      systemRegistry,
+    });
+
+    await expect(tools.handleListCreaturesByCriteria({ level: 3 })).rejects.toThrow(
+      'UNSUPPORTED_CAPABILITY'
+    );
+
+    await expect(tools.handleListCreaturesByCriteria({ level: 3 })).rejects.toThrow(
+      'INVALID_FILTER_FOR_SYSTEM'
+    );
+  });
+
+  it('allows explicit invalidation of the local system cache', async () => {
+    const query = vi
+      .fn()
+      .mockImplementationOnce((method: string) => {
+        if (method === 'maeinomatic-foundry-mcp.getWorldInfo') {
+          return Promise.resolve({ system: 'dnd5e' });
+        }
+
+        return Promise.reject(new Error(`Unexpected query: ${method}`));
+      })
+      .mockImplementationOnce((method: string) => {
+        if (method === 'maeinomatic-foundry-mcp.getWorldInfo') {
+          return Promise.resolve({ system: 'pf2e' });
+        }
+
+        return Promise.reject(new Error(`Unexpected query: ${method}`));
+      });
+
+    const foundryClient = { query } as unknown as FoundryClient;
+    const tools = new CompendiumTools({
+      foundryClient,
+      logger: createLoggerStub(),
+      systemRegistry: new SystemRegistry(),
+    });
+
+    await expect(tools.handleListCreaturesByCriteria({ level: 3 })).rejects.toThrow(
+      'UNSUPPORTED_CAPABILITY: list-creatures-by-criteria is not supported for system "dnd5e" because no system adapter is registered'
+    );
+
+    clearSystemCache();
+    tools.invalidateSystemCache();
+
+    await expect(tools.handleListCreaturesByCriteria({ level: 3 })).rejects.toThrow(
+      'UNSUPPORTED_CAPABILITY: list-creatures-by-criteria is not supported for system "pf2e" because no system adapter is registered'
+    );
+  });
+
   it('uses the active adapter to shape compact and full creature compendium responses', async () => {
     const foundryClient = {
       query: vi.fn().mockImplementation((method: string) => {

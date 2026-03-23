@@ -95,7 +95,11 @@ export class FoundryClient {
   private config: Config['foundry'];
   private connector: FoundryConnector;
 
-  constructor(config: Config['foundry'], logger: Logger) {
+  constructor(
+    config: Config['foundry'],
+    logger: Logger,
+    onConnectionStateChange?: (state: 'connected' | 'disconnected') => void
+  ) {
     this.config = config;
     this.logger = logger.child({ component: 'FoundryClient' });
 
@@ -103,6 +107,7 @@ export class FoundryClient {
     this.connector = new FoundryConnector({
       config: this.config,
       logger: this.logger,
+      onConnectionStateChange,
     });
   }
 

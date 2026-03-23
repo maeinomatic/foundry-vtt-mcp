@@ -542,10 +542,19 @@ export class CharacterTools {
    * Get or detect the game system (cached)
    */
   private async getGameSystem(): Promise<GameSystem> {
-    if (!this.cachedGameSystem) {
-      this.cachedGameSystem = await detectGameSystem(this.foundryClient, this.logger);
+    if (!this.cachedGameSystem || this.cachedGameSystem === 'other') {
+      const detectedSystem = await detectGameSystem(this.foundryClient, this.logger);
+      if (detectedSystem !== 'other') {
+        this.cachedGameSystem = detectedSystem;
+      } else if (!this.cachedGameSystem) {
+        this.cachedGameSystem = detectedSystem;
+      }
     }
     return this.cachedGameSystem;
+  }
+
+  invalidateSystemCache(): void {
+    this.cachedGameSystem = null;
   }
 
   private async withSystemAdapter<T>(
