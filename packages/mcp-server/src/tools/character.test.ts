@@ -3999,6 +3999,404 @@ describe('CharacterTools', () => {
     });
   });
 
+  it('returns guided pending-step options when complete-dnd5e-level-up-workflow still needs choices', async () => {
+    const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
+      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+        return Promise.resolve({ system: 'dnd5e' });
+      }
+
+      if (method === 'foundry-mcp-bridge.getCharacterInfo') {
+        return Promise.resolve({
+          id: 'actor-8b',
+          name: 'Laeral',
+          type: 'character',
+          system: {},
+          items: [
+            {
+              id: 'class-wizard',
+              name: 'Wizard',
+              type: 'class',
+              system: {
+                levels: 7,
+                advancement: [{ type: 'Subclass', level: 8 }],
+              },
+            },
+          ],
+          effects: [],
+        });
+      }
+
+      if (method === 'foundry-mcp-bridge.previewCharacterProgression') {
+        expect(data).toEqual({
+          actorIdentifier: 'Laeral',
+          classIdentifier: 'Wizard',
+          targetLevel: 8,
+        });
+        return Promise.resolve({
+          system: 'dnd5e',
+          actorId: 'actor-8b',
+          actorName: 'Laeral',
+          actorType: 'character',
+          classId: 'class-wizard',
+          className: 'Wizard',
+          currentLevel: 7,
+          targetLevel: 8,
+          safeToApplyDirectly: false,
+          pendingSteps: [
+            {
+              id: 'subclass-step',
+              level: 8,
+              type: 'Subclass',
+              title: 'Arcane Tradition',
+              required: true,
+              choicesRequired: true,
+              autoApplySafe: false,
+            },
+          ],
+          warnings: [
+            'DnD5e class advancement is system-managed. Changing class levels alone would bypass one or more advancement steps.',
+          ],
+        });
+      }
+
+      if (method === 'foundry-mcp-bridge.getCharacterAdvancementOptions') {
+        expect(data).toEqual({
+          actorIdentifier: 'Laeral',
+          classIdentifier: 'Wizard',
+          targetLevel: 8,
+          stepId: 'subclass-step',
+          limit: 25,
+        });
+        return Promise.resolve({
+          system: 'dnd5e',
+          actorId: 'actor-8b',
+          actorName: 'Laeral',
+          actorType: 'character',
+          targetLevel: 8,
+          stepId: 'subclass-step',
+          stepType: 'Subclass',
+          stepTitle: 'Arcane Tradition',
+          choiceDetails: {
+            kind: 'subclass',
+            optionQuerySupported: false,
+          },
+          options: [
+            {
+              id: 'evocation',
+              name: 'School of Evocation',
+              type: 'subclass',
+              source: 'compendium',
+              uuid: 'Compendium.dnd5e.subclasses.Item.evocation',
+            },
+            {
+              id: 'illusion',
+              name: 'School of Illusion',
+              type: 'subclass',
+              source: 'compendium',
+              uuid: 'Compendium.dnd5e.subclasses.Item.illusion',
+            },
+          ],
+          totalOptions: 2,
+          classId: 'class-wizard',
+          className: 'Wizard',
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected query: ${method}`));
+    });
+
+    const registry = new SystemRegistry();
+    registry.register(new DnD5eAdapter());
+
+    const tools = new CharacterTools({
+      foundryClient: { query } as unknown as FoundryClient,
+      logger: createLoggerStub(),
+      systemRegistry: registry,
+    });
+
+    const result = (await tools.handleCompleteDnD5eLevelUpWorkflow({
+      characterIdentifier: 'Laeral',
+      classIdentifier: 'Wizard',
+      targetLevel: 8,
+    })) as Record<string, unknown>;
+
+    expect(result).toMatchObject({
+      success: false,
+      workflowStatus: 'needs-choices',
+      requiresChoices: true,
+      character: {
+        id: 'actor-8b',
+        name: 'Laeral',
+        type: 'character',
+      },
+      pendingAdvancements: [
+        {
+          id: 'subclass-step',
+          type: 'Subclass',
+          title: 'Arcane Tradition',
+        },
+      ],
+      pendingAdvancementOptions: [
+        {
+          stepId: 'subclass-step',
+          stepType: 'Subclass',
+          totalOptions: 2,
+          options: [
+            {
+              id: 'evocation',
+              type: 'subclass',
+            },
+            {
+              id: 'illusion',
+              type: 'subclass',
+            },
+          ],
+        },
+      ],
+    });
+  });
+
+  it('completes the DnD5e level-up workflow and validates the finished build', async () => {
+    const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
+      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+        return Promise.resolve({ system: 'dnd5e' });
+      }
+
+      if (method === 'foundry-mcp-bridge.getCharacterInfo') {
+        const characterInfoCallCount = query.mock.calls.filter(
+          ([calledMethod]) => calledMethod === 'foundry-mcp-bridge.getCharacterInfo'
+        ).length;
+
+        if (characterInfoCallCount === 1) {
+          return Promise.resolve({
+            id: 'actor-8c',
+            name: 'Laeral',
+            type: 'character',
+            system: {},
+            items: [
+              {
+                id: 'class-wizard',
+                name: 'Wizard',
+                type: 'class',
+                system: {
+                  levels: 7,
+                  advancement: [{ type: 'Subclass', level: 8 }],
+                },
+              },
+            ],
+            effects: [],
+          });
+        }
+
+        return Promise.resolve({
+          id: 'actor-8c',
+          name: 'Laeral',
+          type: 'character',
+          system: {},
+          items: [
+            {
+              id: 'class-wizard',
+              name: 'Wizard',
+              type: 'class',
+              system: {
+                levels: 7,
+                advancement: [{ type: 'Subclass', level: 8 }],
+              },
+            },
+            {
+              id: 'subclass-evocation',
+              name: 'School of Evocation',
+              type: 'subclass',
+              system: {},
+            },
+          ],
+          effects: [],
+        });
+      }
+
+      if (method === 'foundry-mcp-bridge.previewCharacterProgression') {
+        const previewCallCount = query.mock.calls.filter(
+          ([calledMethod]) => calledMethod === 'foundry-mcp-bridge.previewCharacterProgression'
+        ).length;
+
+        expect(data).toEqual({
+          actorIdentifier: 'Laeral',
+          classIdentifier: 'Wizard',
+          targetLevel: 8,
+        });
+
+        if (previewCallCount === 1) {
+          return Promise.resolve({
+            system: 'dnd5e',
+            actorId: 'actor-8c',
+            actorName: 'Laeral',
+            actorType: 'character',
+            classId: 'class-wizard',
+            className: 'Wizard',
+            currentLevel: 7,
+            targetLevel: 8,
+            safeToApplyDirectly: false,
+            pendingSteps: [
+              {
+                id: 'subclass-step',
+                level: 8,
+                type: 'Subclass',
+                title: 'Arcane Tradition',
+                required: true,
+                choicesRequired: true,
+                autoApplySafe: false,
+              },
+            ],
+          });
+        }
+
+        return Promise.resolve({
+          system: 'dnd5e',
+          actorId: 'actor-8c',
+          actorName: 'Laeral',
+          actorType: 'character',
+          classId: 'class-wizard',
+          className: 'Wizard',
+          currentLevel: 7,
+          targetLevel: 8,
+          safeToApplyDirectly: true,
+          pendingSteps: [],
+        });
+      }
+
+      if (method === 'foundry-mcp-bridge.applyCharacterAdvancementChoice') {
+        expect(data).toEqual({
+          actorIdentifier: 'Laeral',
+          classIdentifier: 'Wizard',
+          targetLevel: 8,
+          stepId: 'subclass-step',
+          choice: {
+            type: 'subclass',
+            subclassUuid: 'Compendium.dnd5e.subclasses.Item.evocation',
+          },
+        });
+        return Promise.resolve({
+          success: true,
+          system: 'dnd5e',
+          actorId: 'actor-8c',
+          actorName: 'Laeral',
+          actorType: 'character',
+          targetLevel: 8,
+          stepId: 'subclass-step',
+          stepType: 'Subclass',
+          stepTitle: 'Arcane Tradition',
+          classId: 'class-wizard',
+          className: 'Wizard',
+          choice: {
+            type: 'subclass',
+            subclassUuid: 'Compendium.dnd5e.subclasses.Item.evocation',
+          },
+          createdItemIds: ['subclass-evocation'],
+        });
+      }
+
+      if (method === 'foundry-mcp-bridge.updateActorEmbeddedItem') {
+        expect(data).toEqual({
+          actorIdentifier: 'Laeral',
+          itemIdentifier: 'class-wizard',
+          itemType: 'class',
+          updates: {
+            'system.levels': 8,
+          },
+          reason: 'character progression update',
+        });
+        return Promise.resolve({
+          success: true,
+          actorId: 'actor-8c',
+          actorName: 'Laeral',
+          itemId: 'class-wizard',
+          itemName: 'Wizard',
+          itemType: 'class',
+          appliedUpdates: {
+            'system.levels': 8,
+          },
+          updatedFields: ['system.levels'],
+        });
+      }
+
+      if (method === 'foundry-mcp-bridge.validateCharacterBuild') {
+        expect(data).toEqual({
+          actorIdentifier: 'Laeral',
+        });
+        return Promise.resolve({
+          system: 'dnd5e',
+          actorId: 'actor-8c',
+          actorName: 'Laeral',
+          actorType: 'character',
+          summary: {
+            classCount: 1,
+            totalClassLevels: 8,
+            outstandingAdvancementCount: 0,
+            issueCount: 0,
+            errorCount: 0,
+            warningCount: 0,
+            infoCount: 0,
+          },
+          issues: [],
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected query: ${method}`));
+    });
+
+    const registry = new SystemRegistry();
+    registry.register(new DnD5eAdapter());
+
+    const tools = new CharacterTools({
+      foundryClient: { query } as unknown as FoundryClient,
+      logger: createLoggerStub(),
+      systemRegistry: registry,
+    });
+
+    const result = (await tools.handleCompleteDnD5eLevelUpWorkflow({
+      characterIdentifier: 'Laeral',
+      classIdentifier: 'Wizard',
+      targetLevel: 8,
+      advancementSelections: [
+        {
+          stepType: 'Subclass',
+          choice: {
+            type: 'subclass',
+            subclassUuid: 'Compendium.dnd5e.subclasses.Item.evocation',
+          },
+        },
+      ],
+    })) as Record<string, unknown>;
+
+    expect(result).toMatchObject({
+      success: true,
+      workflowStatus: 'completed',
+      completed: true,
+      character: {
+        id: 'actor-8c',
+        name: 'Laeral',
+      },
+      appliedAdvancements: [
+        {
+          stepId: 'subclass-step',
+          stepType: 'Subclass',
+          appliedBy: 'selection',
+          createdItemIds: ['subclass-evocation'],
+        },
+      ],
+      updatedFields: ['system.levels'],
+      validation: {
+        verified: true,
+        summary: {
+          totalClassLevels: 8,
+          outstandingAdvancementCount: 0,
+          errorCount: 0,
+        },
+        issues: [],
+      },
+    });
+  });
+
   it('adds a new DnD5e class item and finalizes the initial multiclass level flow', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
       if (method === 'foundry-mcp-bridge.getWorldInfo') {

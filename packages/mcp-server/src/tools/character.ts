@@ -164,6 +164,23 @@ type AdvancementSelectionInput = {
   choice: AdvancementChoiceInput;
 };
 
+type AdvancementSelectionSchemaInput = {
+  stepId?: string | undefined;
+  stepType?: string | undefined;
+  sourceItemId?: string | undefined;
+  sourceItemName?: string | undefined;
+  choice: AdvancementChoiceSchemaInput;
+};
+
+type AppliedAdvancementStep = {
+  stepId: string;
+  stepType: string;
+  stepTitle: string;
+  choice: FoundryApplyCharacterAdvancementChoiceResponse['choice'];
+  appliedBy: 'selection' | 'auto-safe';
+  createdItemIds?: string[];
+};
+
 function createAdvancementChoiceSchema(): z.ZodType<AdvancementChoiceSchemaInput> {
   const choiceSchema = z.discriminatedUnion('mode', [
     z.object({
@@ -210,6 +227,22 @@ function createAdvancementChoiceSchema(): z.ZodType<AdvancementChoiceSchemaInput
   ]);
 }
 
+function createAdvancementSelectionSchema(): z.ZodType<AdvancementSelectionSchemaInput> {
+  const advancementChoiceSchema = createAdvancementChoiceSchema();
+  return z
+    .object({
+      stepId: z.string().min(1).optional(),
+      stepType: z.string().min(1).optional(),
+      sourceItemId: z.string().min(1).optional(),
+      sourceItemName: z.string().min(1).optional(),
+      choice: advancementChoiceSchema,
+    })
+    .refine(
+      value => value.stepId !== undefined || value.stepType !== undefined,
+      'Each advancement selection requires stepId or stepType'
+    );
+}
+
 function normalizeAdvancementChoice(choice: AdvancementChoiceSchemaInput): AdvancementChoiceInput {
   if (choice.type === 'item-choice') {
     return {
@@ -243,6 +276,122 @@ function normalizeAdvancementChoice(choice: AdvancementChoiceSchemaInput): Advan
   }
 
   return choice;
+}
+
+function createAdvancementSelectionsInputSchema(description: string): Record<string, unknown> {
+  return {
+    type: 'array',
+    description,
+    items: {
+      type: 'object',
+      properties: {
+        stepId: {
+          type: 'string',
+          description: 'Preferred exact pending-step ID from preview-character-progression',
+        },
+        stepType: {
+          type: 'string',
+          description: 'Fallback pending-step type when stepId is not provided',
+        },
+        sourceItemId: {
+          type: 'string',
+          description: 'Optional source owned item ID to disambiguate same-type steps',
+        },
+        sourceItemName: {
+          type: 'string',
+          description: 'Optional source owned item name to disambiguate same-type steps',
+        },
+        choice: {
+          anyOf: [
+            {
+              type: 'object',
+              properties: {
+                type: { const: 'ability-score-improvement' },
+                mode: { const: 'asi' },
+                assignments: {
+                  type: 'object',
+                  additionalProperties: { type: 'number' },
+                },
+              },
+              required: ['type', 'mode', 'assignments'],
+            },
+            {
+              type: 'object',
+              properties: {
+                type: { const: 'ability-score-improvement' },
+                mode: { const: 'feat' },
+                featUuid: { type: 'string' },
+              },
+              required: ['type', 'mode', 'featUuid'],
+            },
+            {
+              type: 'object',
+              properties: {
+                type: { const: 'subclass' },
+                subclassUuid: { type: 'string' },
+              },
+              required: ['type', 'subclassUuid'],
+            },
+            {
+              type: 'object',
+              properties: {
+                type: { const: 'hit-points' },
+                mode: { enum: ['average', 'roll'] },
+              },
+              required: ['type', 'mode'],
+            },
+            {
+              type: 'object',
+              properties: {
+                type: { const: 'item-choice' },
+                itemUuids: {
+                  type: 'array',
+                  items: { type: 'string' },
+                },
+                replaceItemId: { type: 'string' },
+                ability: { type: 'string' },
+              },
+              required: ['type', 'itemUuids'],
+            },
+            {
+              type: 'object',
+              properties: {
+                type: { const: 'item-grant' },
+                itemUuids: {
+                  type: 'array',
+                  items: { type: 'string' },
+                },
+                ability: { type: 'string' },
+              },
+              required: ['type'],
+            },
+            {
+              type: 'object',
+              properties: {
+                type: { const: 'trait' },
+                selected: {
+                  type: 'array',
+                  items: { type: 'string' },
+                },
+              },
+              required: ['type', 'selected'],
+            },
+            {
+              type: 'object',
+              properties: {
+                type: { const: 'size' },
+                size: {
+                  type: 'string',
+                },
+              },
+              required: ['type', 'size'],
+            },
+          ],
+        },
+      },
+      required: ['choice'],
+    },
+  };
 }
 
 function parseCompendiumDocumentUuid(uuid: string): { packId: string; documentId: string } | null {
@@ -1937,122 +2086,51 @@ export class CharacterTools {
               description: 'Optional spent experience/AP value for systems that track it',
             },
             advancementSelections: {
-              type: 'array',
-              description:
-                'Optional progression choices to auto-apply during the level-up flow when they match the actual pending advancement steps.',
-              items: {
-                type: 'object',
-                properties: {
-                  stepId: {
-                    type: 'string',
-                    description:
-                      'Preferred exact pending-step ID from preview-character-progression',
-                  },
-                  stepType: {
-                    type: 'string',
-                    description: 'Fallback pending-step type when stepId is not provided',
-                  },
-                  sourceItemId: {
-                    type: 'string',
-                    description: 'Optional source owned item ID to disambiguate same-type steps',
-                  },
-                  sourceItemName: {
-                    type: 'string',
-                    description: 'Optional source owned item name to disambiguate same-type steps',
-                  },
-                  choice: {
-                    anyOf: [
-                      {
-                        type: 'object',
-                        properties: {
-                          type: { const: 'ability-score-improvement' },
-                          mode: { const: 'asi' },
-                          assignments: {
-                            type: 'object',
-                            additionalProperties: { type: 'number' },
-                          },
-                        },
-                        required: ['type', 'mode', 'assignments'],
-                      },
-                      {
-                        type: 'object',
-                        properties: {
-                          type: { const: 'ability-score-improvement' },
-                          mode: { const: 'feat' },
-                          featUuid: { type: 'string' },
-                        },
-                        required: ['type', 'mode', 'featUuid'],
-                      },
-                      {
-                        type: 'object',
-                        properties: {
-                          type: { const: 'subclass' },
-                          subclassUuid: { type: 'string' },
-                        },
-                        required: ['type', 'subclassUuid'],
-                      },
-                      {
-                        type: 'object',
-                        properties: {
-                          type: { const: 'hit-points' },
-                          mode: { enum: ['average', 'roll'] },
-                        },
-                        required: ['type', 'mode'],
-                      },
-                      {
-                        type: 'object',
-                        properties: {
-                          type: { const: 'item-choice' },
-                          itemUuids: {
-                            type: 'array',
-                            items: { type: 'string' },
-                          },
-                          replaceItemId: { type: 'string' },
-                          ability: { type: 'string' },
-                        },
-                        required: ['type', 'itemUuids'],
-                      },
-                      {
-                        type: 'object',
-                        properties: {
-                          type: { const: 'item-grant' },
-                          itemUuids: {
-                            type: 'array',
-                            items: { type: 'string' },
-                          },
-                          ability: { type: 'string' },
-                        },
-                        required: ['type'],
-                      },
-                      {
-                        type: 'object',
-                        properties: {
-                          type: { const: 'trait' },
-                          selected: {
-                            type: 'array',
-                            items: { type: 'string' },
-                          },
-                        },
-                        required: ['type', 'selected'],
-                      },
-                      {
-                        type: 'object',
-                        properties: {
-                          type: { const: 'size' },
-                          size: {
-                            type: 'string',
-                          },
-                        },
-                        required: ['type', 'size'],
-                      },
-                    ],
-                  },
-                },
-                required: ['choice'],
-              },
+              ...createAdvancementSelectionsInputSchema(
+                'Optional progression choices to auto-apply during the level-up flow when they match the actual pending advancement steps.'
+              ),
             },
           },
           required: ['characterIdentifier'],
+        },
+      },
+      {
+        name: 'complete-dnd5e-level-up-workflow',
+        description:
+          'DnD5e only: run the full class level-up workflow by applying provided advancement selections, auto-running safe follow-up steps, returning enriched pending-step guidance when choices are still needed, and validating the finished build.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            characterIdentifier: {
+              type: 'string',
+              description: 'Character name or ID to level up',
+            },
+            targetLevel: {
+              type: 'number',
+              description: 'Target level for the chosen DnD5e class progression flow',
+            },
+            classIdentifier: {
+              type: 'string',
+              description:
+                'Owned DnD5e class item name or ID. Required for multiclass characters and recommended for explicit class targeting.',
+            },
+            advancementSelections: {
+              ...createAdvancementSelectionsInputSchema(
+                'Optional progression choices to apply during the workflow. Matching selections are applied automatically before the final class-level update.'
+              ),
+            },
+            optionQuery: {
+              type: 'string',
+              description:
+                'Optional search query used when unresolved advancement steps support searchable option lists, such as feat selection.',
+            },
+            optionLimit: {
+              type: 'number',
+              description:
+                'Maximum number of options to derive per unresolved advancement step when the workflow returns guided next-step data. Defaults to 25.',
+            },
+          },
+          required: ['characterIdentifier', 'targetLevel'],
         },
       },
     ];
@@ -4337,6 +4415,128 @@ export class CharacterTools {
     return this.runProgressionUpdateFlow(parsed);
   }
 
+  async handleCompleteDnD5eLevelUpWorkflow(args: unknown): Promise<UnknownRecord> {
+    const parsed = this.parseCompleteDnD5eLevelUpWorkflowArgs(args);
+
+    this.logger.info('Running complete DnD5e level-up workflow', parsed);
+
+    const gameSystem = await this.getGameSystem();
+    if (gameSystem !== 'dnd5e') {
+      throw new Error(
+        'UNSUPPORTED_CAPABILITY: complete-dnd5e-level-up-workflow is only available when the active system is dnd5e.'
+      );
+    }
+
+    let previewResult = await this.buildProgressionPreviewResult(parsed);
+    let appliedAdvancements: AppliedAdvancementStep[] = [];
+
+    try {
+      appliedAdvancements =
+        previewResult.preview && parsed.targetLevel !== undefined
+          ? await this.autoApplySafeAdvancements(parsed, previewResult.preview)
+          : [];
+    } catch (error) {
+      this.logger.warn('DnD5e level-up workflow stopped on an invalid advancement selection', {
+        error,
+        actorIdentifier: parsed.characterIdentifier,
+        classIdentifier: parsed.classIdentifier,
+        targetLevel: parsed.targetLevel,
+      });
+
+      previewResult = await this.buildProgressionPreviewResult(parsed);
+      const pendingStepOptions =
+        previewResult.preview && previewResult.preview.pendingSteps.length > 0
+          ? await this.collectPendingAdvancementOptions(previewResult.preview.pendingSteps, parsed)
+          : [];
+
+      return {
+        success: false,
+        workflowStatus: 'invalid-selection',
+        requiresChoices: true,
+        character: previewResult.character,
+        progression: previewResult.prepared.summary,
+        message: error instanceof Error ? error.message : 'Invalid advancement selection.',
+        ...(previewResult.preview
+          ? { pendingAdvancements: previewResult.preview.pendingSteps }
+          : {}),
+        ...(pendingStepOptions.length > 0 ? { pendingAdvancementOptions: pendingStepOptions } : {}),
+        ...(appliedAdvancements.length > 0 ? { appliedAdvancements } : {}),
+        nextStep:
+          'Correct the invalid advancement selection, then rerun complete-dnd5e-level-up-workflow with the remaining required choices.',
+        ...(previewResult.warnings.length > 0 ? { warnings: previewResult.warnings } : {}),
+      };
+    }
+
+    if (appliedAdvancements.length > 0) {
+      previewResult = await this.buildProgressionPreviewResult(parsed);
+    }
+
+    if (previewResult.preview && !previewResult.preview.safeToApplyDirectly) {
+      const pendingStepOptions = await this.collectPendingAdvancementOptions(
+        previewResult.preview.pendingSteps,
+        parsed
+      );
+
+      return {
+        success: false,
+        workflowStatus: 'needs-choices',
+        requiresChoices: true,
+        character: previewResult.character,
+        progression: previewResult.prepared.summary,
+        pendingAdvancements: previewResult.preview.pendingSteps,
+        ...(pendingStepOptions.length > 0 ? { pendingAdvancementOptions: pendingStepOptions } : {}),
+        ...(appliedAdvancements.length > 0 ? { appliedAdvancements } : {}),
+        nextStep:
+          'Review the unresolved advancement steps, provide advancementSelections for the remaining required choices, and rerun complete-dnd5e-level-up-workflow.',
+        ...(previewResult.warnings.length > 0 ? { warnings: previewResult.warnings } : {}),
+      };
+    }
+
+    const result = await this.applyProgressionUpdate(
+      parsed.characterIdentifier,
+      previewResult.prepared
+    );
+    const validation = await this.foundryClient.query<FoundryValidateCharacterBuildResponse>(
+      'foundry-mcp-bridge.validateCharacterBuild',
+      {
+        actorIdentifier: parsed.characterIdentifier,
+      } satisfies FoundryValidateCharacterBuildRequest
+    );
+
+    return {
+      success: result.success,
+      workflowStatus: 'completed',
+      completed: true,
+      character:
+        'actorType' in result
+          ? {
+              id: result.actorId,
+              name: result.actorName,
+              type: result.actorType,
+            }
+          : {
+              id: result.actorId,
+              name: result.actorName,
+            },
+      progression: previewResult.prepared.summary,
+      appliedUpdates: result.appliedUpdates,
+      updatedFields: result.updatedFields,
+      ...(appliedAdvancements.length > 0 ? { appliedAdvancements } : {}),
+      validation: {
+        summary: validation.summary,
+        issues: validation.issues,
+        ...(validation.outstandingAdvancements
+          ? { outstandingAdvancements: validation.outstandingAdvancements }
+          : {}),
+        ...(validation.recommendations ? { recommendations: validation.recommendations } : {}),
+        verified:
+          validation.summary.errorCount === 0 &&
+          validation.summary.outstandingAdvancementCount === 0,
+      },
+      ...(previewResult.warnings.length > 0 ? { warnings: previewResult.warnings } : {}),
+    };
+  }
+
   private async runProgressionUpdateFlow(parsed: {
     characterIdentifier: string;
     targetLevel?: number;
@@ -4417,26 +4617,12 @@ export class CharacterTools {
       advancementSelections?: AdvancementSelectionInput[];
     },
     initialPreview: FoundryPreviewCharacterProgressionResponse
-  ): Promise<
-    Array<{
-      stepId: string;
-      stepType: string;
-      stepTitle: string;
-      choice: FoundryApplyCharacterAdvancementChoiceResponse['choice'];
-      createdItemIds?: string[];
-    }>
-  > {
+  ): Promise<AppliedAdvancementStep[]> {
     if (parsed.targetLevel === undefined) {
       return [];
     }
 
-    const applied: Array<{
-      stepId: string;
-      stepType: string;
-      stepTitle: string;
-      choice: FoundryApplyCharacterAdvancementChoiceResponse['choice'];
-      createdItemIds?: string[];
-    }> = [];
+    const applied: AppliedAdvancementStep[] = [];
     const remainingSelections = [...(parsed.advancementSelections ?? [])];
 
     let preview = initialPreview;
@@ -4491,6 +4677,7 @@ export class CharacterTools {
         stepType: result.stepType,
         stepTitle: result.stepTitle,
         choice: result.choice,
+        appliedBy: nextAction.selectionIndex !== undefined ? 'selection' : 'auto-safe',
         ...(result.createdItemIds ? { createdItemIds: result.createdItemIds } : {}),
       });
 
@@ -4564,6 +4751,88 @@ export class CharacterTools {
     }
 
     return null;
+  }
+
+  private async collectPendingAdvancementOptions(
+    pendingSteps: FoundryProgressionPreviewStep[],
+    parsed: {
+      characterIdentifier: string;
+      targetLevel: number;
+      classIdentifier?: string;
+      optionQuery?: string;
+      optionLimit: number;
+    }
+  ): Promise<UnknownRecord[]> {
+    const results: UnknownRecord[] = [];
+
+    for (const step of pendingSteps) {
+      if (step.choiceDetails?.options && step.choiceDetails.options.length > 0) {
+        results.push({
+          stepId: step.id,
+          stepType: step.type,
+          stepTitle: step.title,
+          level: step.level,
+          choiceDetails: step.choiceDetails,
+          options: step.choiceDetails.options,
+          totalOptions: step.choiceDetails.options.length,
+          ...(step.sourceItemId ? { sourceItemId: step.sourceItemId } : {}),
+          ...(step.sourceItemName ? { sourceItemName: step.sourceItemName } : {}),
+          ...(step.sourceItemType ? { sourceItemType: step.sourceItemType } : {}),
+        });
+        continue;
+      }
+
+      try {
+        const response =
+          await this.foundryClient.query<FoundryGetCharacterAdvancementOptionsResponse>(
+            'foundry-mcp-bridge.getCharacterAdvancementOptions',
+            {
+              actorIdentifier: parsed.characterIdentifier,
+              targetLevel: parsed.targetLevel,
+              stepId: step.id,
+              ...(parsed.classIdentifier !== undefined
+                ? { classIdentifier: parsed.classIdentifier }
+                : {}),
+              ...(parsed.optionQuery !== undefined ? { query: parsed.optionQuery } : {}),
+              limit: parsed.optionLimit,
+            } satisfies FoundryGetCharacterAdvancementOptionsRequest
+          );
+
+        results.push({
+          stepId: response.stepId,
+          stepType: response.stepType,
+          stepTitle: response.stepTitle,
+          level: step.level,
+          choiceDetails: response.choiceDetails ?? step.choiceDetails,
+          options: response.options,
+          totalOptions: response.totalOptions,
+          ...(step.sourceItemId ? { sourceItemId: step.sourceItemId } : {}),
+          ...(step.sourceItemName ? { sourceItemName: step.sourceItemName } : {}),
+          ...(step.sourceItemType ? { sourceItemType: step.sourceItemType } : {}),
+          ...(response.warnings ? { warnings: response.warnings } : {}),
+        });
+      } catch (error) {
+        results.push({
+          stepId: step.id,
+          stepType: step.type,
+          stepTitle: step.title,
+          level: step.level,
+          choiceDetails: step.choiceDetails,
+          options: [],
+          totalOptions: 0,
+          ...(step.sourceItemId ? { sourceItemId: step.sourceItemId } : {}),
+          ...(step.sourceItemName ? { sourceItemName: step.sourceItemName } : {}),
+          ...(step.sourceItemType ? { sourceItemType: step.sourceItemType } : {}),
+          warnings: [
+            `Failed to derive concrete options for this advancement step: ${
+              error instanceof Error ? error.message : 'Unknown error'
+            }`,
+          ],
+        });
+      }
+    }
+
+    return results;
   }
 
   private findMatchingAdvancementSelection(
@@ -4666,7 +4935,7 @@ export class CharacterTools {
     experienceSpent?: number;
     advancementSelections?: AdvancementSelectionInput[];
   } {
-    const advancementChoiceSchema = createAdvancementChoiceSchema();
+    const advancementSelectionSchema = createAdvancementSelectionSchema();
     const schema = z
       .object({
         characterIdentifier: z.string().min(1, 'Character identifier cannot be empty'),
@@ -4674,22 +4943,7 @@ export class CharacterTools {
         classIdentifier: z.string().min(1).optional(),
         experiencePoints: z.number().int().nonnegative().optional(),
         experienceSpent: z.number().int().nonnegative().optional(),
-        advancementSelections: z
-          .array(
-            z
-              .object({
-                stepId: z.string().min(1).optional(),
-                stepType: z.string().min(1).optional(),
-                sourceItemId: z.string().min(1).optional(),
-                sourceItemName: z.string().min(1).optional(),
-                choice: advancementChoiceSchema,
-              })
-              .refine(
-                value => value.stepId !== undefined || value.stepType !== undefined,
-                'Each advancement selection requires stepId or stepType'
-              )
-          )
-          .optional(),
+        advancementSelections: z.array(advancementSelectionSchema).optional(),
       })
       .refine(
         value => value.targetLevel !== undefined || value.experiencePoints !== undefined,
@@ -4720,6 +4974,49 @@ export class CharacterTools {
             })),
           }
         : {}),
+    };
+  }
+
+  private parseCompleteDnD5eLevelUpWorkflowArgs(args: unknown): {
+    characterIdentifier: string;
+    targetLevel: number;
+    classIdentifier?: string;
+    advancementSelections?: AdvancementSelectionInput[];
+    optionQuery?: string;
+    optionLimit: number;
+  } {
+    const advancementSelectionSchema = createAdvancementSelectionSchema();
+    const schema = z.object({
+      characterIdentifier: z.string().min(1, 'Character identifier cannot be empty'),
+      targetLevel: z.number().int().positive(),
+      classIdentifier: z.string().min(1).optional(),
+      advancementSelections: z.array(advancementSelectionSchema).optional(),
+      optionQuery: z.string().min(1).optional(),
+      optionLimit: z.number().int().positive().max(50).default(25),
+    });
+
+    const parsed = schema.parse(args);
+    return {
+      characterIdentifier: parsed.characterIdentifier,
+      targetLevel: parsed.targetLevel,
+      ...(parsed.classIdentifier !== undefined ? { classIdentifier: parsed.classIdentifier } : {}),
+      ...(parsed.advancementSelections !== undefined
+        ? {
+            advancementSelections: parsed.advancementSelections.map(selection => ({
+              ...(selection.stepId !== undefined ? { stepId: selection.stepId } : {}),
+              ...(selection.stepType !== undefined ? { stepType: selection.stepType } : {}),
+              ...(selection.sourceItemId !== undefined
+                ? { sourceItemId: selection.sourceItemId }
+                : {}),
+              ...(selection.sourceItemName !== undefined
+                ? { sourceItemName: selection.sourceItemName }
+                : {}),
+              choice: normalizeAdvancementChoice(selection.choice),
+            })),
+          }
+        : {}),
+      ...(parsed.optionQuery !== undefined ? { optionQuery: parsed.optionQuery } : {}),
+      optionLimit: parsed.optionLimit,
     };
   }
 

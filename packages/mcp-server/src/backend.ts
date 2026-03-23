@@ -1733,6 +1733,11 @@ async function startBackend(): Promise<void> {
 
                     break;
 
+                  case 'complete-dnd5e-level-up-workflow':
+                    result = await characterTools.handleCompleteDnD5eLevelUpWorkflow(args);
+
+                    break;
+
                   case 'create-character-companion':
                     result = await characterTools.handleCreateCharacterCompanion(args);
 

@@ -182,6 +182,10 @@ Architecture rules for this phase:
   - return a final applied-changes summary
 - Why next:
   - The official DnD5e advancement hooks and manager lifecycle give us a stable completion boundary.
+- Current state:
+  - Implemented in the current branch.
+  - The workflow composes the existing progression primitives, enriches unresolved steps with option data,
+    auto-applies safe follow-up steps, and validates the finished DnD5e build after completion.
 
 3. `award-dnd5e-party-resources`
 
