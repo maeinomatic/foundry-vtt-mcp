@@ -830,6 +830,59 @@ export interface FoundryTokenPlacementOptions {
   coordinates?: FoundryTokenPlacementCoordinate[];
 }
 
+export interface FoundryDnD5eSummonActivitySummary extends UnknownRecord {
+  id: string;
+  name: string;
+  type: string;
+  itemId?: string;
+  itemName?: string;
+}
+
+export interface FoundryDnD5eSummonProfileSummary extends UnknownRecord {
+  id: string;
+  name: string;
+  uuid?: string;
+  count?: number;
+  creatureTypes?: string[];
+  challengeRating?: number | string;
+  hint?: string;
+}
+
+export interface FoundryRunDnD5eSummonActivityRequest {
+  actorIdentifier: string;
+  itemIdentifier: string;
+  activityIdentifier?: string;
+  profileId?: string;
+  placementType?: FoundryTokenPlacementOptions['type'] | 'near-owner';
+  coordinates?: FoundryTokenPlacementCoordinate[];
+  hidden?: boolean;
+  reason?: string;
+}
+
+export interface FoundryRunDnD5eSummonActivityResponse extends UnknownRecord {
+  success: boolean;
+  system: 'dnd5e';
+  actorId: string;
+  actorName: string;
+  actorType: string;
+  itemId: string;
+  itemName: string;
+  itemType: string;
+  workflowStatus: 'completed' | 'needs-activity' | 'needs-profile';
+  requiresChoices?: boolean;
+  activityId?: string;
+  activityName?: string;
+  profileId?: string;
+  profileName?: string;
+  availableActivities?: FoundryDnD5eSummonActivitySummary[];
+  availableProfiles?: FoundryDnD5eSummonProfileSummary[];
+  tokensPlaced?: number;
+  tokenIds?: string[];
+  tokenNames?: string[];
+  warnings?: string[];
+  message?: string;
+}
+
 export interface FoundryCreateActorFromCompendiumRequest {
   packId: string;
   itemId: string;

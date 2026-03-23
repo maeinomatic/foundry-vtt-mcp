@@ -18,6 +18,7 @@ import { FoundryCharacterRestWorkflowService } from './services/character-rest-w
 import { FoundryCharacterService } from './services/character-service.js';
 import { FoundryCompanionService } from './services/companion-service.js';
 import { FoundryCompendiumService } from './services/compendium-service.js';
+import { FoundryDnD5eSummonActivityWorkflowService } from './services/dnd5e-summon-activity-workflow-service.js';
 import { FoundryItemAuthoringService } from './services/item-authoring-service.js';
 import { FoundryJournalService } from './services/journal-service.js';
 import {
@@ -70,6 +71,8 @@ import type {
   FoundryListCharacterCompanionsResponse,
   FoundryPreviewCharacterProgressionRequest,
   FoundryPreviewCharacterProgressionResponse,
+  FoundryRunDnD5eSummonActivityRequest,
+  FoundryRunDnD5eSummonActivityResponse,
   FoundrySearchCharacterItemsRequest,
   FoundrySearchCharacterItemsResponse,
   FoundrySummonCharacterCompanionRequest,
@@ -136,6 +139,7 @@ export class FoundryModuleFacade {
   private characterService: FoundryCharacterService;
   private companionService: FoundryCompanionService;
   private compendiumService: FoundryCompendiumService;
+  private dnd5eSummonActivityWorkflowService: FoundryDnD5eSummonActivityWorkflowService;
   private itemAuthoringService: FoundryItemAuthoringService;
   private journalService: FoundryJournalService;
   private rollRequestService: FoundryRollRequestService;
@@ -242,6 +246,17 @@ export class FoundryModuleFacade {
       findActorByIdentifier: (identifier: string): ActorLookupLike | null =>
         this.findActorByIdentifier(identifier),
       sanitizeData: (data: unknown): unknown => this.sanitizeData(data),
+      validateFoundryState: (): void => this.validateFoundryState(),
+    });
+    this.dnd5eSummonActivityWorkflowService = new FoundryDnD5eSummonActivityWorkflowService({
+      auditLog: (
+        action: string,
+        data: unknown,
+        status: 'success' | 'failure',
+        errorMessage?: string
+      ): void => this.auditLog(action, data, status, errorMessage),
+      findActorByIdentifier: (identifier: string): ActorLookupLike | null =>
+        this.findActorByIdentifier(identifier),
       validateFoundryState: (): void => this.validateFoundryState(),
     });
     this.companionService = new FoundryCompanionService({
@@ -686,6 +701,12 @@ export class FoundryModuleFacade {
     request: FoundryRunCharacterRestWorkflowRequest
   ): Promise<FoundryRunCharacterRestWorkflowResponse> {
     return this.characterRestWorkflowService.runCharacterRestWorkflow(request);
+  }
+
+  async runDnD5eSummonActivity(
+    request: FoundryRunDnD5eSummonActivityRequest
+  ): Promise<FoundryRunDnD5eSummonActivityResponse> {
+    return this.dnd5eSummonActivityWorkflowService.runDnD5eSummonActivity(request);
   }
 
   async updateActorEmbeddedItem(

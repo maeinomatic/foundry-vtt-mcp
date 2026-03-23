@@ -49,6 +49,8 @@ import type {
   FoundryListActorsRequest,
   FoundryPreviewCharacterProgressionRequest,
   FoundryPreviewCharacterProgressionResponse,
+  FoundryRunDnD5eSummonActivityRequest,
+  FoundryRunDnD5eSummonActivityResponse,
   FoundrySearchCharacterItemsRequest,
   FoundrySearchCharacterItemsResponse,
   FoundrySummonCharacterCompanionRequest,
@@ -203,6 +205,10 @@ export class FoundryClient {
     method: 'foundry-mcp-bridge.runCharacterRestWorkflow',
     data: FoundryRunCharacterRestWorkflowRequest
   ): Promise<FoundryRunCharacterRestWorkflowResponse>;
+  async query(
+    method: 'foundry-mcp-bridge.runDnD5eSummonActivity',
+    data: FoundryRunDnD5eSummonActivityRequest
+  ): Promise<FoundryRunDnD5eSummonActivityResponse>;
   async query(
     method: 'foundry-mcp-bridge.updateActorEmbeddedItem',
     data: FoundryUpdateActorEmbeddedItemRequest

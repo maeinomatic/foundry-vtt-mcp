@@ -1743,6 +1743,11 @@ async function startBackend(): Promise<void> {
 
                     break;
 
+                  case 'run-dnd5e-summon-activity':
+                    result = await characterTools.handleRunDnD5eSummonActivity(args);
+
+                    break;
+
                   case 'create-character-companion':
                     result = await characterTools.handleCreateCharacterCompanion(args);
 

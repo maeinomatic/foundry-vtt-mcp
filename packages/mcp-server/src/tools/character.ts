@@ -34,6 +34,8 @@ import type {
   FoundryProgressionPreviewStep,
   FoundryPreviewCharacterProgressionRequest,
   FoundryPreviewCharacterProgressionResponse,
+  FoundryRunDnD5eSummonActivityRequest,
+  FoundryRunDnD5eSummonActivityResponse,
   FoundrySearchCharacterItemsResponse,
   FoundrySummonCharacterCompanionRequest,
   FoundrySummonCharacterCompanionResponse,
@@ -2317,6 +2319,61 @@ export class CharacterTools {
           },
         },
       },
+      {
+        name: 'run-dnd5e-summon-activity',
+        description:
+          'DnD5e only: run a summon activity from an owned item using the system activity workflow, surface unresolved activity/profile choices when needed, and report the summoned tokens.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            actorIdentifier: {
+              type: 'string',
+              description: 'Character or actor name/ID that owns the summon-capable item.',
+            },
+            itemIdentifier: {
+              type: 'string',
+              description: 'Owned item name or ID that contains the DnD5e summon activity.',
+            },
+            activityIdentifier: {
+              type: 'string',
+              description:
+                'Optional summon activity name or ID when the item exposes more than one summon activity.',
+            },
+            profileId: {
+              type: 'string',
+              description:
+                'Optional summon profile name or ID when the selected summon activity exposes multiple profiles.',
+            },
+            placementType: {
+              type: 'string',
+              enum: ['near-owner', 'random', 'grid', 'center', 'coordinates'],
+              description: 'Optional placement preference for the summoned tokens.',
+            },
+            coordinates: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  x: { type: 'number' },
+                  y: { type: 'number' },
+                },
+                required: ['x', 'y'],
+              },
+              description:
+                'Optional coordinates used when placementType is coordinates, or as a preferred placement hint for the summon workflow.',
+            },
+            hidden: {
+              type: 'boolean',
+              description: 'Whether the summoned tokens should be created hidden when supported.',
+            },
+            reason: {
+              type: 'string',
+              description: 'Optional audit reason for the summon workflow.',
+            },
+          },
+          required: ['actorIdentifier', 'itemIdentifier'],
+        },
+      },
     ];
   }
 
@@ -4287,6 +4344,122 @@ export class CharacterTools {
         : {}),
       recipients: awardedRecipients,
       ...(warnings.length > 0 ? { warnings } : {}),
+    };
+  }
+
+  async handleRunDnD5eSummonActivity(args: unknown): Promise<UnknownRecord> {
+    const schema = z.object({
+      actorIdentifier: z.string().min(1, 'Actor identifier cannot be empty'),
+      itemIdentifier: z.string().min(1, 'Item identifier cannot be empty'),
+      activityIdentifier: z.string().min(1).optional(),
+      profileId: z.string().min(1).optional(),
+      placementType: z.enum(['near-owner', 'random', 'grid', 'center', 'coordinates']).optional(),
+      coordinates: z
+        .array(
+          z.object({
+            x: z.number(),
+            y: z.number(),
+          })
+        )
+        .optional(),
+      hidden: z.boolean().optional(),
+      reason: z.string().min(1).optional(),
+    });
+
+    const parsed = schema.parse(args);
+
+    this.logger.info('Running DnD5e summon activity workflow', parsed);
+
+    const gameSystem = await this.getGameSystem();
+    if (gameSystem !== 'dnd5e') {
+      throw new Error(
+        'UNSUPPORTED_CAPABILITY: run-dnd5e-summon-activity is only available when the active system is dnd5e.'
+      );
+    }
+
+    const result = await this.foundryClient.query<FoundryRunDnD5eSummonActivityResponse>(
+      'foundry-mcp-bridge.runDnD5eSummonActivity',
+      {
+        actorIdentifier: parsed.actorIdentifier,
+        itemIdentifier: parsed.itemIdentifier,
+        ...(parsed.activityIdentifier !== undefined
+          ? { activityIdentifier: parsed.activityIdentifier }
+          : {}),
+        ...(parsed.profileId !== undefined ? { profileId: parsed.profileId } : {}),
+        ...(parsed.placementType !== undefined ? { placementType: parsed.placementType } : {}),
+        ...(parsed.coordinates !== undefined ? { coordinates: parsed.coordinates } : {}),
+        ...(parsed.hidden !== undefined ? { hidden: parsed.hidden } : {}),
+        ...(parsed.reason !== undefined ? { reason: parsed.reason } : {}),
+      } satisfies FoundryRunDnD5eSummonActivityRequest
+    );
+
+    const hasActivityDetails = (result.activityId ?? result.activityName) !== undefined;
+    const hasProfileDetails = (result.profileId ?? result.profileName) !== undefined;
+
+    if (result.workflowStatus !== 'completed') {
+      return {
+        success: false,
+        workflowStatus: result.workflowStatus,
+        requiresChoices: result.requiresChoices ?? true,
+        actor: {
+          id: result.actorId,
+          name: result.actorName,
+          type: result.actorType,
+        },
+        item: {
+          id: result.itemId,
+          name: result.itemName,
+          type: result.itemType,
+        },
+        ...(hasActivityDetails
+          ? {
+              activity: {
+                ...(result.activityId ? { id: result.activityId } : {}),
+                ...(result.activityName ? { name: result.activityName } : {}),
+              },
+            }
+          : {}),
+        ...(result.availableActivities ? { availableActivities: result.availableActivities } : {}),
+        ...(result.availableProfiles ? { availableProfiles: result.availableProfiles } : {}),
+        ...(result.message ? { message: result.message } : {}),
+        ...(result.warnings ? { warnings: result.warnings } : {}),
+      };
+    }
+
+    return {
+      success: true,
+      workflowStatus: result.workflowStatus,
+      actor: {
+        id: result.actorId,
+        name: result.actorName,
+        type: result.actorType,
+      },
+      item: {
+        id: result.itemId,
+        name: result.itemName,
+        type: result.itemType,
+      },
+      ...(hasActivityDetails
+        ? {
+            activity: {
+              ...(result.activityId ? { id: result.activityId } : {}),
+              ...(result.activityName ? { name: result.activityName } : {}),
+            },
+          }
+        : {}),
+      ...(hasProfileDetails
+        ? {
+            profile: {
+              ...(result.profileId ? { id: result.profileId } : {}),
+              ...(result.profileName ? { name: result.profileName } : {}),
+            },
+          }
+        : {}),
+      tokensPlaced: result.tokensPlaced ?? 0,
+      tokenIds: result.tokenIds ?? [],
+      ...(result.tokenNames ? { tokenNames: result.tokenNames } : {}),
+      ...(result.message ? { message: result.message } : {}),
+      ...(result.warnings ? { warnings: result.warnings } : {}),
     };
   }
 

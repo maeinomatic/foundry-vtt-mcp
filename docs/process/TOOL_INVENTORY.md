@@ -62,6 +62,8 @@ For broader character management, the current toolset now supports:
 - DnD5e short-rest and long-rest workflow execution with optional post-rest spell preparation plans
 - DnD5e XP and currency award workflow for party characters or explicit character lists, with split
   versus each distribution, remainder reporting, and post-award build validation
+- DnD5e summon-activity workflow that can surface unresolved activity/profile choices, execute the
+  selected summon activity through the system activity API, and report summoned token results
 - DnD5e spellbook validation for source-class, preparation-mode, and class-assignment issues
 - creating or linking persistent character companions and familiars
 - listing linked companions and familiars and whether they are already active on the scene
@@ -217,6 +219,11 @@ Architecture rules for this phase:
 - Why next:
   - The official DnD5e Summon activity is richer than our generic companion lifecycle and has its own
     profile, placement, and creature-modification model.
+- Current state:
+  - Implemented in the current branch.
+  - The workflow surfaces unresolved summon activity or profile choices when the item is ambiguous,
+    executes the selected summon activity through the DnD5e activity API, and reports the created
+    tokens from the official summon hook lifecycle when available.
 
 5. `organize-dnd5e-spellbook-workflow`
 
@@ -227,6 +234,18 @@ Architecture rules for this phase:
   - report remaining ambiguous or illegal states
 - Why later:
   - The primitives are already present, so this is mainly orchestration and safety logic.
+
+### Priority 5: Workflow Refinements
+
+1. `support-primary-party-award-staging`
+
+- Goal: Complete the DnD5e awards model by allowing rewards to be staged on a primary party group actor before distribution.
+- Scope:
+  - preserve split remainders instead of dropping them
+  - support award-now / distribute-later workflows
+  - add clearer party-level audit history for staged rewards
+- Why later:
+  - The direct-to-character award workflow is already implemented and useful, so this is a refinement of the awards model rather than a missing foundation piece.
 
 ## Gap Conclusion (DnD5e)
 

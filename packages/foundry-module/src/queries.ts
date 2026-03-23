@@ -42,6 +42,8 @@ import type {
   FoundryListCharacterCompanionsResponse,
   FoundryPreviewCharacterProgressionRequest,
   FoundryPreviewCharacterProgressionResponse,
+  FoundryRunDnD5eSummonActivityRequest,
+  FoundryRunDnD5eSummonActivityResponse,
   FoundrySearchCharacterItemsRequest,
   FoundrySummonCharacterCompanionRequest,
   FoundrySummonCharacterCompanionResponse,
@@ -221,6 +223,8 @@ export class QueryHandlers {
       this.handleValidateCharacterBuild.bind(this);
     CONFIG.queries[`${modulePrefix}.runCharacterRestWorkflow`] =
       this.handleRunCharacterRestWorkflow.bind(this);
+    CONFIG.queries[`${modulePrefix}.runDnD5eSummonActivity`] =
+      this.handleRunDnD5eSummonActivity.bind(this);
     CONFIG.queries[`${modulePrefix}.updateActor`] = this.handleUpdateActor.bind(this);
     CONFIG.queries[`${modulePrefix}.createActorEmbeddedItem`] =
       this.handleCreateActorEmbeddedItem.bind(this);
@@ -821,6 +825,44 @@ export class QueryHandlers {
     } catch (error) {
       throw new Error(
         `Failed to run character rest workflow: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+    }
+  }
+
+  /**
+   * Handle DnD5e summon activity workflow request
+   */
+  private async handleRunDnD5eSummonActivity(
+    data: FoundryRunDnD5eSummonActivityRequest
+  ): Promise<FoundryRunDnD5eSummonActivityResponse | QueryErrorResult> {
+    try {
+      const gmCheck = this.validateGMAccess();
+      if (!gmCheck.allowed) {
+        return { error: 'Access denied', success: false };
+      }
+
+      this.dataAccess.validateFoundryState();
+
+      const permissionCheck = await this.dataAccess.validateWritePermissions('modifyScene');
+      if (!permissionCheck.allowed) {
+        return {
+          error: permissionCheck.reason ?? 'Scene modification not allowed',
+          success: false,
+        };
+      }
+
+      if (!data.actorIdentifier) {
+        throw new Error('actorIdentifier is required');
+      }
+
+      if (!data.itemIdentifier) {
+        throw new Error('itemIdentifier is required');
+      }
+
+      return await this.dataAccess.runDnD5eSummonActivity(data);
+    } catch (error) {
+      throw new Error(
+        `Failed to run DnD5e summon activity: ${error instanceof Error ? error.message : 'Unknown error'}`
       );
     }
   }

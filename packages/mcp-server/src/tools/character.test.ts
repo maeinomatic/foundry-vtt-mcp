@@ -4723,6 +4723,163 @@ describe('CharacterTools', () => {
     });
   });
 
+  it('uses the shared run-dnd5e-summon-activity bridge request shape', async () => {
+    const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
+      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+        return Promise.resolve({ system: 'dnd5e' });
+      }
+
+      if (method === 'foundry-mcp-bridge.runDnD5eSummonActivity') {
+        expect(data).toEqual({
+          actorIdentifier: 'Laeral',
+          itemIdentifier: 'Conjure Elemental',
+          activityIdentifier: 'summon-elemental',
+          profileId: 'air-elemental',
+          placementType: 'coordinates',
+          coordinates: [{ x: 1400, y: 900 }],
+          hidden: false,
+          reason: 'Combat summon workflow',
+        });
+        return Promise.resolve({
+          success: true,
+          system: 'dnd5e',
+          actorId: 'actor-laeral',
+          actorName: 'Laeral',
+          actorType: 'character',
+          itemId: 'item-conjure-elemental',
+          itemName: 'Conjure Elemental',
+          itemType: 'spell',
+          workflowStatus: 'completed',
+          activityId: 'summon-elemental',
+          activityName: 'Summon Elemental',
+          profileId: 'air-elemental',
+          profileName: 'Air Elemental',
+          tokensPlaced: 1,
+          tokenIds: ['token-air-elemental-1'],
+          tokenNames: ['Air Elemental'],
+          message: 'Summoned 1 token from Summon Elemental.',
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected query: ${method}`));
+    });
+
+    const tools = new CharacterTools({
+      foundryClient: { query } as unknown as FoundryClient,
+      logger: createLoggerStub(),
+    });
+
+    const result = (await tools.handleRunDnD5eSummonActivity({
+      actorIdentifier: 'Laeral',
+      itemIdentifier: 'Conjure Elemental',
+      activityIdentifier: 'summon-elemental',
+      profileId: 'air-elemental',
+      placementType: 'coordinates',
+      coordinates: [{ x: 1400, y: 900 }],
+      hidden: false,
+      reason: 'Combat summon workflow',
+    })) as Record<string, unknown>;
+
+    expect(result).toMatchObject({
+      success: true,
+      workflowStatus: 'completed',
+      actor: {
+        id: 'actor-laeral',
+        name: 'Laeral',
+        type: 'character',
+      },
+      item: {
+        id: 'item-conjure-elemental',
+        name: 'Conjure Elemental',
+        type: 'spell',
+      },
+      activity: {
+        id: 'summon-elemental',
+        name: 'Summon Elemental',
+      },
+      profile: {
+        id: 'air-elemental',
+        name: 'Air Elemental',
+      },
+      tokensPlaced: 1,
+      tokenIds: ['token-air-elemental-1'],
+      tokenNames: ['Air Elemental'],
+    });
+  });
+
+  it('surfaces summon profile choices when run-dnd5e-summon-activity still needs selection data', async () => {
+    const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
+      if (method === 'foundry-mcp-bridge.getWorldInfo') {
+        return Promise.resolve({ system: 'dnd5e' });
+      }
+
+      if (method === 'foundry-mcp-bridge.runDnD5eSummonActivity') {
+        expect(data).toEqual({
+          actorIdentifier: 'Laeral',
+          itemIdentifier: 'Conjure Elemental',
+        });
+        return Promise.resolve({
+          success: false,
+          system: 'dnd5e',
+          actorId: 'actor-laeral',
+          actorName: 'Laeral',
+          actorType: 'character',
+          itemId: 'item-conjure-elemental',
+          itemName: 'Conjure Elemental',
+          itemType: 'spell',
+          workflowStatus: 'needs-profile',
+          requiresChoices: true,
+          activityId: 'summon-elemental',
+          activityName: 'Summon Elemental',
+          availableProfiles: [
+            {
+              id: 'air-elemental',
+              name: 'Air Elemental',
+            },
+            {
+              id: 'fire-elemental',
+              name: 'Fire Elemental',
+            },
+          ],
+          message:
+            'This summon activity exposes multiple summon profiles. Provide profileId to choose which summon profile to run.',
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected query: ${method}`));
+    });
+
+    const tools = new CharacterTools({
+      foundryClient: { query } as unknown as FoundryClient,
+      logger: createLoggerStub(),
+    });
+
+    const result = (await tools.handleRunDnD5eSummonActivity({
+      actorIdentifier: 'Laeral',
+      itemIdentifier: 'Conjure Elemental',
+    })) as Record<string, unknown>;
+
+    expect(result).toMatchObject({
+      success: false,
+      workflowStatus: 'needs-profile',
+      requiresChoices: true,
+      activity: {
+        id: 'summon-elemental',
+        name: 'Summon Elemental',
+      },
+      availableProfiles: [
+        {
+          id: 'air-elemental',
+          name: 'Air Elemental',
+        },
+        {
+          id: 'fire-elemental',
+          name: 'Fire Elemental',
+        },
+      ],
+    });
+  });
+
   it('adds a new DnD5e class item and finalizes the initial multiclass level flow', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
       if (method === 'foundry-mcp-bridge.getWorldInfo') {
