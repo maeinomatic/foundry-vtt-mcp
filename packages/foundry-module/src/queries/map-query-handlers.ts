@@ -13,6 +13,11 @@ export type GenerateMapRequest = {
 
 export type MapJobRequest = { job_id: string };
 
+export type UploadGeneratedMapRequest = {
+  filename: string;
+  imageData: string;
+};
+
 type ComfyMapResponse = {
   success?: boolean;
   status?: string;
@@ -214,6 +219,114 @@ export class MapQueryHandlers {
       notifyGM('error', this.errorMessage(error, 'Job cancellation failed'));
       return {
         error: this.errorMessage(error, 'Job cancellation failed'),
+        success: false,
+      };
+    }
+  }
+
+  async handleUploadGeneratedMap(
+    data: UploadGeneratedMapRequest
+  ): Promise<Record<string, unknown> | QueryErrorResult> {
+    try {
+      const gmCheck = this.validateGMAccess();
+      if (!gmCheck.allowed) {
+        console.error(`[${MODULE_ID}] Upload denied - not GM`);
+        return { error: 'Access denied', success: false };
+      }
+
+      if (!data.filename || typeof data.filename !== 'string') {
+        console.error(`[${MODULE_ID}] Upload failed - invalid filename`);
+        notifyGM('error', 'Map upload failed: filename is missing or invalid');
+        throw new Error('Filename is required and must be a string');
+      }
+
+      if (!data.imageData || typeof data.imageData !== 'string') {
+        console.error(`[${MODULE_ID}] Upload failed - invalid image data`);
+        notifyGM('error', 'Map upload failed: image data is missing or invalid');
+        throw new Error('Image data is required and must be a base64 string');
+      }
+
+      const safeFilename = data.filename.replace(/[^a-zA-Z0-9_.-]/g, '_');
+      if (
+        !safeFilename.endsWith('.png') &&
+        !safeFilename.endsWith('.jpg') &&
+        !safeFilename.endsWith('.jpeg')
+      ) {
+        notifyGM('error', 'Map upload failed: only PNG and JPEG are supported');
+        throw new Error('Only PNG and JPEG images are supported');
+      }
+
+      const byteCharacters = atob(data.imageData);
+      const byteNumbers = new Array(byteCharacters.length);
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
+      }
+      const byteArray = new Uint8Array(byteNumbers);
+      const blob = new Blob([byteArray], { type: 'image/png' });
+      const file = new File([blob], safeFilename, { type: 'image/png' });
+
+      const worldId = (game as { world?: { id?: string } }).world?.id ?? 'unknown-world';
+      const uploadPath = `worlds/${worldId}/ai-generated-maps`;
+
+      type FilePickerAPIType = {
+        createDirectory: (
+          source: string,
+          target: string,
+          options?: { bucket?: string | null }
+        ) => Promise<unknown>;
+        upload: (
+          source: string,
+          target: string,
+          file: File,
+          body?: Record<string, unknown>,
+          options?: { notify?: boolean }
+        ) => Promise<{ path?: string }>;
+      };
+
+      const root = globalThis as {
+        foundry?: {
+          applications?: {
+            apps?: {
+              FilePicker?: {
+                implementation?: FilePickerAPIType;
+              };
+            };
+          };
+        };
+        FilePicker?: FilePickerAPIType;
+      };
+
+      const filePickerAPI =
+        root.foundry?.applications?.apps?.FilePicker?.implementation ?? root.FilePicker;
+
+      if (!filePickerAPI) {
+        throw new Error('Foundry FilePicker API is unavailable');
+      }
+
+      try {
+        await filePickerAPI.createDirectory('data', uploadPath, { bucket: null });
+      } catch (dirError: unknown) {
+        const dirErrorMessage = this.errorMessage(dirError, 'Directory creation failed');
+        if (!dirErrorMessage.includes('EEXIST') && !dirErrorMessage.includes('already exists')) {
+          notifyGM('warn', `Map upload directory warning: ${dirErrorMessage}`);
+          console.warn(`[${MODULE_ID}] Directory creation warning:`, dirErrorMessage);
+        }
+      }
+
+      const response = await filePickerAPI.upload('data', uploadPath, file, {}, { notify: false });
+
+      notifyGM('info', `Map uploaded: ${safeFilename}`);
+      return {
+        success: true,
+        path: response.path,
+        filename: safeFilename,
+        message: `Map uploaded successfully to ${response.path}`,
+      };
+    } catch (error: unknown) {
+      console.error(`[${MODULE_ID}] Failed to upload generated map:`, error);
+      notifyGM('error', this.errorMessage(error, 'Failed to upload generated map'));
+      return {
+        error: this.errorMessage(error, 'Failed to upload generated map'),
         success: false,
       };
     }

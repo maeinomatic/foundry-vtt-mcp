@@ -73,7 +73,10 @@ export interface CompendiumReadServiceOptions {
   getSystemAdapter: (gameSystem: GameSystem) => SystemAdapter | null;
   requireSystemAdapter: (gameSystem: GameSystem, capability: string) => SystemAdapter;
   describeFilterSet: (filters: Record<string, unknown>, gameSystem: GameSystem) => string;
-  formatCompendiumItem: (item: CompendiumSearchEntity, gameSystem: GameSystem) => Record<string, unknown>;
+  formatCompendiumItem: (
+    item: CompendiumSearchEntity,
+    gameSystem: GameSystem
+  ) => Record<string, unknown>;
   isCreatureEntity: (item: { type: string }) => boolean;
   formatWithAdapter: (
     adapter: SystemAdapter,
@@ -93,7 +96,10 @@ export class CompendiumReadService {
   private getSystemAdapter: (gameSystem: GameSystem) => SystemAdapter | null;
   private requireSystemAdapter: (gameSystem: GameSystem, capability: string) => SystemAdapter;
   private describeFilterSet: (filters: Record<string, unknown>, gameSystem: GameSystem) => string;
-  private formatCompendiumItem: (item: CompendiumSearchEntity, gameSystem: GameSystem) => Record<string, unknown>;
+  private formatCompendiumItem: (
+    item: CompendiumSearchEntity,
+    gameSystem: GameSystem
+  ) => Record<string, unknown>;
   private isCreatureEntity: (item: { type: string }) => boolean;
   private formatWithAdapter: (
     adapter: SystemAdapter,
@@ -228,10 +234,13 @@ export class CompendiumReadService {
 
     try {
       const gameSystem = await this.getGameSystem();
-      const item = (await this.foundryClient.query('maeinomatic-foundry-mcp.getCompendiumDocumentFull', {
-        packId,
-        documentId: itemId,
-      })) as CompendiumFullEntity | null;
+      const item = (await this.foundryClient.query(
+        'maeinomatic-foundry-mcp.getCompendiumDocumentFull',
+        {
+          packId,
+          documentId: itemId,
+        }
+      )) as CompendiumFullEntity | null;
 
       if (!item) {
         throw new Error(`Item ${itemId} not found in pack ${packId}`);

@@ -53,7 +53,9 @@ export class SystemContextService {
     };
   }
 
-  async requireAdapter(capability: string): Promise<{ adapter: SystemAdapter; system: GameSystem }> {
+  async requireAdapter(
+    capability: string
+  ): Promise<{ adapter: SystemAdapter; system: GameSystem }> {
     if (!this.systemRegistry) {
       throw new Error(
         `UNSUPPORTED_CAPABILITY: No system adapter registry is available for ${capability}.`

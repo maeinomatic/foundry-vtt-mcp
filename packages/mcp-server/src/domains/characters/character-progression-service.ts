@@ -131,7 +131,9 @@ export class CharacterProgressionService {
     };
   }
 
-  async handleGetCharacterAdvancementOptions(parsed: AdvancementOptionsArgs): Promise<UnknownRecord> {
+  async handleGetCharacterAdvancementOptions(
+    parsed: AdvancementOptionsArgs
+  ): Promise<UnknownRecord> {
     const request: FoundryGetCharacterAdvancementOptionsRequest = {
       actorIdentifier: parsed.characterIdentifier,
       targetLevel: parsed.targetLevel,
@@ -188,7 +190,9 @@ export class CharacterProgressionService {
       preview = await this.previewCharacterProgression({
         actorIdentifier: parsed.characterIdentifier,
         targetLevel: parsed.targetLevel,
-        ...(parsed.classIdentifier !== undefined ? { classIdentifier: parsed.classIdentifier } : {}),
+        ...(parsed.classIdentifier !== undefined
+          ? { classIdentifier: parsed.classIdentifier }
+          : {}),
       });
     } catch (error) {
       this.logger.warn('Failed to refresh character progression preview after applying choice', {
@@ -252,7 +256,10 @@ export class CharacterProgressionService {
       };
     }
 
-    const result = await this.applyProgressionUpdate(parsed.characterIdentifier, previewResult.prepared);
+    const result = await this.applyProgressionUpdate(
+      parsed.characterIdentifier,
+      previewResult.prepared
+    );
 
     return {
       success: result.success,
@@ -319,7 +326,9 @@ export class CharacterProgressionService {
         character: previewResult.character,
         progression: previewResult.prepared.summary,
         message: error instanceof Error ? error.message : 'Invalid advancement selection.',
-        ...(previewResult.preview ? { pendingAdvancements: previewResult.preview.pendingSteps } : {}),
+        ...(previewResult.preview
+          ? { pendingAdvancements: previewResult.preview.pendingSteps }
+          : {}),
         ...(pendingStepOptions.length > 0 ? { pendingAdvancementOptions: pendingStepOptions } : {}),
         ...(appliedAdvancements.length > 0 ? { appliedAdvancements } : {}),
         ...(appliedAdvancements.some(step => step.appliedBy === 'auto-safe')
@@ -332,8 +341,12 @@ export class CharacterProgressionService {
         unresolved: {
           kind: 'advancement',
           requiresChoices: true,
-          ...(previewResult.preview ? { pendingAdvancements: previewResult.preview.pendingSteps } : {}),
-          ...(pendingStepOptions.length > 0 ? { pendingAdvancementOptions: pendingStepOptions } : {}),
+          ...(previewResult.preview
+            ? { pendingAdvancements: previewResult.preview.pendingSteps }
+            : {}),
+          ...(pendingStepOptions.length > 0
+            ? { pendingAdvancementOptions: pendingStepOptions }
+            : {}),
         },
         nextStep:
           'Correct the invalid advancement selection, then rerun complete-dnd5e-level-up-workflow with the remaining required choices.',
@@ -372,7 +385,9 @@ export class CharacterProgressionService {
           kind: 'advancement',
           requiresChoices: true,
           pendingAdvancements: previewResult.preview.pendingSteps,
-          ...(pendingStepOptions.length > 0 ? { pendingAdvancementOptions: pendingStepOptions } : {}),
+          ...(pendingStepOptions.length > 0
+            ? { pendingAdvancementOptions: pendingStepOptions }
+            : {}),
         },
         nextStep:
           'Review the unresolved advancement steps, provide advancementSelections for the remaining required choices, and rerun complete-dnd5e-level-up-workflow.',
@@ -380,7 +395,10 @@ export class CharacterProgressionService {
       };
     }
 
-    const result = await this.applyProgressionUpdate(parsed.characterIdentifier, previewResult.prepared);
+    const result = await this.applyProgressionUpdate(
+      parsed.characterIdentifier,
+      previewResult.prepared
+    );
     const validation = await this.foundryClient.query<FoundryValidateCharacterBuildResponse>(
       'maeinomatic-foundry-mcp.validateCharacterBuild',
       {
@@ -442,7 +460,9 @@ export class CharacterProgressionService {
     const progressionRequest: CharacterProgressionUpdateRequest = {
       ...(parsed.targetLevel !== undefined ? { targetLevel: parsed.targetLevel } : {}),
       ...(parsed.classIdentifier !== undefined ? { classIdentifier: parsed.classIdentifier } : {}),
-      ...(parsed.experiencePoints !== undefined ? { experiencePoints: parsed.experiencePoints } : {}),
+      ...(parsed.experiencePoints !== undefined
+        ? { experiencePoints: parsed.experiencePoints }
+        : {}),
       ...(parsed.experienceSpent !== undefined ? { experienceSpent: parsed.experienceSpent } : {}),
     };
 
@@ -455,7 +475,9 @@ export class CharacterProgressionService {
         ? await this.previewCharacterProgression({
             actorIdentifier: parsed.characterIdentifier,
             targetLevel: parsed.targetLevel,
-            ...(parsed.classIdentifier !== undefined ? { classIdentifier: parsed.classIdentifier } : {}),
+            ...(parsed.classIdentifier !== undefined
+              ? { classIdentifier: parsed.classIdentifier }
+              : {}),
           })
         : null;
 
@@ -518,7 +540,9 @@ export class CharacterProgressionService {
         actorIdentifier: parsed.characterIdentifier,
         targetLevel: parsed.targetLevel,
         stepId: nextAction.step.id,
-        ...(parsed.classIdentifier !== undefined ? { classIdentifier: parsed.classIdentifier } : {}),
+        ...(parsed.classIdentifier !== undefined
+          ? { classIdentifier: parsed.classIdentifier }
+          : {}),
         choice: nextAction.choice,
       };
 
@@ -543,7 +567,9 @@ export class CharacterProgressionService {
       preview = await this.previewCharacterProgression({
         actorIdentifier: parsed.characterIdentifier,
         targetLevel: parsed.targetLevel,
-        ...(parsed.classIdentifier !== undefined ? { classIdentifier: parsed.classIdentifier } : {}),
+        ...(parsed.classIdentifier !== undefined
+          ? { classIdentifier: parsed.classIdentifier }
+          : {}),
       });
     }
 
@@ -614,17 +640,20 @@ export class CharacterProgressionService {
       pendingSteps,
       parsed,
       getOptions: async (step, request) => {
-        const response = await this.foundryClient.query<FoundryGetCharacterAdvancementOptionsResponse>(
-          'maeinomatic-foundry-mcp.getCharacterAdvancementOptions',
-          {
-            actorIdentifier: request.characterIdentifier,
-            targetLevel: request.targetLevel,
-            stepId: step.id,
-            ...(request.classIdentifier !== undefined ? { classIdentifier: request.classIdentifier } : {}),
-            ...(request.optionQuery !== undefined ? { query: request.optionQuery } : {}),
-            limit: request.optionLimit,
-          } satisfies FoundryGetCharacterAdvancementOptionsRequest
-        );
+        const response =
+          await this.foundryClient.query<FoundryGetCharacterAdvancementOptionsResponse>(
+            'maeinomatic-foundry-mcp.getCharacterAdvancementOptions',
+            {
+              actorIdentifier: request.characterIdentifier,
+              targetLevel: request.targetLevel,
+              stepId: step.id,
+              ...(request.classIdentifier !== undefined
+                ? { classIdentifier: request.classIdentifier }
+                : {}),
+              ...(request.optionQuery !== undefined ? { query: request.optionQuery } : {}),
+              limit: request.optionLimit,
+            } satisfies FoundryGetCharacterAdvancementOptionsRequest
+          );
 
         return {
           stepId: response.stepId,

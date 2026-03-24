@@ -6,10 +6,7 @@ import type {
   UnknownRecord,
 } from '../../foundry-types.js';
 import { Logger } from '../../logger.js';
-import type {
-  SystemAdapter,
-  SystemSpellbookValidationIssue,
-} from '../../systems/types.js';
+import type { SystemAdapter, SystemSpellbookValidationIssue } from '../../systems/types.js';
 import type { GameSystem } from '../../utils/system-detection.js';
 
 export type DnD5eSpellcastingClassSummary = {
@@ -115,7 +112,10 @@ export class CharacterSpellbookService {
     characterData: CharacterInfoLike,
     classIdentifier: string
   ) => ClassLike;
-  private findDnD5eSpellItem: (characterData: CharacterInfoLike, spellIdentifier: string) => SpellLike;
+  private findDnD5eSpellItem: (
+    characterData: CharacterInfoLike,
+    spellIdentifier: string
+  ) => SpellLike;
   private handleSetDnD5ePreparedSpells: (args: unknown) => Promise<UnknownRecord>;
   private toRecord: (value: unknown) => UnknownRecord | undefined;
 
@@ -196,7 +196,10 @@ export class CharacterSpellbookService {
       if ((parsed.sourceClassAssignments?.length ?? 0) > 0) {
         const seenSpellIds = new Set<string>();
         const explicitAssignments = parsed.sourceClassAssignments!.map(assignment => {
-          const spell = this.findDnD5eSpellItem(currentState.characterData, assignment.spellIdentifier);
+          const spell = this.findDnD5eSpellItem(
+            currentState.characterData,
+            assignment.spellIdentifier
+          );
           if (seenSpellIds.has(spell.id)) {
             throw new Error(
               `Spell "${spell.name}" was assigned more than once in sourceClassAssignments.`
@@ -305,24 +308,32 @@ export class CharacterSpellbookService {
         initialValidation: {
           summary: initialState.summary,
           issues: initialState.issues,
-          ...(initialState.recommendations ? { recommendations: initialState.recommendations } : {}),
+          ...(initialState.recommendations
+            ? { recommendations: initialState.recommendations }
+            : {}),
         },
         finalValidation: {
           summary: currentState.summary,
           issues: currentState.issues,
-          ...(currentState.recommendations ? { recommendations: currentState.recommendations } : {}),
+          ...(currentState.recommendations
+            ? { recommendations: currentState.recommendations }
+            : {}),
         },
         verification: {
           verified: false,
           initial: {
             summary: initialState.summary,
             issues: initialState.issues,
-            ...(initialState.recommendations ? { recommendations: initialState.recommendations } : {}),
+            ...(initialState.recommendations
+              ? { recommendations: initialState.recommendations }
+              : {}),
           },
           final: {
             summary: currentState.summary,
             issues: currentState.issues,
-            ...(currentState.recommendations ? { recommendations: currentState.recommendations } : {}),
+            ...(currentState.recommendations
+              ? { recommendations: currentState.recommendations }
+              : {}),
           },
         },
         ...(appliedSourceClassAssignments.length > 0 ? { appliedSourceClassAssignments } : {}),
@@ -330,7 +341,8 @@ export class CharacterSpellbookService {
         ...(spellPreparationPlanResults.length > 0
           ? { spellPreparationPlans: spellPreparationPlanResults }
           : {}),
-        ...(autoApplied.sourceClassAssignments.length > 0 || autoApplied.preparationUpdates.length > 0
+        ...(autoApplied.sourceClassAssignments.length > 0 ||
+        autoApplied.preparationUpdates.length > 0
           ? {
               autoApplied: {
                 ...(autoApplied.sourceClassAssignments.length > 0
@@ -346,7 +358,9 @@ export class CharacterSpellbookService {
           kind: 'spellbook-review',
           reviewRequired: true,
           issues: currentState.issues,
-          ...(currentState.recommendations ? { recommendations: currentState.recommendations } : {}),
+          ...(currentState.recommendations
+            ? { recommendations: currentState.recommendations }
+            : {}),
         },
         message: error instanceof Error ? error.message : 'Unknown spellbook workflow error.',
       };
@@ -388,12 +402,16 @@ export class CharacterSpellbookService {
         initial: {
           summary: initialState.summary,
           issues: initialState.issues,
-          ...(initialState.recommendations ? { recommendations: initialState.recommendations } : {}),
+          ...(initialState.recommendations
+            ? { recommendations: initialState.recommendations }
+            : {}),
         },
         final: {
           summary: currentState.summary,
           issues: currentState.issues,
-          ...(currentState.recommendations ? { recommendations: currentState.recommendations } : {}),
+          ...(currentState.recommendations
+            ? { recommendations: currentState.recommendations }
+            : {}),
         },
       },
       fixes: {
@@ -424,7 +442,9 @@ export class CharacterSpellbookService {
               kind: 'spellbook-review',
               reviewRequired: true,
               issues: currentState.issues,
-              ...(currentState.recommendations ? { recommendations: currentState.recommendations } : {}),
+              ...(currentState.recommendations
+                ? { recommendations: currentState.recommendations }
+                : {}),
             },
             nextStep:
               'Review the remaining spellbook issues and either provide explicit sourceClassAssignments or spellPreparationPlans, or use the lower-level DnD5e spellbook tools for the remaining ambiguous cases.',

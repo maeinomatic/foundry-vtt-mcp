@@ -492,7 +492,12 @@ export class CharacterTools {
   private progressionService: CharacterProgressionService;
   private spellbookService: CharacterSpellbookService;
 
-  constructor({ foundryClient, logger, systemRegistry, systemContextService }: CharacterToolsOptions) {
+  constructor({
+    foundryClient,
+    logger,
+    systemRegistry,
+    systemContextService,
+  }: CharacterToolsOptions) {
     this.foundryClient = foundryClient;
     this.logger = logger.child({ component: 'CharacterTools' });
     this.systemContextService =
@@ -507,7 +512,8 @@ export class CharacterTools {
       logger: this.logger,
       formatCharacterResponse: async characterData =>
         this.formatCharacterResponse(characterData as CharacterInfoResponse),
-      formatCharacterItemDetails: async item => this.formatCharacterItemDetails(item as CharacterItem),
+      formatCharacterItemDetails: async item =>
+        this.formatCharacterItemDetails(item as CharacterItem),
     });
     this.progressionService = new CharacterProgressionService({
       foundryClient,

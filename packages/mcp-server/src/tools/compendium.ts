@@ -99,7 +99,12 @@ export class CompendiumTools {
   private systemContextService: SystemContextService;
   private readService: CompendiumReadService;
 
-  constructor({ foundryClient, logger, systemRegistry, systemContextService }: CompendiumToolsOptions) {
+  constructor({
+    foundryClient,
+    logger,
+    systemRegistry,
+    systemContextService,
+  }: CompendiumToolsOptions) {
     this.foundryClient = foundryClient;
     this.logger = logger.child({ component: 'CompendiumTools' });
     this.systemRegistry = systemRegistry ?? null;

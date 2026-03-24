@@ -1,7 +1,11 @@
 import { z } from 'zod';
 import { FoundryClient } from '../../foundry-client.js';
 import { Logger } from '../../logger.js';
-import type { FoundryActorDocumentBase, FoundryCharacterEffect, UnknownRecord } from '../../foundry-types.js';
+import type {
+  FoundryActorDocumentBase,
+  FoundryCharacterEffect,
+  UnknownRecord,
+} from '../../foundry-types.js';
 
 type ActorListEntry = Pick<FoundryActorDocumentBase, 'id' | 'name' | 'type' | 'img'>;
 
@@ -107,7 +111,8 @@ export class CharacterReadService {
       const normalizedEntityIdentifier = entityIdentifier.toLowerCase();
 
       const itemEntity = characterData.items?.find(
-        item => item.id === entityIdentifier || item.name.toLowerCase() === normalizedEntityIdentifier
+        item =>
+          item.id === entityIdentifier || item.name.toLowerCase() === normalizedEntityIdentifier
       );
       if (itemEntity) {
         return {
