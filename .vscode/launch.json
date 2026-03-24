@@ -1,0 +1,37 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug MCP Server",
+      "type": "node",
+      "request": "launch",
+      "cwd": "${workspaceFolder}/packages/mcp-server",
+      "runtimeExecutable": "node",
+      "program": "${workspaceFolder}/packages/mcp-server/dist/index.js",
+      "sourceMaps": true,
+      "outFiles": [
+        "${workspaceFolder}/packages/mcp-server/dist/**/*.js",
+        "${workspaceFolder}/shared/dist/**/*.js"
+      ],
+      "skipFiles": [
+        "<node_internals>/**"
+      ],
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Attach MCP Server (9229)",
+      "type": "node",
+      "request": "attach",
+      "port": 9229,
+      "restart": true,
+      "sourceMaps": true,
+      "outFiles": [
+        "${workspaceFolder}/packages/mcp-server/dist/**/*.js",
+        "${workspaceFolder}/shared/dist/**/*.js"
+      ],
+      "skipFiles": [
+        "<node_internals>/**"
+      ]
+    }
+  ]
+}
