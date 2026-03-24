@@ -1,7 +1,14 @@
 import { MODULE_ID } from './constants.js';
+import { registerQueryHandlers, unregisterQueryHandlers } from './bootstrap/query-registration.js';
 import { FoundryModuleFacade } from './foundry-module-facade.js';
 import { ComfyUIManager } from './comfyui-manager.js';
 import { notifyGM } from './gm-notifications.js';
+import {
+  GenerateMapRequest,
+  MapJobRequest,
+  MapQueryHandlers,
+  QueryErrorResult as MapQueryErrorResult,
+} from './queries/map-query-handlers.js';
 import type {
   FoundryApplyCharacterAdvancementChoiceRequest,
   FoundryApplyCharacterAdvancementChoiceResponse,
@@ -90,15 +97,6 @@ type SwitchSceneRequest = {
   optimize_view?: boolean;
 };
 
-type GenerateMapRequest = {
-  prompt: string;
-  scene_name: string;
-  size?: string;
-  grid_size?: number;
-};
-
-type MapJobRequest = { job_id: string };
-
 type UploadGeneratedMapRequest = {
   filename: string;
   imageData: string;
@@ -120,23 +118,15 @@ type GetActorOwnershipRequest = {
   playerIdentifier?: string;
 };
 
-type ComfyMapResponse = {
-  success?: boolean;
-  status?: string;
-  error?: string;
-  message?: string;
-  jobId?: string;
-  estimatedTime?: string;
-  job?: unknown;
-};
-
 export class QueryHandlers {
   public dataAccess: FoundryModuleFacade;
   private comfyuiManager: ComfyUIManager;
+  private mapQueryHandlers: MapQueryHandlers;
 
   constructor() {
     this.dataAccess = new FoundryModuleFacade();
     this.comfyuiManager = new ComfyUIManager();
+    this.mapQueryHandlers = new MapQueryHandlers({ comfyuiManager: this.comfyuiManager });
   }
 
   /**
@@ -154,198 +144,93 @@ export class QueryHandlers {
     return error instanceof Error ? error.message : fallback;
   }
 
-  private parseComfyResponse(value: unknown): ComfyMapResponse {
-    if (!value || typeof value !== 'object') {
-      return {};
-    }
-
-    const record = value as Record<string, unknown>;
-    const parsed: ComfyMapResponse = {};
-
-    if (typeof record.success === 'boolean') {
-      parsed.success = record.success;
-    }
-    if (typeof record.status === 'string') {
-      parsed.status = record.status;
-    }
-    if (typeof record.error === 'string') {
-      parsed.error = record.error;
-    }
-    if (typeof record.message === 'string') {
-      parsed.message = record.message;
-    }
-    if (typeof record.jobId === 'string') {
-      parsed.jobId = record.jobId;
-    }
-    if (typeof record.estimatedTime === 'string') {
-      parsed.estimatedTime = record.estimatedTime;
-    }
-    if ('job' in record) {
-      parsed.job = record.job;
-    }
-
-    return parsed;
-  }
-
   /**
    * Register all query handlers in CONFIG.queries
    */
   registerHandlers(): void {
     const modulePrefix = MODULE_ID;
-
-    // Character/Actor queries
-    CONFIG.queries[`${modulePrefix}.getCharacterInfo`] = this.handleGetCharacterInfo.bind(this);
-    CONFIG.queries[`${modulePrefix}.listActors`] = this.handleListActors.bind(this);
-
-    // Compendium queries
-    CONFIG.queries[`${modulePrefix}.searchCompendium`] = this.handleSearchCompendium.bind(this);
-    CONFIG.queries[`${modulePrefix}.listCreaturesByCriteria`] =
-      this.handleListCreaturesByCriteria.bind(this);
-    CONFIG.queries[`${modulePrefix}.getAvailablePacks`] = this.handleGetAvailablePacks.bind(this);
-
-    // Scene queries
-    CONFIG.queries[`${modulePrefix}.getActiveScene`] = this.handleGetActiveScene.bind(this);
-    CONFIG.queries[`${modulePrefix}.list-scenes`] = this.handleListScenes.bind(this);
-    CONFIG.queries[`${modulePrefix}.switch-scene`] = this.handleSwitchScene.bind(this);
-
-    // World queries
-    CONFIG.queries[`${modulePrefix}.getWorldInfo`] = this.handleGetWorldInfo.bind(this);
-
-    // Utility queries
-    CONFIG.queries[`${modulePrefix}.ping`] = this.handlePing.bind(this);
-
-    // Phase 2 & 3: Write operation queries
-    CONFIG.queries[`${modulePrefix}.createActorFromCompendium`] =
-      this.handleCreateActorFromCompendium.bind(this);
-    CONFIG.queries[`${modulePrefix}.createCharacterActor`] =
-      this.handleCreateCharacterActor.bind(this);
-    CONFIG.queries[`${modulePrefix}.previewCharacterProgression`] =
-      this.handlePreviewCharacterProgression.bind(this);
-    CONFIG.queries[`${modulePrefix}.getCharacterAdvancementOptions`] =
-      this.handleGetCharacterAdvancementOptions.bind(this);
-    CONFIG.queries[`${modulePrefix}.applyCharacterAdvancementChoice`] =
-      this.handleApplyCharacterAdvancementChoice.bind(this);
-    CONFIG.queries[`${modulePrefix}.validateCharacterBuild`] =
-      this.handleValidateCharacterBuild.bind(this);
-    CONFIG.queries[`${modulePrefix}.runCharacterRestWorkflow`] =
-      this.handleRunCharacterRestWorkflow.bind(this);
-    CONFIG.queries[`${modulePrefix}.runDnD5eSummonActivity`] =
-      this.handleRunDnD5eSummonActivity.bind(this);
-    CONFIG.queries[`${modulePrefix}.runDnD5eTransformActivity`] =
-      this.handleRunDnD5eTransformActivity.bind(this);
-    CONFIG.queries[`${modulePrefix}.updateActor`] = this.handleUpdateActor.bind(this);
-    CONFIG.queries[`${modulePrefix}.createActorEmbeddedItem`] =
-      this.handleCreateActorEmbeddedItem.bind(this);
-    CONFIG.queries[`${modulePrefix}.batchUpdateActorEmbeddedItems`] =
-      this.handleBatchUpdateActorEmbeddedItems.bind(this);
-    CONFIG.queries[`${modulePrefix}.applyCharacterPatchTransaction`] =
-      this.handleApplyCharacterPatchTransaction.bind(this);
-    CONFIG.queries[`${modulePrefix}.updateActorEmbeddedItem`] =
-      this.handleUpdateActorEmbeddedItem.bind(this);
-    CONFIG.queries[`${modulePrefix}.deleteActorEmbeddedItem`] =
-      this.handleDeleteActorEmbeddedItem.bind(this);
-    CONFIG.queries[`${modulePrefix}.createCharacterCompanion`] =
-      this.handleCreateCharacterCompanion.bind(this);
-    CONFIG.queries[`${modulePrefix}.updateCharacterCompanionLink`] =
-      this.handleUpdateCharacterCompanionLink.bind(this);
-    CONFIG.queries[`${modulePrefix}.listCharacterCompanions`] =
-      this.handleListCharacterCompanions.bind(this);
-    CONFIG.queries[`${modulePrefix}.configureCharacterCompanionSummon`] =
-      this.handleConfigureCharacterCompanionSummon.bind(this);
-    CONFIG.queries[`${modulePrefix}.summonCharacterCompanion`] =
-      this.handleSummonCharacterCompanion.bind(this);
-    CONFIG.queries[`${modulePrefix}.dismissCharacterCompanion`] =
-      this.handleDismissCharacterCompanion.bind(this);
-    CONFIG.queries[`${modulePrefix}.unlinkCharacterCompanion`] =
-      this.handleUnlinkCharacterCompanion.bind(this);
-    CONFIG.queries[`${modulePrefix}.deleteCharacterCompanion`] =
-      this.handleDeleteCharacterCompanion.bind(this);
-    CONFIG.queries[`${modulePrefix}.syncCharacterCompanionProgression`] =
-      this.handleSyncCharacterCompanionProgression.bind(this);
-    CONFIG.queries[`${modulePrefix}.createWorldItem`] = this.handleCreateWorldItem.bind(this);
-    CONFIG.queries[`${modulePrefix}.updateWorldItem`] = this.handleUpdateWorldItem.bind(this);
-    CONFIG.queries[`${modulePrefix}.createCompendiumItem`] =
-      this.handleCreateCompendiumItem.bind(this);
-    CONFIG.queries[`${modulePrefix}.importItemToCompendium`] =
-      this.handleImportItemToCompendium.bind(this);
-    CONFIG.queries[`${modulePrefix}.getCompendiumDocumentFull`] =
-      this.handleGetCompendiumDocumentFull.bind(this);
-    CONFIG.queries[`${modulePrefix}.addActorsToScene`] = this.handleAddActorsToScene.bind(this);
-    CONFIG.queries[`${modulePrefix}.validateWritePermissions`] =
-      this.handleValidateWritePermissions.bind(this);
-    CONFIG.queries[`${modulePrefix}.createJournalEntry`] = this.handleCreateJournalEntry.bind(this);
-    CONFIG.queries[`${modulePrefix}.listJournals`] = this.handleListJournals.bind(this);
-    CONFIG.queries[`${modulePrefix}.getJournalContent`] = this.handleGetJournalContent.bind(this);
-    CONFIG.queries[`${modulePrefix}.updateJournalContent`] =
-      this.handleUpdateJournalContent.bind(this);
-
-    // Phase 4: Dice roll queries
-    CONFIG.queries[`${modulePrefix}.request-player-rolls`] =
-      this.handleRequestPlayerRolls.bind(this);
-
-    // Enhanced creature index for campaign analysis
-    CONFIG.queries[`${modulePrefix}.getEnhancedCreatureIndex`] =
-      this.handleGetEnhancedCreatureIndex.bind(this);
-
-    // Campaign management queries
-    CONFIG.queries[`${modulePrefix}.updateCampaignProgress`] =
-      this.handleUpdateCampaignProgress.bind(this);
-
-    // Phase 6: Actor ownership management
-    CONFIG.queries[`${modulePrefix}.setActorOwnership`] = this.handleSetActorOwnership.bind(this);
-    CONFIG.queries[`${modulePrefix}.getActorOwnership`] = this.handleGetActorOwnership.bind(this);
-    CONFIG.queries[`${modulePrefix}.getFriendlyNPCs`] = this.handleGetFriendlyNPCs.bind(this);
-    CONFIG.queries[`${modulePrefix}.getPartyCharacters`] = this.handleGetPartyCharacters.bind(this);
-    CONFIG.queries[`${modulePrefix}.getConnectedPlayers`] =
-      this.handleGetConnectedPlayers.bind(this);
-    CONFIG.queries[`${modulePrefix}.findPlayers`] = this.handleFindPlayers.bind(this);
-    CONFIG.queries[`${modulePrefix}.findActor`] = this.handleFindActor.bind(this);
-
-    // Token manipulation queries
-    CONFIG.queries[`${modulePrefix}.moveToken`] = this.handleMoveToken.bind(this);
-    CONFIG.queries[`${modulePrefix}.updateToken`] = this.handleUpdateToken.bind(this);
-    CONFIG.queries[`${modulePrefix}.deleteTokens`] = this.handleDeleteTokens.bind(this);
-    CONFIG.queries[`${modulePrefix}.getTokenDetails`] = this.handleGetTokenDetails.bind(this);
-    CONFIG.queries[`${modulePrefix}.toggleTokenCondition`] =
-      this.handleToggleTokenCondition.bind(this);
-    CONFIG.queries[`${modulePrefix}.getAvailableConditions`] =
-      this.handleGetAvailableConditions.bind(this);
-
-    // Map generation queries (hybrid architecture)
-    CONFIG.queries[`${modulePrefix}.generate-map`] = this.handleGenerateMap.bind(this);
-    CONFIG.queries[`${modulePrefix}.check-map-status`] = this.handleCheckMapStatus.bind(this);
-    CONFIG.queries[`${modulePrefix}.cancel-map-job`] = this.handleCancelMapJob.bind(this);
-    CONFIG.queries[`${modulePrefix}.upload-generated-map`] =
-      this.handleUploadGeneratedMap.bind(this);
-
-    // Item usage queries
-    CONFIG.queries[`${modulePrefix}.useItem`] = this.handleUseItem.bind(this);
-
-    // Character search queries
-    CONFIG.queries[`${modulePrefix}.searchCharacterItems`] =
-      this.handleSearchCharacterItems.bind(this);
-
-    // Phase 7: Token manipulation queries
-    CONFIG.queries[`${modulePrefix}.move-token`] = this.handleMoveToken.bind(this);
-    CONFIG.queries[`${modulePrefix}.update-token`] = this.handleUpdateToken.bind(this);
-    CONFIG.queries[`${modulePrefix}.delete-tokens`] = this.handleDeleteTokens.bind(this);
-    CONFIG.queries[`${modulePrefix}.get-token-details`] = this.handleGetTokenDetails.bind(this);
-    CONFIG.queries[`${modulePrefix}.toggle-token-condition`] =
-      this.handleToggleTokenCondition.bind(this);
-    CONFIG.queries[`${modulePrefix}.get-available-conditions`] =
-      this.handleGetAvailableConditions.bind(this);
+    registerQueryHandlers(modulePrefix, {
+      getCharacterInfo: this.handleGetCharacterInfo.bind(this),
+      listActors: this.handleListActors.bind(this),
+      searchCompendium: this.handleSearchCompendium.bind(this),
+      listCreaturesByCriteria: this.handleListCreaturesByCriteria.bind(this),
+      getAvailablePacks: this.handleGetAvailablePacks.bind(this),
+      getActiveScene: this.handleGetActiveScene.bind(this),
+      'list-scenes': this.handleListScenes.bind(this),
+      'switch-scene': this.handleSwitchScene.bind(this),
+      getWorldInfo: this.handleGetWorldInfo.bind(this),
+      ping: this.handlePing.bind(this),
+      createActorFromCompendium: this.handleCreateActorFromCompendium.bind(this),
+      createCharacterActor: this.handleCreateCharacterActor.bind(this),
+      previewCharacterProgression: this.handlePreviewCharacterProgression.bind(this),
+      getCharacterAdvancementOptions: this.handleGetCharacterAdvancementOptions.bind(this),
+      applyCharacterAdvancementChoice: this.handleApplyCharacterAdvancementChoice.bind(this),
+      validateCharacterBuild: this.handleValidateCharacterBuild.bind(this),
+      runCharacterRestWorkflow: this.handleRunCharacterRestWorkflow.bind(this),
+      runDnD5eSummonActivity: this.handleRunDnD5eSummonActivity.bind(this),
+      runDnD5eTransformActivity: this.handleRunDnD5eTransformActivity.bind(this),
+      updateActor: this.handleUpdateActor.bind(this),
+      createActorEmbeddedItem: this.handleCreateActorEmbeddedItem.bind(this),
+      batchUpdateActorEmbeddedItems: this.handleBatchUpdateActorEmbeddedItems.bind(this),
+      applyCharacterPatchTransaction: this.handleApplyCharacterPatchTransaction.bind(this),
+      updateActorEmbeddedItem: this.handleUpdateActorEmbeddedItem.bind(this),
+      deleteActorEmbeddedItem: this.handleDeleteActorEmbeddedItem.bind(this),
+      createCharacterCompanion: this.handleCreateCharacterCompanion.bind(this),
+      updateCharacterCompanionLink: this.handleUpdateCharacterCompanionLink.bind(this),
+      listCharacterCompanions: this.handleListCharacterCompanions.bind(this),
+      configureCharacterCompanionSummon: this.handleConfigureCharacterCompanionSummon.bind(this),
+      summonCharacterCompanion: this.handleSummonCharacterCompanion.bind(this),
+      dismissCharacterCompanion: this.handleDismissCharacterCompanion.bind(this),
+      unlinkCharacterCompanion: this.handleUnlinkCharacterCompanion.bind(this),
+      deleteCharacterCompanion: this.handleDeleteCharacterCompanion.bind(this),
+      syncCharacterCompanionProgression: this.handleSyncCharacterCompanionProgression.bind(this),
+      createWorldItem: this.handleCreateWorldItem.bind(this),
+      updateWorldItem: this.handleUpdateWorldItem.bind(this),
+      createCompendiumItem: this.handleCreateCompendiumItem.bind(this),
+      importItemToCompendium: this.handleImportItemToCompendium.bind(this),
+      getCompendiumDocumentFull: this.handleGetCompendiumDocumentFull.bind(this),
+      addActorsToScene: this.handleAddActorsToScene.bind(this),
+      validateWritePermissions: this.handleValidateWritePermissions.bind(this),
+      createJournalEntry: this.handleCreateJournalEntry.bind(this),
+      listJournals: this.handleListJournals.bind(this),
+      getJournalContent: this.handleGetJournalContent.bind(this),
+      updateJournalContent: this.handleUpdateJournalContent.bind(this),
+      'request-player-rolls': this.handleRequestPlayerRolls.bind(this),
+      getEnhancedCreatureIndex: this.handleGetEnhancedCreatureIndex.bind(this),
+      updateCampaignProgress: this.handleUpdateCampaignProgress.bind(this),
+      setActorOwnership: this.handleSetActorOwnership.bind(this),
+      getActorOwnership: this.handleGetActorOwnership.bind(this),
+      getFriendlyNPCs: this.handleGetFriendlyNPCs.bind(this),
+      getPartyCharacters: this.handleGetPartyCharacters.bind(this),
+      getConnectedPlayers: this.handleGetConnectedPlayers.bind(this),
+      findPlayers: this.handleFindPlayers.bind(this),
+      findActor: this.handleFindActor.bind(this),
+      moveToken: this.handleMoveToken.bind(this),
+      updateToken: this.handleUpdateToken.bind(this),
+      deleteTokens: this.handleDeleteTokens.bind(this),
+      getTokenDetails: this.handleGetTokenDetails.bind(this),
+      toggleTokenCondition: this.handleToggleTokenCondition.bind(this),
+      getAvailableConditions: this.handleGetAvailableConditions.bind(this),
+      'generate-map': this.handleGenerateMap.bind(this),
+      'check-map-status': this.handleCheckMapStatus.bind(this),
+      'cancel-map-job': this.handleCancelMapJob.bind(this),
+      'upload-generated-map': this.handleUploadGeneratedMap.bind(this),
+      useItem: this.handleUseItem.bind(this),
+      searchCharacterItems: this.handleSearchCharacterItems.bind(this),
+      'move-token': this.handleMoveToken.bind(this),
+      'update-token': this.handleUpdateToken.bind(this),
+      'delete-tokens': this.handleDeleteTokens.bind(this),
+      'get-token-details': this.handleGetTokenDetails.bind(this),
+      'toggle-token-condition': this.handleToggleTokenCondition.bind(this),
+      'get-available-conditions': this.handleGetAvailableConditions.bind(this),
+    });
   }
 
   /**
    * Unregister all query handlers
    */
   unregisterHandlers(): void {
-    const modulePrefix = MODULE_ID;
-    const keysToRemove = Object.keys(CONFIG.queries).filter(key => key.startsWith(modulePrefix));
-
-    for (const key of keysToRemove) {
-      delete CONFIG.queries[key];
-    }
+    unregisterQueryHandlers(MODULE_ID);
   }
 
   /**
@@ -2123,65 +2008,8 @@ export class QueryHandlers {
    */
   private async handleGenerateMap(
     data: GenerateMapRequest
-  ): Promise<Record<string, unknown> | QueryErrorResult> {
-    try {
-      // SECURITY: Silent GM validation
-      const gmCheck = this.validateGMAccess();
-      if (!gmCheck.allowed) {
-        return { error: 'Access denied', success: false };
-      }
-
-      if (!data.prompt || typeof data.prompt !== 'string') {
-        throw new Error('Prompt is required and must be a string');
-      }
-
-      if (!data.scene_name || typeof data.scene_name !== 'string') {
-        throw new Error('Scene name is required and must be a string');
-      }
-
-      // Get quality setting from module settings
-      const qualitySetting = game.settings.get(MODULE_ID, 'mapGenQuality') as unknown;
-      const quality =
-        typeof qualitySetting === 'string' && qualitySetting.trim() ? qualitySetting : 'low';
-
-      const params = {
-        prompt: data.prompt.trim(),
-        scene_name: data.scene_name.trim(),
-        size: data.size ?? 'medium',
-        grid_size: data.grid_size ?? 70,
-        quality,
-      };
-
-      // Use ComfyUIManager to communicate with backend via WebSocket
-      const response = this.parseComfyResponse(await this.comfyuiManager.generateMap(params));
-      const isSuccess =
-        typeof response.success === 'boolean' ? response.success : response.status === 'success';
-
-      if (!isSuccess) {
-        const errorMessage = response.error ?? response.message ?? 'Map generation failed';
-        notifyGM('error', `Map generation failed: ${errorMessage}`);
-        return {
-          error: errorMessage,
-          success: false,
-          status: response.status ?? 'error',
-        };
-      }
-
-      notifyGM('info', 'Map generation started');
-      return {
-        success: true,
-        status: response.status ?? 'success',
-        jobId: response.jobId,
-        message: response.message ?? 'Map generation started',
-        estimatedTime: response.estimatedTime ?? '30-90 seconds',
-      };
-    } catch (error: unknown) {
-      notifyGM('error', this.errorMessage(error, 'Map generation failed'));
-      return {
-        error: this.errorMessage(error, 'Map generation failed'),
-        success: false,
-      };
-    }
+  ): Promise<Record<string, unknown> | MapQueryErrorResult> {
+    return this.mapQueryHandlers.handleGenerateMap(data);
   }
 
   /**
@@ -2189,43 +2017,8 @@ export class QueryHandlers {
    */
   private async handleCheckMapStatus(
     data: MapJobRequest
-  ): Promise<Record<string, unknown> | QueryErrorResult> {
-    try {
-      // SECURITY: Silent GM validation
-      const gmCheck = this.validateGMAccess();
-      if (!gmCheck.allowed) {
-        return { error: 'Access denied', success: false };
-      }
-
-      if (!data.job_id) {
-        throw new Error('Job ID is required');
-      }
-
-      // Use ComfyUIManager to communicate with backend via WebSocket
-      const response = this.parseComfyResponse(await this.comfyuiManager.checkMapStatus(data));
-      const isSuccess =
-        typeof response.success === 'boolean' ? response.success : response.status === 'success';
-
-      if (!isSuccess) {
-        const errorMessage = response.error ?? response.message ?? 'Status check failed';
-        return {
-          error: errorMessage,
-          success: false,
-          status: response.status ?? 'error',
-        };
-      }
-
-      return {
-        success: true,
-        status: response.status ?? 'success',
-        job: response.job,
-      };
-    } catch (error: unknown) {
-      return {
-        error: this.errorMessage(error, 'Status check failed'),
-        success: false,
-      };
-    }
+  ): Promise<Record<string, unknown> | MapQueryErrorResult> {
+    return this.mapQueryHandlers.handleCheckMapStatus(data);
   }
 
   /**
@@ -2233,45 +2026,8 @@ export class QueryHandlers {
    */
   private async handleCancelMapJob(
     data: MapJobRequest
-  ): Promise<Record<string, unknown> | QueryErrorResult> {
-    try {
-      // SECURITY: Silent GM validation
-      const gmCheck = this.validateGMAccess();
-      if (!gmCheck.allowed) {
-        return { error: 'Access denied', success: false };
-      }
-
-      if (!data.job_id) {
-        throw new Error('Job ID is required');
-      }
-
-      // Use ComfyUIManager to communicate with backend via WebSocket
-      const response = this.parseComfyResponse(await this.comfyuiManager.cancelMapJob(data));
-      const isSuccess =
-        typeof response.success === 'boolean' ? response.success : response.status === 'success';
-
-      if (!isSuccess) {
-        const errorMessage = response.error ?? response.message ?? 'Job cancellation failed';
-        notifyGM('warn', `Map cancellation failed: ${errorMessage}`);
-        return {
-          error: errorMessage,
-          success: false,
-          status: response.status ?? 'error',
-        };
-      }
-
-      return {
-        success: true,
-        status: response.status ?? 'success',
-        message: response.message ?? 'Job cancelled successfully',
-      };
-    } catch (error: unknown) {
-      notifyGM('error', this.errorMessage(error, 'Job cancellation failed'));
-      return {
-        error: this.errorMessage(error, 'Job cancellation failed'),
-        success: false,
-      };
-    }
+  ): Promise<Record<string, unknown> | MapQueryErrorResult> {
+    return this.mapQueryHandlers.handleCancelMapJob(data);
   }
 
   /**

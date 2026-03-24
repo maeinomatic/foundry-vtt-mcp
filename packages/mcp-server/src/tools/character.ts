@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { FoundryClient } from '../foundry-client.js';
+import { CharacterReadService } from '../domains/characters/character-read-service.js';
 import type {
   FoundryApplyCharacterAdvancementChoiceRequest,
   FoundryApplyCharacterAdvancementChoiceResponse,
@@ -59,6 +60,7 @@ import type {
   UnknownRecord,
 } from '../foundry-types.js';
 import { Logger } from '../logger.js';
+import { SystemContextService } from '../systems/system-context-service.js';
 import { SystemRegistry } from '../systems/system-registry.js';
 import type {
   CharacterAbilityScoreUpdateRequest,
@@ -73,12 +75,13 @@ import type {
   SystemSpellbookValidationIssue,
   SystemSpellcastingEntry,
 } from '../systems/types.js';
-import { detectGameSystem, type GameSystem } from '../utils/system-detection.js';
+import type { GameSystem } from '../utils/system-detection.js';
 
 export interface CharacterToolsOptions {
   foundryClient: FoundryClient;
   logger: Logger;
   systemRegistry?: SystemRegistry;
+  systemContextService?: SystemContextService;
 }
 
 type ActorListEntry = Pick<FoundryActorDocumentBase, 'id' | 'name' | 'type' | 'img'>;
@@ -529,32 +532,34 @@ interface UseItemResponse extends UnknownRecord {
 export class CharacterTools {
   private foundryClient: FoundryClient;
   private logger: Logger;
-  private systemRegistry: SystemRegistry | null;
-  private cachedGameSystem: GameSystem | null = null;
+  private systemContextService: SystemContextService;
+  private readService: CharacterReadService;
 
-  constructor({ foundryClient, logger, systemRegistry }: CharacterToolsOptions) {
+  constructor({ foundryClient, logger, systemRegistry, systemContextService }: CharacterToolsOptions) {
     this.foundryClient = foundryClient;
     this.logger = logger.child({ component: 'CharacterTools' });
-    this.systemRegistry = systemRegistry ?? null;
+    this.systemContextService =
+      systemContextService ??
+      new SystemContextService({
+        foundryClient,
+        logger: this.logger,
+        systemRegistry: systemRegistry ?? null,
+      });
+    this.readService = new CharacterReadService({
+      foundryClient,
+      logger: this.logger,
+      formatCharacterResponse: async characterData =>
+        this.formatCharacterResponse(characterData as CharacterInfoResponse),
+      formatCharacterItemDetails: async item => this.formatCharacterItemDetails(item as CharacterItem),
+    });
   }
 
-  /**
-   * Get or detect the game system (cached)
-   */
   private async getGameSystem(): Promise<GameSystem> {
-    if (!this.cachedGameSystem || this.cachedGameSystem === 'other') {
-      const detectedSystem = await detectGameSystem(this.foundryClient, this.logger);
-      if (detectedSystem !== 'other') {
-        this.cachedGameSystem = detectedSystem;
-      } else if (!this.cachedGameSystem) {
-        this.cachedGameSystem = detectedSystem;
-      }
-    }
-    return this.cachedGameSystem;
+    return this.systemContextService.getGameSystem();
   }
 
   invalidateSystemCache(): void {
-    this.cachedGameSystem = null;
+    this.systemContextService.invalidateCache();
   }
 
   private async withSystemAdapter<T>(
@@ -562,13 +567,8 @@ export class CharacterTools {
     onAdapter: (adapter: SystemAdapter, system: GameSystem) => T,
     onFallback: () => T
   ): Promise<T> {
-    if (!this.systemRegistry) {
-      return onFallback();
-    }
-
     try {
-      const gameSystem = await this.getGameSystem();
-      const adapter = this.systemRegistry.getAdapter(gameSystem);
+      const { system: gameSystem, adapter } = await this.systemContextService.resolve();
       if (adapter) {
         this.logger.debug(`Using system adapter for ${operation}`, {
           system: gameSystem,
@@ -587,24 +587,7 @@ export class CharacterTools {
   private async getRequiredSystemAdapter(
     capability: string
   ): Promise<{ adapter: SystemAdapter; system: GameSystem }> {
-    if (!this.systemRegistry) {
-      throw new Error(
-        `UNSUPPORTED_CAPABILITY: No system adapter registry is available for ${capability}.`
-      );
-    }
-
-    const gameSystem = await this.getGameSystem();
-    const adapter = this.systemRegistry.getAdapter(gameSystem);
-    if (!adapter) {
-      throw new Error(
-        `UNSUPPORTED_CAPABILITY: No system adapter is available for ${capability} in this world.`
-      );
-    }
-
-    return {
-      adapter,
-      system: gameSystem,
-    };
+    return this.systemContextService.requireAdapter(capability);
   }
 
   private async getCharacterData(identifier: string): Promise<CharacterInfoResponse> {
@@ -3292,143 +3275,15 @@ export class CharacterTools {
   }
 
   async handleGetCharacter(args: unknown): Promise<UnknownRecord> {
-    const schema = z.object({
-      identifier: z.string().min(1, 'Character identifier cannot be empty'),
-    });
-
-    const { identifier } = schema.parse(args);
-
-    this.logger.info('Getting character information', { identifier });
-
-    try {
-      const characterData = await this.foundryClient.query<CharacterInfoResponse>(
-        'maeinomatic-foundry-mcp.getCharacterInfo',
-        {
-          identifier,
-        }
-      );
-
-      this.logger.debug('Successfully retrieved character data', {
-        characterId: characterData.id,
-        characterName: characterData.name,
-      });
-
-      return this.formatCharacterResponse(characterData);
-    } catch (error) {
-      this.logger.error('Failed to get character information', error);
-      throw new Error(
-        `Failed to retrieve character "${identifier}": ${error instanceof Error ? error.message : 'Unknown error'}`
-      );
-    }
+    return this.readService.handleGetCharacter(args);
   }
 
   async handleGetCharacterEntity(args: unknown): Promise<UnknownRecord> {
-    const schema = z.object({
-      characterIdentifier: z.string().min(1, 'Character identifier cannot be empty'),
-      entityIdentifier: z.string().min(1, 'Entity identifier cannot be empty'),
-    });
-
-    const { characterIdentifier, entityIdentifier } = schema.parse(args);
-
-    this.logger.info('Getting character entity', { characterIdentifier, entityIdentifier });
-
-    try {
-      const characterData = await this.foundryClient.query<CharacterInfoResponse>(
-        'maeinomatic-foundry-mcp.getCharacterInfo',
-        {
-          identifier: characterIdentifier,
-        }
-      );
-      const normalizedEntityIdentifier = entityIdentifier.toLowerCase();
-
-      const itemEntity = characterData.items?.find(
-        i => i.id === entityIdentifier || i.name.toLowerCase() === normalizedEntityIdentifier
-      );
-      if (itemEntity) {
-        return {
-          entityType: 'item',
-          ...(await this.formatCharacterItemDetails(itemEntity)),
-        };
-      }
-
-      const actionEntity = characterData.actions?.find(
-        a => a.name.toLowerCase() === normalizedEntityIdentifier
-      );
-      if (actionEntity) {
-        return {
-          entityType: 'action',
-          name: actionEntity.name,
-          type: actionEntity.type,
-          itemId: actionEntity.itemId,
-          traits: actionEntity.traits ?? [],
-          variants: actionEntity.variants ?? [],
-          ready: actionEntity.ready,
-          description: actionEntity.description ?? 'Action from character strikes/abilities',
-        };
-      }
-
-      const effectEntity = characterData.effects?.find(
-        e => e.name.toLowerCase() === normalizedEntityIdentifier
-      );
-      if (effectEntity) {
-        return {
-          ...effectEntity,
-          entityType: 'effect',
-          id: effectEntity.id,
-          name: effectEntity.name,
-          description: effectEntity.description ?? effectEntity.name,
-          traits: effectEntity.traits ?? [],
-          duration: effectEntity.duration,
-        };
-      }
-
-      throw new Error(
-        `Entity "${entityIdentifier}" not found on character "${characterIdentifier}". Tried items, actions, and effects.`
-      );
-    } catch (error) {
-      this.logger.error('Failed to get character entity', error);
-      throw new Error(
-        `Failed to retrieve entity "${entityIdentifier}" from character "${characterIdentifier}": ${error instanceof Error ? error.message : 'Unknown error'}`
-      );
-    }
+    return this.readService.handleGetCharacterEntity(args);
   }
 
   async handleListCharacters(args: unknown): Promise<UnknownRecord> {
-    const schema = z.object({
-      type: z.string().optional(),
-    });
-
-    const { type } = schema.parse(args);
-
-    this.logger.info('Listing characters', { type });
-
-    try {
-      const actors = await this.foundryClient.query<ActorListEntry[]>(
-        'maeinomatic-foundry-mcp.listActors',
-        {
-          type,
-        }
-      );
-
-      this.logger.debug('Successfully retrieved character list', { count: actors.length });
-
-      // Format the response for Claude
-      return {
-        characters: actors.map(actor => ({
-          id: actor.id,
-          name: actor.name,
-          type: actor.type,
-          hasImage: !!actor.img,
-        })),
-        total: actors.length,
-        filtered: type ? `Filtered by type: ${type}` : 'All characters',
-      };
-    } catch (error) {
-      this.logger.error('Failed to list characters', error);
-      throw new Error(
-        `Failed to list characters: ${error instanceof Error ? error.message : 'Unknown error'}`
-      );
-    }
+    return this.readService.handleListCharacters(args);
   }
 
   async handleUseItem(args: unknown): Promise<UseItemResponse> {
