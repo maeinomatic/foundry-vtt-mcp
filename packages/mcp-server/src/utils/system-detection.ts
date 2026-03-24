@@ -30,6 +30,20 @@ const asRecord = (value: unknown): UnknownRecord | undefined => {
   return value as UnknownRecord;
 };
 
+const getSystemIdFromWorldInfo = (worldInfo: unknown): string => {
+  const worldInfoRecord = asRecord(worldInfo);
+  const systemValue = worldInfoRecord?.system;
+
+  if (typeof systemValue === 'string') {
+    return systemValue.toLowerCase();
+  }
+
+  const systemRecord = asRecord(systemValue);
+  const nestedId = systemRecord?.id;
+
+  return typeof nestedId === 'string' ? nestedId.toLowerCase() : '';
+};
+
 /**
  * Detect the active Foundry game system
  * Results are cached to avoid repeated queries
@@ -46,9 +60,7 @@ export async function detectGameSystem(
     const worldInfo = await foundryClient.query<FoundryWorldInfo>(
       'maeinomatic-foundry-mcp.getWorldInfo'
     );
-    const worldInfoRecord = asRecord(worldInfo);
-    const systemValue = worldInfoRecord?.system;
-    const systemId = typeof systemValue === 'string' ? systemValue.toLowerCase() : '';
+    const systemId = getSystemIdFromWorldInfo(worldInfo);
 
     if (!systemId) {
       cachedSystemId = null;
