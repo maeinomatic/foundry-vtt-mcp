@@ -13,9 +13,7 @@
         "${workspaceFolder}/packages/mcp-server/dist/**/*.js",
         "${workspaceFolder}/shared/dist/**/*.js"
       ],
-      "skipFiles": [
-        "<node_internals>/**"
-      ],
+      "skipFiles": ["<node_internals>/**"],
       "console": "integratedTerminal"
     },
     {
@@ -29,9 +27,7 @@
         "${workspaceFolder}/packages/mcp-server/dist/**/*.js",
         "${workspaceFolder}/shared/dist/**/*.js"
       ],
-      "skipFiles": [
-        "<node_internals>/**"
-      ]
+      "skipFiles": ["<node_internals>/**"]
     }
   ]
 }

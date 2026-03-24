@@ -12,6 +12,7 @@ Foundry version: 13.351
 This report tests the currently exposed Foundry MCP tools available in this session.
 
 Classification used:
+
 - Works: tool call succeeds with valid or safely-invalid input and returns expected response/error semantics.
 - Fails: tool call returns timeout or capability/routing mismatch.
 - Not fully verified: tool path confirmed, but only safe negative-path test was run to avoid mutating live game state.
@@ -19,12 +20,14 @@ Classification used:
 ## DnD-Specific Tool Results
 
 1. run-dnd5e-transform-activity-workflow
+
 - Status: Fails
 - Input used: missing actor/item identifiers (safe negative path)
 - Result: UNSUPPORTED_CAPABILITY stating it is only available when active system is dnd5e.
 - Interpretation: This is inconsistent with get-world-info (which reports dnd5e). Strong indicator of MCP-side system detection/routing mismatch.
 
 2. list-creatures-by-criteria
+
 - Status: Fails
 - Input used: humanoid, CR 1-2, limit 5
 - Result: UNSUPPORTED_CAPABILITY for system other (no adapter registered).
@@ -33,53 +36,63 @@ Classification used:
 ## Non-System-Specific Tool Results
 
 1. get-world-info
+
 - Status: Works
 - Result: world returned with system object { id: dnd5e, version: 5.2.5 }.
 
 2. get-current-scene
+
 - Status: Works
 - Result: active scene metadata returned correctly.
 
 3. switch-scene
+
 - Status: Works
 - Input used: switch to current scene by name (safe no-op)
 - Result: success true with matching scene id.
 
 4. get-compendium-entry-full
+
 - Status: Works (negative path)
 - Input used: valid-like pack id plus missing entry id
 - Result: not found style error message from compendium lookup.
 - Interpretation: Query path to module is functional.
 
 5. update-character-companion-link
+
 - Status: Works (negative path)
 - Input used: missing owner and companion identifiers
 - Result: owner actor not found.
 - Interpretation: Backend and plugin both handling request path correctly.
 
 6. update-world-item
+
 - Status: Works (negative path)
 - Input used: missing item identifier with minimal update payload
 - Result: world item not found.
 - Interpretation: End-to-end request path is functional.
 
 7. list-dsa5-archetypes
+
 - Status: Works
 - Result: completed successfully with zero archetypes (expected in dnd5e world).
 
 8. check-map-status
+
 - Status: Fails
 - Input used: fake job id
 - Result: query timeout on maeinomatic-foundry-mcp.check-map-status.
 - Interpretation: Foundry module side likely does not reply for this method in current runtime state, or map subsystem handler not active.
 
 9. generate-map
+
 - Status: Fails
 - Input used: small test prompt and scene name
 - Result: query timeout on maeinomatic-foundry-mcp.generate-map.
 - Interpretation: Same failure family as check-map-status, likely module/plugin-side map handler availability issue or stalled map subsystem.
 
 10. create-campaign-dashboard
+
 - Status: Works
 - Input used: healthcheck campaign title/description
 - Result: success true, dashboard journal created.
@@ -88,26 +101,32 @@ Classification used:
 ## Direct Evidence Pattern
 
 Observed contradiction:
+
 - get-world-info returns system.id = dnd5e
 - DnD adapter-routed tools resolve active system as other
 
 This pattern points to MCP backend detection/caching logic, not base connectivity:
+
 - Connectivity is healthy for multiple non-system tools.
 - Routing to system adapters is where behavior diverges.
 
 Map generation issues appear separate:
+
 - generate-map and check-map-status time out while unrelated tools succeed.
 - This suggests a Foundry plugin/module handler or subsystem activation issue for map-related methods rather than a full MCP disconnect.
 
 ## MCP Side vs Foundry Plugin Side Assessment
 
 MCP-side likely issue:
+
 - System detection/routing mismatch in adapter-gated tools (dnd5e seen by world-info but other used by adapter-dependent tools).
 
 Foundry plugin-side likely issue:
+
 - Map methods timing out (check-map-status, generate-map) while general request/response remains healthy.
 
 Not a pure connection issue:
+
 - Multiple non-system methods are working end-to-end.
 
 ## Recommendations
@@ -145,43 +164,47 @@ Not a pure connection issue:
 ## MCP Character Workflow Probe (2026-03-24)
 
 Goal:
+
 - Validate character creation through the MCP workflow path (call_tool -> create-dnd5e-character-workflow), not manual socket-side document edits.
 
 Environment:
+
 - World system confirmed via get-world-info: dnd5e 5.2.5
 
 ### Test A: Create level 1 fighter
 
 - Tool: create-dnd5e-character-workflow
 - Input summary:
-	- sourceUuid: Compendium.dnd5e.heroes.Actor.2Pdtnswo8Nj2nafY
-	- name: Bren Kestrel
-	- targetLevel: 1
-	- addToScene: false
+  - sourceUuid: Compendium.dnd5e.heroes.Actor.2Pdtnswo8Nj2nafY
+  - name: Bren Kestrel
+  - targetLevel: 1
+  - addToScene: false
 - Result:
-	- success: true
-	- workflowStatus: completed
-	- actor created: z52woRG0NJHuaRzd (Bren Kestrel)
-	- sheet check: level 1 (expected)
+  - success: true
+  - workflowStatus: completed
+  - actor created: z52woRG0NJHuaRzd (Bren Kestrel)
+  - sheet check: level 1 (expected)
 
 ### Test B: Create level 2 cleric
 
 - Tool: create-dnd5e-character-workflow
 - Input summary:
-	- sourceUuid: Compendium.dnd5e.heroes.Actor.kfzBL0q1Y7LgGs2x
-	- name: Sister Rowan Vale
-	- targetLevel: 2
-	- addToScene: false
+  - sourceUuid: Compendium.dnd5e.heroes.Actor.kfzBL0q1Y7LgGs2x
+  - name: Sister Rowan Vale
+  - targetLevel: 2
+  - addToScene: false
 - Result:
-	- success: false
-	- workflowStatus: invalid-selection
-	- actor created: x2VMyPN4pZEP4Bup (Sister Rowan Vale)
-	- sheet check: level 1 (target level-up not applied)
+  - success: false
+  - workflowStatus: invalid-selection
+  - actor created: x2VMyPN4pZEP4Bup (Sister Rowan Vale)
+  - sheet check: level 1 (target level-up not applied)
 
 Exact failure message from progression payload:
+
 - Query maeinomatic-foundry-mcp.applyCharacterAdvancementChoice failed: Failed to apply character advancement choice: Item "Compendium.dnd5e.classfeatures.Item.YpiLQEKGalROn7iJ" is not a valid option for this advancement step.
 
 Pending step in returned payload:
+
 - Step type: ItemGrant
 - Step title: Features
 - Default selected option ids: YpiLQEKGalROn7iJ, r91UIgwFdHwkXdia
@@ -189,12 +212,14 @@ Pending step in returned payload:
 ### Failure Localization (Code Paths)
 
 MCP server workflow and selection construction:
+
 - packages/mcp-server/src/tools/character.ts:7158 (handleCompleteDnD5eLevelUpWorkflow)
 - packages/mcp-server/src/tools/character.ts:7542 (request build for auto-applied choice)
 - packages/mcp-server/src/tools/character.ts:7553 (query maeinomatic-foundry-mcp.applyCharacterAdvancementChoice)
 - packages/mcp-server/src/tools/character.ts:7605 (ItemGrant choice handling)
 
 Foundry module query dispatch and progression application:
+
 - packages/foundry-module/src/queries.ts:730 (handleApplyCharacterAdvancementChoice)
 - packages/foundry-module/src/queries.ts:788 (dataAccess.applyCharacterAdvancementChoice)
 - packages/foundry-module/src/services/actor-progression-service.ts:90 (applyCharacterAdvancementChoice)
@@ -204,5 +229,3 @@ Foundry module query dispatch and progression application:
 - This run confirms a progression-pipeline bug specific to nontrivial DnD advancement selections (ItemGrant at level-up), not a generic connectivity failure.
 - Level-1 creation succeeds.
 - Level-up to level 2 fails when automatic advancement-choice application is attempted with an option id/shape rejected by applyCharacterAdvancementChoice.
-
-
