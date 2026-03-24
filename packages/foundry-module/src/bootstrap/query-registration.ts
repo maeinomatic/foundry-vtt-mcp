@@ -1,11 +1,21 @@
-export type QueryHandler = (payload: unknown) => Promise<unknown> | unknown;
+export type RegisteredQueryHandler = (payload: unknown) => unknown;
 
-export function registerQueryHandlers(
+export type TypedQueryHandler<Payload = never, Result = unknown> = (
+  payload: Payload
+) => Promise<Result> | Result;
+
+function adaptQueryHandler<Payload, Result>(
+  handler: TypedQueryHandler<Payload, Result>
+): RegisteredQueryHandler {
+  return (payload: unknown) => handler(payload as Payload);
+}
+
+export function registerQueryHandlers<Handlers extends Record<string, TypedQueryHandler>>(
   modulePrefix: string,
-  handlers: Record<string, QueryHandler>
+  handlers: Handlers
 ): void {
   for (const [queryName, handler] of Object.entries(handlers)) {
-    CONFIG.queries[`${modulePrefix}.${queryName}`] = handler;
+    CONFIG.queries[`${modulePrefix}.${queryName}`] = adaptQueryHandler(handler);
   }
 }
 

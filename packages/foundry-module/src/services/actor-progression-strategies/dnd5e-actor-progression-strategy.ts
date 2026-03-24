@@ -242,7 +242,8 @@ function buildHints(type: string, optional: boolean): string[] {
 
 function normalizeUuid(value: unknown): string | undefined {
   if (typeof value === 'string' && value.startsWith('Compendium.')) {
-    return value;
+    const parsed = parseCompendiumUuid(value);
+    return parsed ? `Compendium.${parsed.packId}.Item.${parsed.documentId}` : value;
   }
 
   const record = asRecord(value);

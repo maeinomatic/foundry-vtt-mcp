@@ -19,6 +19,16 @@ import type {
   PreparedCharacterProgressionUpdate,
 } from '../../systems/types.js';
 import type { GameSystem } from '../../utils/system-detection.js';
+import {
+  buildAutoAdvancementChoice,
+  collectPendingAdvancementOptions,
+  createCharacterBuildVerification,
+  createDnD5eWorkflowMetadata,
+  findMatchingAdvancementSelection,
+  findUnmatchedAdvancementSelections,
+  mergeWarnings,
+  type AppliedAdvancementStep,
+} from './character-progression-helpers.js';
 
 export type AdvancementChoiceInput = FoundryApplyCharacterAdvancementChoiceRequest['choice'];
 
@@ -29,15 +39,6 @@ export interface AdvancementSelectionInput {
   sourceItemName?: string;
   choice: AdvancementChoiceInput;
 }
-
-type AppliedAdvancementStep = {
-  stepId: string;
-  stepType: string;
-  stepTitle: string;
-  choice: FoundryApplyCharacterAdvancementChoiceResponse['choice'];
-  appliedBy: 'selection' | 'auto-safe';
-  createdItemIds?: string[];
-};
 
 type CharacterData = UnknownRecord & {
   id: string;
@@ -195,7 +196,7 @@ export class CharacterProgressionService {
       });
     }
 
-    const warnings = this.mergeWarnings(result.warnings, preview?.warnings);
+    const warnings = mergeWarnings(result.warnings, preview?.warnings);
 
     return {
       success: result.success,
@@ -287,7 +288,7 @@ export class CharacterProgressionService {
       );
     }
 
-    const workflowMetadata = this.createDnD5eWorkflowMetadata('complete-dnd5e-level-up-workflow');
+    const workflowMetadata = createDnD5eWorkflowMetadata('complete-dnd5e-level-up-workflow');
     let previewResult = await this.buildProgressionPreviewResult(parsed);
     let appliedAdvancements: AppliedAdvancementStep[] = [];
 
@@ -386,7 +387,7 @@ export class CharacterProgressionService {
         actorIdentifier: parsed.characterIdentifier,
       } satisfies FoundryValidateCharacterBuildRequest
     );
-    const verification = this.createCharacterBuildVerification(validation);
+    const verification = createCharacterBuildVerification(validation);
 
     return {
       ...workflowMetadata,
@@ -466,7 +467,7 @@ export class CharacterProgressionService {
       },
       prepared,
       preview,
-      warnings: this.mergeWarnings(prepared.warnings, preview?.warnings),
+      warnings: mergeWarnings(prepared.warnings, preview?.warnings),
     };
   }
 
@@ -483,7 +484,7 @@ export class CharacterProgressionService {
 
     let preview = initialPreview;
     for (let iteration = 0; iteration < 10; iteration += 1) {
-      const matchedSelection = this.findMatchingAdvancementSelection(
+      const matchedSelection = findMatchingAdvancementSelection(
         preview.pendingSteps,
         remainingSelections
       );
@@ -504,7 +505,7 @@ export class CharacterProgressionService {
           : nextSafeStep
             ? {
                 step: nextSafeStep,
-                choice: this.buildAutoAdvancementChoice(nextSafeStep),
+                choice: buildAutoAdvancementChoice(nextSafeStep),
                 selectionIndex: undefined,
               }
             : null;
@@ -546,7 +547,7 @@ export class CharacterProgressionService {
       });
     }
 
-    const unresolvedSelections = this.findUnmatchedAdvancementSelections(
+    const unresolvedSelections = findUnmatchedAdvancementSelections(
       preview.pendingSteps,
       remainingSelections
     );
@@ -609,195 +610,32 @@ export class CharacterProgressionService {
     pendingSteps: FoundryProgressionPreviewStep[],
     parsed: CompleteDnD5eLevelUpWorkflowArgs
   ): Promise<UnknownRecord[]> {
-    const results: UnknownRecord[] = [];
+    return collectPendingAdvancementOptions({
+      pendingSteps,
+      parsed,
+      getOptions: async (step, request) => {
+        const response = await this.foundryClient.query<FoundryGetCharacterAdvancementOptionsResponse>(
+          'maeinomatic-foundry-mcp.getCharacterAdvancementOptions',
+          {
+            actorIdentifier: request.characterIdentifier,
+            targetLevel: request.targetLevel,
+            stepId: step.id,
+            ...(request.classIdentifier !== undefined ? { classIdentifier: request.classIdentifier } : {}),
+            ...(request.optionQuery !== undefined ? { query: request.optionQuery } : {}),
+            limit: request.optionLimit,
+          } satisfies FoundryGetCharacterAdvancementOptionsRequest
+        );
 
-    for (const step of pendingSteps) {
-      if (step.choiceDetails?.options && step.choiceDetails.options.length > 0) {
-        results.push({
-          stepId: step.id,
-          stepType: step.type,
-          stepTitle: step.title,
-          level: step.level,
-          choiceDetails: step.choiceDetails,
-          options: step.choiceDetails.options,
-          totalOptions: step.choiceDetails.options.length,
-          ...(step.sourceItemId ? { sourceItemId: step.sourceItemId } : {}),
-          ...(step.sourceItemName ? { sourceItemName: step.sourceItemName } : {}),
-          ...(step.sourceItemType ? { sourceItemType: step.sourceItemType } : {}),
-        });
-        continue;
-      }
-
-      try {
-        const response =
-          await this.foundryClient.query<FoundryGetCharacterAdvancementOptionsResponse>(
-            'maeinomatic-foundry-mcp.getCharacterAdvancementOptions',
-            {
-              actorIdentifier: parsed.characterIdentifier,
-              targetLevel: parsed.targetLevel,
-              stepId: step.id,
-              ...(parsed.classIdentifier !== undefined ? { classIdentifier: parsed.classIdentifier } : {}),
-              ...(parsed.optionQuery !== undefined ? { query: parsed.optionQuery } : {}),
-              limit: parsed.optionLimit,
-            } satisfies FoundryGetCharacterAdvancementOptionsRequest
-          );
-
-        results.push({
+        return {
           stepId: response.stepId,
           stepType: response.stepType,
           stepTitle: response.stepTitle,
-          level: step.level,
-          choiceDetails: response.choiceDetails ?? step.choiceDetails,
+          ...(response.choiceDetails ? { choiceDetails: response.choiceDetails } : {}),
           options: response.options,
           totalOptions: response.totalOptions,
-          ...(step.sourceItemId ? { sourceItemId: step.sourceItemId } : {}),
-          ...(step.sourceItemName ? { sourceItemName: step.sourceItemName } : {}),
-          ...(step.sourceItemType ? { sourceItemType: step.sourceItemType } : {}),
           ...(response.warnings ? { warnings: response.warnings } : {}),
-        });
-      } catch (error) {
-        results.push({
-          stepId: step.id,
-          stepType: step.type,
-          stepTitle: step.title,
-          level: step.level,
-          choiceDetails: step.choiceDetails,
-          options: [],
-          totalOptions: 0,
-          ...(step.sourceItemId ? { sourceItemId: step.sourceItemId } : {}),
-          ...(step.sourceItemName ? { sourceItemName: step.sourceItemName } : {}),
-          ...(step.sourceItemType ? { sourceItemType: step.sourceItemType } : {}),
-          warnings: [
-            `Failed to derive concrete options for this advancement step: ${
-              error instanceof Error ? error.message : 'Unknown error'
-            }`,
-          ],
-        });
-      }
-    }
-
-    return results;
-  }
-
-  private findMatchingAdvancementSelection(
-    pendingSteps: FoundryProgressionPreviewStep[],
-    selections: AdvancementSelectionInput[]
-  ):
-    | {
-        kind: 'match';
-        selectionIndex: number;
-        selection: AdvancementSelectionInput;
-        step: FoundryProgressionPreviewStep;
-      }
-    | {
-        kind: 'ambiguous';
-        selectionIndex: number;
-        selection: AdvancementSelectionInput;
-      }
-    | null {
-    for (const [selectionIndex, selection] of selections.entries()) {
-      if (selection.stepId !== undefined) {
-        const step = pendingSteps.find(candidate => candidate.id === selection.stepId);
-        if (step) {
-          return { kind: 'match', selectionIndex, selection, step };
-        }
-        continue;
-      }
-
-      const candidates = pendingSteps.filter(candidate => this.matchesSelection(candidate, selection));
-
-      if (candidates.length === 1) {
-        return {
-          kind: 'match',
-          selectionIndex,
-          selection,
-          step: candidates[0],
         };
-      }
-
-      if (candidates.length > 1) {
-        return {
-          kind: 'ambiguous',
-          selectionIndex,
-          selection,
-        };
-      }
-    }
-
-    return null;
-  }
-
-  private findUnmatchedAdvancementSelections(
-    pendingSteps: FoundryProgressionPreviewStep[],
-    selections: AdvancementSelectionInput[]
-  ): AdvancementSelectionInput[] {
-    return selections.filter(selection => {
-      if (selection.stepId !== undefined) {
-        return !pendingSteps.some(candidate => candidate.id === selection.stepId);
-      }
-
-      return !pendingSteps.some(candidate => this.matchesSelection(candidate, selection));
-    });
-  }
-
-  private matchesSelection(
-    step: FoundryProgressionPreviewStep,
-    selection: AdvancementSelectionInput
-  ): boolean {
-    if (
-      selection.stepType !== undefined &&
-      step.type.toLowerCase() !== selection.stepType.toLowerCase()
-    ) {
-      return false;
-    }
-
-    if (selection.sourceItemId !== undefined && step.sourceItemId !== selection.sourceItemId) {
-      return false;
-    }
-
-    if (
-      selection.sourceItemName !== undefined &&
-      step.sourceItemName?.toLowerCase() !== selection.sourceItemName.toLowerCase()
-    ) {
-      return false;
-    }
-
-    return (
-      selection.stepType !== undefined ||
-      selection.sourceItemId !== undefined ||
-      selection.sourceItemName !== undefined
-    );
-  }
-
-  private mergeWarnings(...warningSets: Array<string[] | undefined>): string[] {
-    return Array.from(
-      new Set(
-        warningSets.flatMap(warnings => warnings ?? []).filter(warning => warning.trim().length > 0)
-      )
-    );
-  }
-
-  private createDnD5eWorkflowMetadata(name: string): UnknownRecord {
-    return {
-      workflow: {
-        name,
-        system: 'dnd5e',
       },
-    };
-  }
-
-  private createCharacterBuildVerification(
-    validation: FoundryValidateCharacterBuildResponse
-  ): UnknownRecord {
-    return {
-      summary: validation.summary,
-      issues: validation.issues,
-      ...(validation.outstandingAdvancements
-        ? { outstandingAdvancements: validation.outstandingAdvancements }
-        : {}),
-      ...(validation.recommendations ? { recommendations: validation.recommendations } : {}),
-      verified:
-        validation.summary.errorCount === 0 && validation.summary.outstandingAdvancementCount === 0,
-    };
+    });
   }
 }

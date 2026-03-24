@@ -5364,6 +5364,177 @@ describe('CharacterTools', () => {
     expect(result.validation).toEqual(result.verification);
   });
 
+  it('returns invalid-selection guidance when complete-dnd5e-level-up-workflow hits a rejected advancement choice', async () => {
+    const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
+      if (method === 'maeinomatic-foundry-mcp.getWorldInfo') {
+        return Promise.resolve({ system: 'dnd5e' });
+      }
+
+      if (method === 'maeinomatic-foundry-mcp.getCharacterInfo') {
+        return Promise.resolve({
+          id: 'actor-8d',
+          name: 'Laeral',
+          type: 'character',
+          system: {},
+          items: [
+            {
+              id: 'class-cleric',
+              name: 'Cleric',
+              type: 'class',
+              system: {
+                levels: 1,
+                advancement: [{ type: 'ItemGrant', level: 2 }],
+              },
+            },
+          ],
+          effects: [],
+        });
+      }
+
+      if (method === 'maeinomatic-foundry-mcp.previewCharacterProgression') {
+        expect(data).toEqual({
+          actorIdentifier: 'Laeral',
+          classIdentifier: 'Cleric',
+          targetLevel: 2,
+        });
+        return Promise.resolve({
+          system: 'dnd5e',
+          actorId: 'actor-8d',
+          actorName: 'Laeral',
+          actorType: 'character',
+          classId: 'class-cleric',
+          className: 'Cleric',
+          currentLevel: 1,
+          targetLevel: 2,
+          safeToApplyDirectly: false,
+          pendingSteps: [
+            {
+              id: 'cleric-itemgrant-step',
+              level: 2,
+              type: 'ItemGrant',
+              title: 'Cleric Feature',
+              required: true,
+              choicesRequired: false,
+              autoApplySafe: true,
+              choiceDetails: {
+                kind: 'grant-items',
+                options: [
+                  {
+                    id: 'channel-divinity',
+                    name: 'Channel Divinity',
+                    type: 'feat',
+                    source: 'configured',
+                    uuid: 'Compendium.dnd5e.classfeatures.Item.YpiLQEKGalROn7iJ',
+                    selectedByDefault: true,
+                  },
+                ],
+              },
+            },
+          ],
+        });
+      }
+
+      if (method === 'maeinomatic-foundry-mcp.applyCharacterAdvancementChoice') {
+        expect(data).toEqual({
+          actorIdentifier: 'Laeral',
+          classIdentifier: 'Cleric',
+          targetLevel: 2,
+          stepId: 'cleric-itemgrant-step',
+          choice: {
+            type: 'item-grant',
+            itemUuids: ['Compendium.dnd5e.classfeatures.Item.YpiLQEKGalROn7iJ'],
+          },
+        });
+
+        throw new Error(
+          'Item "Compendium.dnd5e.classfeatures.Item.YpiLQEKGalROn7iJ" is not a valid option for this advancement step.'
+        );
+      }
+
+      if (method === 'maeinomatic-foundry-mcp.getCharacterAdvancementOptions') {
+        expect(data).toEqual({
+          actorIdentifier: 'Laeral',
+          classIdentifier: 'Cleric',
+          targetLevel: 2,
+          stepId: 'cleric-itemgrant-step',
+          limit: 25,
+        });
+        return Promise.resolve({
+          system: 'dnd5e',
+          actorId: 'actor-8d',
+          actorName: 'Laeral',
+          actorType: 'character',
+          targetLevel: 2,
+          stepId: 'cleric-itemgrant-step',
+          stepType: 'ItemGrant',
+          stepTitle: 'Cleric Feature',
+          choiceDetails: {
+            kind: 'grant-items',
+            optionQuerySupported: false,
+          },
+          options: [
+            {
+              id: 'channel-divinity',
+              name: 'Channel Divinity',
+              type: 'feat',
+              source: 'configured',
+              uuid: 'Compendium.dnd5e.classfeatures.Item.YpiLQEKGalROn7iJ',
+            },
+          ],
+          totalOptions: 1,
+          classId: 'class-cleric',
+          className: 'Cleric',
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected query: ${method}`));
+    });
+
+    const registry = new SystemRegistry();
+    registry.register(new DnD5eAdapter());
+
+    const tools = new CharacterTools({
+      foundryClient: { query } as unknown as FoundryClient,
+      logger: createLoggerStub(),
+      systemRegistry: registry,
+    });
+
+    const result = (await tools.handleCompleteDnD5eLevelUpWorkflow({
+      characterIdentifier: 'Laeral',
+      classIdentifier: 'Cleric',
+      targetLevel: 2,
+    })) as Record<string, unknown>;
+
+    expect(result).toMatchObject({
+      success: false,
+      workflow: {
+        name: 'complete-dnd5e-level-up-workflow',
+        system: 'dnd5e',
+      },
+      workflowStatus: 'invalid-selection',
+      requiresChoices: true,
+      message:
+        'Item "Compendium.dnd5e.classfeatures.Item.YpiLQEKGalROn7iJ" is not a valid option for this advancement step.',
+      pendingAdvancements: [
+        {
+          id: 'cleric-itemgrant-step',
+          type: 'ItemGrant',
+        },
+      ],
+      pendingAdvancementOptions: [
+        {
+          stepId: 'cleric-itemgrant-step',
+          stepType: 'ItemGrant',
+          totalOptions: 1,
+        },
+      ],
+      unresolved: {
+        kind: 'advancement',
+        requiresChoices: true,
+      },
+    });
+  });
+
   it('awards split DnD5e party resources with remainder reporting and build validation', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
       if (method === 'maeinomatic-foundry-mcp.getWorldInfo') {
