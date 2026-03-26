@@ -1,26 +1,9 @@
-import { z } from 'zod';
+import { CompendiumCreatureSearchService } from '../domains/compendium/compendium-creature-search-service.js';
+import { CompendiumFormattingService } from '../domains/compendium/compendium-formatting-service.js';
 import { CompendiumReadService } from '../domains/compendium/compendium-read-service.js';
+import { CompendiumWriteService } from '../domains/compendium/compendium-write-service.js';
 import { FoundryClient } from '../foundry-client.js';
-import type {
-  FoundryActorSystemBase,
-  FoundryCreateCompendiumItemRequest,
-  FoundryCreateCompendiumItemResponse,
-  FoundryCreateWorldItemRequest,
-  FoundryCreateWorldItemResponse,
-  FoundryCompendiumEntryFull,
-  FoundryCompendiumPackSummary,
-  FoundryCompendiumSearchResult,
-  FoundryCreatureSearchCriteria,
-  FoundryCreatureSearchResult,
-  FoundryDescriptionField,
-  FoundryImportItemToCompendiumRequest,
-  FoundryImportItemToCompendiumResponse,
-  FoundryPriceData,
-  FoundryTraitsData,
-  FoundryUpdateWorldItemRequest,
-  FoundryUpdateWorldItemResponse,
-  UnknownRecord,
-} from '../foundry-types.js';
+import type { FoundryCompendiumPackSummary, UnknownRecord } from '../foundry-types.js';
 import { Logger } from '../logger.js';
 import { SystemContextService } from '../systems/system-context-service.js';
 import { SystemRegistry } from '../systems/system-registry.js';
@@ -36,68 +19,14 @@ export interface CompendiumToolsOptions {
 
 type CompendiumPack = FoundryCompendiumPackSummary;
 
-interface CompendiumEntitySystem extends FoundryActorSystemBase {
-  description?: string | FoundryDescriptionField;
-  traits?: FoundryTraitsData;
-  size?: string;
-  alignment?: string;
-  cr?: number;
-  level?: number;
-  school?: string;
-  components?: unknown;
-  duration?: unknown;
-  range?: unknown;
-  damage?: { parts?: Array<[string, string]> };
-  armor?: { value?: number };
-  weaponType?: string;
-  properties?: unknown;
-  stealth?: unknown;
-  rarity?: unknown;
-  price?: FoundryPriceData;
-  weight?: unknown;
-  quantity?: number;
-  abilities?: Record<string, { value?: number }>;
-  resources?: { legact?: unknown; legres?: { value?: number } };
-  legendary?: unknown;
-  spells?: unknown;
-  type?: { value?: string };
-  hp?: { value?: number; max?: number };
-  ac?: { value?: number };
-}
-
-type CompendiumSearchEntity = FoundryCompendiumSearchResult<CompendiumEntitySystem>;
-type CompendiumFullEntity = FoundryCompendiumEntryFull<
-  CompendiumEntitySystem,
-  UnknownRecord,
-  UnknownRecord
->;
-type CreatureSearchEntity = FoundryCreatureSearchResult<CompendiumEntitySystem>;
-type CriteriaParams = FoundryCreatureSearchCriteria;
-
-const toRecord = (value: unknown): UnknownRecord =>
-  value !== null && typeof value === 'object' ? (value as UnknownRecord) : {};
-
-const isCompendiumSearchEntity = (value: unknown): value is CompendiumSearchEntity => {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    return false;
-  }
-
-  const record = value as Record<string, unknown>;
-  return (
-    typeof record.id === 'string' &&
-    typeof record.name === 'string' &&
-    typeof record.type === 'string' &&
-    typeof record.pack === 'string' &&
-    typeof record.packLabel === 'string'
-  );
-};
-
 export class CompendiumTools {
-  private foundryClient: FoundryClient;
   private logger: Logger;
   private systemRegistry: SystemRegistry | null;
   private systemContextService: SystemContextService;
+  private formattingService: CompendiumFormattingService;
+  private creatureSearchService: CompendiumCreatureSearchService;
   private readService: CompendiumReadService;
+  private writeService: CompendiumWriteService;
 
   constructor({
     foundryClient,
@@ -105,7 +34,6 @@ export class CompendiumTools {
     systemRegistry,
     systemContextService,
   }: CompendiumToolsOptions) {
-    this.foundryClient = foundryClient;
     this.logger = logger.child({ component: 'CompendiumTools' });
     this.systemRegistry = systemRegistry ?? null;
     this.systemContextService =
@@ -115,6 +43,10 @@ export class CompendiumTools {
         logger: this.logger,
         systemRegistry: this.systemRegistry,
       });
+    this.formattingService = new CompendiumFormattingService({
+      logger: this.logger,
+      getSystemAdapter: gameSystem => this.getSystemAdapter(gameSystem),
+    });
     this.readService = new CompendiumReadService({
       foundryClient,
       logger: this.logger,
@@ -123,13 +55,29 @@ export class CompendiumTools {
       requireSystemAdapter: (gameSystem, capability) =>
         this.requireSystemAdapter(gameSystem, capability),
       describeFilterSet: (filters, gameSystem) => this.describeFilterSet(filters, gameSystem),
-      formatCompendiumItem: (item, gameSystem) => this.formatCompendiumItem(item, gameSystem),
+      formatCompendiumItem: (item, gameSystem) =>
+        this.formattingService.formatCompendiumItem(item, gameSystem),
       isCreatureEntity: item => this.isCreatureEntity(item),
-      formatWithAdapter: (adapter, entity, mode) => this.formatWithAdapter(adapter, entity, mode),
-      extractDescription: item => this.extractDescription(item),
-      extractFullDescription: item => this.extractFullDescription(item),
-      sanitizeSystemData: systemData => this.sanitizeSystemData(systemData),
-      extractItemProperties: item => this.extractItemProperties(item),
+      formatWithAdapter: (adapter, entity, mode) =>
+        this.formattingService.formatWithAdapter(adapter, entity, mode),
+      extractDescription: item => this.formattingService.extractDescription(item),
+      extractFullDescription: item => this.formattingService.extractFullDescription(item),
+      sanitizeSystemData: systemData => this.formattingService.sanitizeSystemData(systemData),
+      extractItemProperties: item => this.formattingService.extractItemProperties(item),
+    });
+    this.creatureSearchService = new CompendiumCreatureSearchService({
+      foundryClient,
+      logger: this.logger,
+      getGameSystem: () => this.getGameSystem(),
+      requireSystemAdapter: (gameSystem, capability) =>
+        this.requireSystemAdapter(gameSystem, capability),
+      getSystemDisplayName: gameSystem => this.getSystemDisplayName(gameSystem),
+      formatCreatureListItem: (creature, gameSystem) =>
+        this.formattingService.formatCreatureListItem(creature, gameSystem),
+    });
+    this.writeService = new CompendiumWriteService({
+      foundryClient,
+      logger: this.logger,
     });
   }
 
@@ -159,14 +107,6 @@ export class CompendiumTools {
   private getSystemDisplayName(gameSystem: GameSystem): string {
     const adapter = this.getSystemAdapter(gameSystem);
     return adapter?.getMetadata().displayName ?? gameSystem;
-  }
-
-  private formatWithAdapter(
-    adapter: SystemAdapter,
-    entity: CompendiumSearchEntity | CompendiumFullEntity | CreatureSearchEntity,
-    mode: 'search' | 'criteria' | 'compact' | 'details'
-  ): Record<string, unknown> {
-    return adapter.formatRawCompendiumCreature(entity, mode);
   }
 
   private isCreatureEntity(item: { type: string }): boolean {
@@ -563,200 +503,7 @@ export class CompendiumTools {
   }
 
   async handleListCreaturesByCriteria(args: unknown): Promise<unknown> {
-    // Detect game system for appropriate filtering
-    const gameSystem = await this.getGameSystem();
-
-    const parseNumericRange = (
-      value: string,
-      defaults: { min: number; max: number }
-    ): { min: number; max: number } | null => {
-      try {
-        const parsedRecord = toRecord(JSON.parse(value));
-        const hasMin = typeof parsedRecord.min === 'number';
-        const hasMax = typeof parsedRecord.max === 'number';
-        if (!hasMin && !hasMax) {
-          return null;
-        }
-
-        return {
-          min: hasMin ? (parsedRecord.min as number) : defaults.min,
-          max: hasMax ? (parsedRecord.max as number) : defaults.max,
-        };
-      } catch {
-        return null;
-      }
-    };
-
-    // Keep the core schema broad and let adapters enforce system-specific meaning.
-    const schema = z.object({
-      challengeRating: z
-        .union([
-          z.object({
-            min: z.number().optional().default(0),
-            max: z.number().optional().default(30),
-          }),
-          z
-            .string()
-            .refine(
-              val => {
-                return parseNumericRange(val, { min: 0, max: 30 }) !== null;
-              },
-              {
-                message: 'Challenge rating range must be valid JSON object with min/max numbers',
-              }
-            )
-            .transform(val => {
-              return parseNumericRange(val, { min: 0, max: 30 }) ?? { min: 0, max: 30 };
-            }),
-          z.number(),
-          z
-            .string()
-            .refine(val => !isNaN(parseFloat(val)), {
-              message: 'Challenge rating must be a valid number',
-            })
-            .transform(val => parseFloat(val)),
-        ])
-        .optional(),
-
-      level: z
-        .union([
-          z.object({
-            min: z.number().optional().default(-1),
-            max: z.number().optional().default(25),
-          }),
-          z
-            .string()
-            .refine(val => {
-              return parseNumericRange(val, { min: -1, max: 25 }) !== null;
-            })
-            .transform(val => {
-              return parseNumericRange(val, { min: -1, max: 25 }) ?? { min: -1, max: 25 };
-            }),
-          z.number(),
-          z
-            .string()
-            .refine(val => !isNaN(parseFloat(val)))
-            .transform(val => parseFloat(val)),
-        ])
-        .optional(),
-
-      // Common filters
-      creatureType: z.string().optional(), // Accept any string, validate per system
-      size: z.enum(['tiny', 'small', 'medium', 'large', 'huge', 'gargantuan']).optional(),
-
-      traits: z.array(z.string()).optional(),
-      rarity: z.enum(['common', 'uncommon', 'rare', 'unique']).optional(),
-
-      // Spellcasting-related flags may map differently per adapter.
-      hasSpells: z
-        .union([
-          z.boolean(),
-          z
-            .string()
-            .refine(val => ['true', 'false'].includes(val.toLowerCase()))
-            .transform(val => val.toLowerCase() === 'true'),
-        ])
-        .optional(),
-      hasLegendaryActions: z
-        .union([
-          z.boolean(),
-          z
-            .string()
-            .refine(val => ['true', 'false'].includes(val.toLowerCase()))
-            .transform(val => val.toLowerCase() === 'true'),
-        ])
-        .optional(),
-
-      limit: z
-        .union([
-          z.number().min(1).max(1000),
-          z
-            .string()
-            .refine(val => {
-              const num = parseInt(val, 10);
-              return !isNaN(num) && num >= 1 && num <= 1000;
-            })
-            .transform(val => parseInt(val, 10)),
-        ])
-        .optional()
-        .default(100),
-    });
-
-    let params: CriteriaParams;
-    try {
-      params = schema.parse(args) as CriteriaParams;
-      this.logger.debug('Parsed creature criteria parameters successfully', params);
-    } catch (parseError) {
-      this.logger.error('Failed to parse creature criteria parameters', { args, parseError });
-      if (parseError instanceof z.ZodError) {
-        const errorDetails = parseError.errors
-          .map(err => `${err.path.join('.')}: ${err.message}`)
-          .join('; ');
-        throw new Error(
-          `Parameter validation failed: ${errorDetails}. Received args: ${JSON.stringify(args)}`
-        );
-      }
-      throw parseError;
-    }
-
-    // Log system detection and criteria
-    const adapter = this.requireSystemAdapter(gameSystem, 'list-creatures-by-criteria');
-    const { limit: _limit, ...criteriaFilters } = params;
-    const validation = adapter.getFilterSchema().safeParse(criteriaFilters);
-    if (!validation.success) {
-      const details = validation.error.errors
-        .map(err => `${err.path.join('.')}: ${err.message}`)
-        .join('; ');
-      throw new Error(`INVALID_FILTER_FOR_SYSTEM: ${details}`);
-    }
-
-    const criteriaDescription = adapter.describeFilters(criteriaFilters);
-    this.logger.info('Creature criteria search with system detection', {
-      gameSystem,
-      criteria: criteriaDescription,
-    });
-
-    try {
-      const results = await this.foundryClient.query(
-        'maeinomatic-foundry-mcp.listCreaturesByCriteria',
-        params
-      );
-
-      this.logger.debug('Creature criteria search completed', {
-        gameSystem,
-        criteriaCount: Object.keys(params).length,
-        totalFound: results.response.creatures.length,
-        limit: params.limit,
-        packsSearched: results.response.searchSummary.packsSearched,
-      });
-
-      // Extract search summary for transparency
-      const responsePayload = results.response;
-      const resultCreatures = responsePayload.creatures;
-      const searchSummary = responsePayload.searchSummary;
-
-      return {
-        gameSystem, // Include detected system
-        criteriaDescription, // Human-readable criteria
-        creatures: resultCreatures.map(creature =>
-          this.formatCreatureListItem(creature, gameSystem)
-        ),
-        totalFound: resultCreatures.length,
-        criteria: params,
-        searchSummary: {
-          ...searchSummary,
-          searchStrategy: `Prioritized pack search - ${this.getSystemDisplayName(gameSystem)} content first, then modules, then campaign-specific`,
-          note: 'Packs searched in priority order to find most relevant creatures first',
-        },
-        optimizationNote:
-          'Use creature names to identify suitable options, then call get-compendium-item for final details only',
-      };
-    } catch (error) {
-      this.logger.error('Failed to list creatures by criteria', error);
-      throw new Error(
-        `Failed to list creatures: ${error instanceof Error ? error.message : 'Unknown error'}`
-      );
-    }
+    return this.creatureSearchService.handleListCreaturesByCriteria(args);
   }
 
   async handleListCompendiumPacks(args: unknown): Promise<unknown> {
@@ -764,420 +511,18 @@ export class CompendiumTools {
   }
 
   async handleCreateWorldItem(args: unknown): Promise<unknown> {
-    const itemDataSchema = z.object({
-      name: z.string().min(1, 'Item name cannot be empty'),
-      type: z.string().min(1, 'Item type cannot be empty'),
-      img: z.string().optional(),
-      system: z.record(z.unknown()).optional(),
-      flags: z.record(z.unknown()).optional(),
-      effects: z.array(z.unknown()).optional(),
-    });
-
-    const schema = z
-      .object({
-        sourceUuid: z.string().min(1).optional(),
-        itemData: itemDataSchema.optional(),
-        overrides: z.record(z.unknown()).optional(),
-        folderId: z.string().optional(),
-        reason: z.string().optional(),
-      })
-      .refine(
-        value => (value.sourceUuid !== undefined) !== (value.itemData !== undefined),
-        'Provide exactly one of sourceUuid or itemData'
-      );
-
-    const parsed = schema.parse(args);
-    const itemData =
-      parsed.itemData !== undefined
-        ? {
-            name: parsed.itemData.name,
-            type: parsed.itemData.type,
-            ...(parsed.itemData.img !== undefined ? { img: parsed.itemData.img } : {}),
-            ...(parsed.itemData.system !== undefined ? { system: parsed.itemData.system } : {}),
-            ...(parsed.itemData.flags !== undefined ? { flags: parsed.itemData.flags } : {}),
-            ...(parsed.itemData.effects !== undefined ? { effects: parsed.itemData.effects } : {}),
-          }
-        : undefined;
-    const request: FoundryCreateWorldItemRequest = {
-      ...(parsed.sourceUuid !== undefined ? { sourceUuid: parsed.sourceUuid } : {}),
-      ...(itemData !== undefined ? { itemData } : {}),
-      ...(parsed.overrides !== undefined ? { overrides: parsed.overrides } : {}),
-      ...(parsed.folderId !== undefined ? { folderId: parsed.folderId } : {}),
-      ...(parsed.reason !== undefined ? { reason: parsed.reason } : {}),
-    };
-
-    const result = await this.foundryClient.query<FoundryCreateWorldItemResponse>(
-      'maeinomatic-foundry-mcp.createWorldItem',
-      request
-    );
-
-    return {
-      success: result.success,
-      item: {
-        id: result.itemId,
-        name: result.itemName,
-        type: result.itemType,
-      },
-      createdFrom: result.createdFrom,
-      ...(result.sourceUuid ? { sourceUuid: result.sourceUuid } : {}),
-      ...(result.folderId !== undefined ? { folderId: result.folderId } : {}),
-      ...(result.appliedOverrides ? { appliedOverrides: result.appliedOverrides } : {}),
-    };
+    return this.writeService.handleCreateWorldItem(args);
   }
 
   async handleUpdateWorldItem(args: unknown): Promise<unknown> {
-    const schema = z.object({
-      itemIdentifier: z.string().min(1, 'Item identifier cannot be empty'),
-      updates: z.record(z.unknown()),
-      reason: z.string().optional(),
-    });
-
-    const parsed = schema.parse(args);
-    const result = await this.foundryClient.query<FoundryUpdateWorldItemResponse>(
-      'maeinomatic-foundry-mcp.updateWorldItem',
-      {
-        itemIdentifier: parsed.itemIdentifier,
-        updates: parsed.updates,
-        ...(parsed.reason !== undefined ? { reason: parsed.reason } : {}),
-      } satisfies FoundryUpdateWorldItemRequest
-    );
-
-    return {
-      success: result.success,
-      item: {
-        id: result.itemId,
-        name: result.itemName,
-        type: result.itemType,
-      },
-      appliedUpdates: result.appliedUpdates,
-      updatedFields: result.updatedFields,
-    };
+    return this.writeService.handleUpdateWorldItem(args);
   }
 
   async handleCreateCompendiumItem(args: unknown): Promise<unknown> {
-    const itemDataSchema = z.object({
-      name: z.string().min(1, 'Item name cannot be empty'),
-      type: z.string().min(1, 'Item type cannot be empty'),
-      img: z.string().optional(),
-      system: z.record(z.unknown()).optional(),
-      flags: z.record(z.unknown()).optional(),
-      effects: z.array(z.unknown()).optional(),
-    });
-
-    const schema = z
-      .object({
-        packId: z.string().min(1, 'packId cannot be empty'),
-        sourceUuid: z.string().min(1).optional(),
-        itemData: itemDataSchema.optional(),
-        overrides: z.record(z.unknown()).optional(),
-        folderId: z.string().optional(),
-        reason: z.string().optional(),
-      })
-      .refine(
-        value => (value.sourceUuid !== undefined) !== (value.itemData !== undefined),
-        'Provide exactly one of sourceUuid or itemData'
-      );
-
-    const parsed = schema.parse(args);
-    const itemData =
-      parsed.itemData !== undefined
-        ? {
-            name: parsed.itemData.name,
-            type: parsed.itemData.type,
-            ...(parsed.itemData.img !== undefined ? { img: parsed.itemData.img } : {}),
-            ...(parsed.itemData.system !== undefined ? { system: parsed.itemData.system } : {}),
-            ...(parsed.itemData.flags !== undefined ? { flags: parsed.itemData.flags } : {}),
-            ...(parsed.itemData.effects !== undefined ? { effects: parsed.itemData.effects } : {}),
-          }
-        : undefined;
-    const result = await this.foundryClient.query<FoundryCreateCompendiumItemResponse>(
-      'maeinomatic-foundry-mcp.createCompendiumItem',
-      {
-        packId: parsed.packId,
-        ...(parsed.sourceUuid !== undefined ? { sourceUuid: parsed.sourceUuid } : {}),
-        ...(itemData !== undefined ? { itemData } : {}),
-        ...(parsed.overrides !== undefined ? { overrides: parsed.overrides } : {}),
-        ...(parsed.folderId !== undefined ? { folderId: parsed.folderId } : {}),
-        ...(parsed.reason !== undefined ? { reason: parsed.reason } : {}),
-      } satisfies FoundryCreateCompendiumItemRequest
-    );
-
-    return {
-      success: result.success,
-      pack: {
-        id: result.packId,
-        ...(result.packLabel ? { label: result.packLabel } : {}),
-      },
-      item: {
-        id: result.itemId,
-        name: result.itemName,
-        type: result.itemType,
-      },
-      createdFrom: result.createdFrom,
-      ...(result.sourceUuid ? { sourceUuid: result.sourceUuid } : {}),
-      ...(result.folderId !== undefined ? { folderId: result.folderId } : {}),
-      ...(result.appliedOverrides ? { appliedOverrides: result.appliedOverrides } : {}),
-    };
+    return this.writeService.handleCreateCompendiumItem(args);
   }
 
   async handleImportItemToCompendium(args: unknown): Promise<unknown> {
-    const schema = z.object({
-      itemIdentifier: z.string().min(1, 'Item identifier cannot be empty'),
-      packId: z.string().min(1, 'packId cannot be empty'),
-      folderId: z.string().optional(),
-      reason: z.string().optional(),
-    });
-
-    const parsed = schema.parse(args);
-    const result = await this.foundryClient.query<FoundryImportItemToCompendiumResponse>(
-      'maeinomatic-foundry-mcp.importItemToCompendium',
-      {
-        itemIdentifier: parsed.itemIdentifier,
-        packId: parsed.packId,
-        ...(parsed.folderId !== undefined ? { folderId: parsed.folderId } : {}),
-        ...(parsed.reason !== undefined ? { reason: parsed.reason } : {}),
-      } satisfies FoundryImportItemToCompendiumRequest
-    );
-
-    return {
-      success: result.success,
-      sourceItem: {
-        id: result.sourceItemId,
-        name: result.sourceItemName,
-        type: result.sourceItemType,
-      },
-      pack: {
-        id: result.packId,
-        ...(result.packLabel ? { label: result.packLabel } : {}),
-      },
-      item: {
-        id: result.itemId,
-        name: result.itemName,
-        type: result.itemType,
-      },
-      ...(result.folderId !== undefined ? { folderId: result.folderId } : {}),
-    };
-  }
-
-  private formatCompendiumItem(
-    item: CompendiumSearchEntity,
-    gameSystem?: GameSystem
-  ): Record<string, unknown> {
-    const formatted: Record<string, unknown> = {
-      id: item.id,
-      name: item.name,
-      type: item.type,
-      pack: {
-        id: item.pack,
-        label: item.packLabel,
-      },
-      description: this.extractDescription(item),
-      hasImage: !!item.img,
-      summary: this.createItemSummary(item),
-    };
-
-    // Add key stats for actors/creatures to reduce need for detail calls
-    if (item.type === 'npc' || item.type === 'character') {
-      if (gameSystem) {
-        const adapter = this.getSystemAdapter(gameSystem);
-        if (adapter) {
-          const adapterFormatted = this.formatWithAdapter(adapter, item, 'search');
-          Object.assign(formatted, adapterFormatted);
-        }
-      }
-    }
-
-    return formatted;
-  }
-
-  private extractDescription(item: CompendiumSearchEntity | CompendiumFullEntity): string {
-    if (
-      'description' in item &&
-      typeof item.description === 'string' &&
-      item.description.trim().length > 0
-    ) {
-      return this.truncateText(this.stripHtml(item.description), 200);
-    }
-
-    const system = item.system ?? {};
-
-    const description = this.getSystemDescription(system);
-
-    return this.truncateText(this.stripHtml(description), 200);
-  }
-
-  private extractFullDescription(item: CompendiumFullEntity): string {
-    const system = item.system ?? {};
-
-    const description = this.getSystemDescription(system);
-
-    return this.stripHtml(description);
-  }
-
-  private createItemSummary(item: CompendiumSearchEntity | CompendiumFullEntity): string {
-    if ('summary' in item && typeof item.summary === 'string' && item.summary.trim().length > 0) {
-      return item.summary;
-    }
-
-    const parts = [];
-
-    parts.push(`${item.type ?? 'unknown'} from ${item.packLabel ?? 'unknown pack'}`);
-
-    const system = item.system ?? {};
-
-    // Add relevant summary information based on item type
-    switch ((item.type ?? '').toLowerCase()) {
-      case 'spell':
-        if (system.level) parts.push(`Level ${system.level}`);
-        if (system.school) parts.push(system.school);
-        break;
-      case 'weapon':
-        if (system.damage?.parts?.length) {
-          const damage = system.damage.parts[0];
-          parts.push(`${damage[0]} ${damage[1]} damage`);
-        }
-        break;
-      case 'armor':
-        if (system.armor?.value) parts.push(`AC ${system.armor.value}`);
-        break;
-      case 'equipment':
-      case 'item':
-        if (system.rarity) parts.push(system.rarity);
-        if (typeof system.price === 'object' && system.price !== null) {
-          const price = system.price as { value?: number | string; denomination?: string };
-          if (price.value !== undefined) {
-            parts.push(`${price.value} ${price.denomination ?? 'gp'}`);
-          }
-        }
-        break;
-    }
-
-    return parts.join(' • ');
-  }
-
-  private formatCreatureListItem(
-    creature: CreatureSearchEntity,
-    gameSystem?: GameSystem
-  ): Record<string, unknown> {
-    const formatted: Record<string, unknown> = {
-      name: creature.name,
-      id: creature.id,
-      pack: { id: creature.pack, label: creature.packLabel },
-    };
-
-    if (gameSystem) {
-      const adapter = this.getSystemAdapter(gameSystem);
-      if (adapter) {
-        const adapterFormatted = this.formatWithAdapter(adapter, creature, 'criteria');
-        Object.assign(formatted, adapterFormatted);
-      }
-    }
-
-    return formatted;
-  }
-
-  private getSystemDescription(system: CompendiumEntitySystem): string {
-    const description = system.description;
-    if (typeof description === 'string') {
-      return description;
-    }
-    if (description && typeof description === 'object') {
-      return description.value ?? description.content ?? '';
-    }
-    return system.details?.description ?? '';
-  }
-
-  private extractItemProperties(item: CompendiumFullEntity): Record<string, unknown> {
-    const system = item.system ?? {};
-    const properties: Record<string, unknown> = {};
-
-    // Common properties across different item types
-    if (system.rarity) properties.rarity = system.rarity;
-    if (system.price) properties.price = system.price;
-    if (system.weight) properties.weight = system.weight;
-    if (system.quantity) properties.quantity = system.quantity;
-
-    // Spell-specific properties
-    if ((item.type ?? '').toLowerCase() === 'spell') {
-      if (system.level !== undefined) properties.spellLevel = system.level;
-      if (system.school) properties.school = system.school;
-      if (system.components) properties.components = system.components;
-      if (system.duration) properties.duration = system.duration;
-      if (system.range) properties.range = system.range;
-    }
-
-    // Weapon-specific properties
-    if ((item.type ?? '').toLowerCase() === 'weapon') {
-      if (system.damage) properties.damage = system.damage;
-      if (system.weaponType) properties.weaponType = system.weaponType;
-      if (system.properties) properties.weaponProperties = system.properties;
-    }
-
-    // Armor-specific properties
-    if ((item.type ?? '').toLowerCase() === 'armor') {
-      if (system.armor) properties.armorClass = system.armor;
-      if (system.stealth) properties.stealthDisadvantage = system.stealth;
-    }
-
-    return properties;
-  }
-
-  private sanitizeSystemData(systemData: unknown): UnknownRecord {
-    // Remove potentially large or unnecessary fields
-    const sanitized = { ...toRecord(systemData) };
-
-    // Remove large description fields (already handled separately)
-    delete sanitized.description;
-    delete sanitized.details;
-
-    // Remove internal/technical fields
-    delete sanitized._id;
-    delete sanitized.folder;
-    delete sanitized.sort;
-    delete sanitized.ownership;
-
-    return sanitized;
-  }
-
-  private stripHtml(text: unknown): string {
-    if (!text) return '';
-
-    let normalized: string;
-
-    if (Array.isArray(text)) {
-      return text.map(item => this.stripHtml(item)).join(' ');
-    }
-
-    // Handle objects with value property (e.g., {value: "text"})
-    if (typeof text === 'object' && text !== null) {
-      const record = text as UnknownRecord;
-      if (typeof record.value === 'string') {
-        normalized = record.value;
-      } else if (typeof record.content === 'string') {
-        normalized = record.content;
-      } else {
-        // For other objects, try to stringify or return empty
-        try {
-          normalized = JSON.stringify(text);
-        } catch {
-          return '';
-        }
-      }
-    } else {
-      normalized = String(text);
-    }
-
-    if (!normalized || normalized === '[object Object]') {
-      return '';
-    }
-
-    return normalized.replace(/<[^>]*>/g, '').trim();
-  }
-
-  private truncateText(text: string, maxLength: number): string {
-    if (!text || text.length <= maxLength) {
-      return text;
-    }
-    return `${text.substring(0, maxLength - 3)}...`;
+    return this.writeService.handleImportItemToCompendium(args);
   }
 }
