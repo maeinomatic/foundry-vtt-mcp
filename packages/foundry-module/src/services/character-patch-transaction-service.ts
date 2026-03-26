@@ -411,7 +411,9 @@ export class FoundryCharacterPatchTransactionService {
           entityId: actorId,
           originalData: actorRollbackUpdates,
           rollbackAction: async (): Promise<void> => {
-            await actor.update?.(actorRollbackUpdates);
+            if (actorRollbackUpdates) {
+              await actor.update?.(actorRollbackUpdates);
+            }
           },
         });
         await actor.update(request.actorUpdates);

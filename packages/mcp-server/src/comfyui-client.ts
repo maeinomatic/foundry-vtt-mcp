@@ -666,7 +666,7 @@ export class ComfyUIClient {
 
   async downloadImage(filename: string): Promise<Buffer> {
     try {
-      const response = await axios.get(`${this.baseUrl}/view`, {
+      const response = await axios.get<ArrayBuffer>(`${this.baseUrl}/view`, {
         params: { filename },
         responseType: 'arraybuffer',
         timeout: 30000,
