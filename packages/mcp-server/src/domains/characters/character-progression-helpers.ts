@@ -1,7 +1,6 @@
 import type {
   FoundryApplyCharacterAdvancementChoiceRequest,
   FoundryApplyCharacterAdvancementChoiceResponse,
-  FoundryPreviewCharacterProgressionResponse,
   FoundryProgressionPreviewStep,
   FoundryValidateCharacterBuildResponse,
   UnknownRecord,

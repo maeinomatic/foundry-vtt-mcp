@@ -1,17 +1,53 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import type { ActorProgressionActorLike } from './actor-progression-strategy-contract.js';
 import { dnd5eActorProgressionStrategy } from './dnd5e-actor-progression-strategy.js';
 
-describe('dnd5eActorProgressionStrategy item grants', () => {
-  const originalGame = globalThis.game;
+interface TestCompendiumPackDocument {
+  _id: string;
+  name: string;
+  type: string;
+}
 
-  afterEach(() => {
-    globalThis.game = originalGame;
+interface TestCompendiumPack {
+  metadata: {
+    id: string;
+    type: string;
+  };
+  index: {
+    values: () => TestCompendiumPackDocument[];
+  };
+  getDocument: ReturnType<typeof vi.fn>;
+}
+
+interface TestGameLike {
+  packs: {
+    values: () => TestCompendiumPack[];
+  };
+}
+
+function getGlobalScope(): Record<string, unknown> {
+  return globalThis as unknown as Record<string, unknown>;
+}
+
+function setGame(value: unknown): void {
+  getGlobalScope().game = value;
+}
+
+function getGame(): unknown {
+  return getGlobalScope().game;
+}
+
+describe('dnd5eActorProgressionStrategy item grants', () => {
+  const originalGame = getGame();
+
+  afterEach((): void => {
+    setGame(originalGame);
     vi.restoreAllMocks();
   });
 
-  it('accepts canonical compendium UUIDs for item grants when the configured pool uses a raw pack UUID', async () => {
-    globalThis.game = {
+  it('accepts canonical compendium UUIDs for item grants when the configured pool uses a raw pack UUID', async (): Promise<void> => {
+    const mockGame: TestGameLike = {
       packs: {
         values: () => [
           {
@@ -32,7 +68,7 @@ describe('dnd5eActorProgressionStrategy item grants', () => {
               id: 'YpiLQEKGalROn7iJ',
               name: 'Channel Divinity',
               type: 'feat',
-              toObject: () => ({
+              toObject: (): Record<string, unknown> => ({
                 _id: 'YpiLQEKGalROn7iJ',
                 name: 'Channel Divinity',
                 type: 'feat',
@@ -42,7 +78,8 @@ describe('dnd5eActorProgressionStrategy item grants', () => {
           },
         ],
       },
-    } as typeof globalThis.game;
+    };
+    setGame(mockGame);
 
     const createEmbeddedDocuments = vi.fn().mockResolvedValue([{ id: 'created-feature-1' }]);
     const updateEmbeddedDocuments = vi.fn().mockResolvedValue([]);
@@ -73,7 +110,7 @@ describe('dnd5eActorProgressionStrategy item grants', () => {
       ],
       createEmbeddedDocuments,
       updateEmbeddedDocuments,
-    };
+    } as ActorProgressionActorLike;
 
     const result = await dnd5eActorProgressionStrategy.applyCharacterAdvancementChoice({
       actor,

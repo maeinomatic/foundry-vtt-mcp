@@ -71,7 +71,6 @@ import type {
   PreparedCharacterProgressionUpdate,
   SystemAdapter,
   SystemCharacterAction,
-  SystemSpellbookValidationIssue,
   SystemSpellcastingEntry,
 } from '../systems/types.js';
 import type { GameSystem } from '../utils/system-detection.js';
@@ -510,35 +509,50 @@ export class CharacterTools {
     this.readService = new CharacterReadService({
       foundryClient,
       logger: this.logger,
-      formatCharacterResponse: async characterData =>
+      formatCharacterResponse: async (characterData): Promise<UnknownRecord> =>
         this.formatCharacterResponse(characterData as CharacterInfoResponse),
-      formatCharacterItemDetails: async item =>
+      formatCharacterItemDetails: async (item): Promise<UnknownRecord> =>
         this.formatCharacterItemDetails(item as CharacterItem),
     });
     this.progressionService = new CharacterProgressionService({
       foundryClient,
       logger: this.logger,
-      getGameSystem: () => this.getGameSystem(),
-      getCharacterData: identifier => this.getCharacterData(identifier),
-      prepareProgressionUpdate: (characterData, request) =>
+      getGameSystem: (): Promise<GameSystem> => this.getGameSystem(),
+      getCharacterData: (identifier): Promise<CharacterInfoResponse> =>
+        this.getCharacterData(identifier),
+      prepareProgressionUpdate: (
+        characterData,
+        request
+      ): Promise<PreparedCharacterProgressionUpdate> =>
         this.prepareProgressionUpdate(characterData as CharacterInfoResponse, request),
-      applyProgressionUpdate: (characterIdentifier, prepared) =>
+      applyProgressionUpdate: (
+        characterIdentifier,
+        prepared
+      ): Promise<FoundryUpdateActorResponse | FoundryUpdateActorEmbeddedItemResponse> =>
         this.applyProgressionUpdate(characterIdentifier, prepared),
     });
     this.spellbookService = new CharacterSpellbookService({
       foundryClient,
       logger: this.logger,
-      getGameSystem: () => this.getGameSystem(),
-      getRequiredSystemAdapter: operation => this.getRequiredSystemAdapter(operation),
-      getCharacterData: identifier => this.getCharacterData(identifier),
-      getDnD5eSpellcastingClassSummaries: characterData =>
+      getGameSystem: (): Promise<GameSystem> => this.getGameSystem(),
+      getRequiredSystemAdapter: (
+        operation
+      ): Promise<{ adapter: SystemAdapter; system: GameSystem }> =>
+        this.getRequiredSystemAdapter(operation),
+      getCharacterData: (identifier): Promise<CharacterInfoResponse> =>
+        this.getCharacterData(identifier),
+      getDnD5eSpellcastingClassSummaries: (characterData): DnD5eSpellcastingClassSummary[] =>
         this.getDnD5eSpellcastingClassSummaries(characterData as CharacterInfoResponse),
-      resolveDnD5eSpellcastingClass: (characterData, classIdentifier) =>
+      resolveDnD5eSpellcastingClass: (
+        characterData,
+        classIdentifier
+      ): DnD5eSpellcastingClassSummary =>
         this.resolveDnD5eSpellcastingClass(characterData as CharacterInfoResponse, classIdentifier),
-      findDnD5eSpellItem: (characterData, spellIdentifier) =>
+      findDnD5eSpellItem: (characterData, spellIdentifier): CharacterItem =>
         this.findDnD5eSpellItem(characterData as CharacterInfoResponse, spellIdentifier),
-      handleSetDnD5ePreparedSpells: args => this.handleSetDnD5ePreparedSpells(args),
-      toRecord: value => this.toRecord(value),
+      handleSetDnD5ePreparedSpells: (args): Promise<UnknownRecord> =>
+        this.handleSetDnD5ePreparedSpells(args),
+      toRecord: (value): UnknownRecord | undefined => this.toRecord(value),
     });
   }
 

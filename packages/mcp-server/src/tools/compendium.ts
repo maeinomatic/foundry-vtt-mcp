@@ -3,7 +3,7 @@ import { CompendiumFormattingService } from '../domains/compendium/compendium-fo
 import { CompendiumReadService } from '../domains/compendium/compendium-read-service.js';
 import { CompendiumWriteService } from '../domains/compendium/compendium-write-service.js';
 import { FoundryClient } from '../foundry-client.js';
-import type { FoundryCompendiumPackSummary, UnknownRecord } from '../foundry-types.js';
+import type { UnknownRecord } from '../foundry-types.js';
 import { Logger } from '../logger.js';
 import { SystemContextService } from '../systems/system-context-service.js';
 import { SystemRegistry } from '../systems/system-registry.js';
@@ -16,8 +16,6 @@ export interface CompendiumToolsOptions {
   systemRegistry?: SystemRegistry;
   systemContextService?: SystemContextService;
 }
-
-type CompendiumPack = FoundryCompendiumPackSummary;
 
 export class CompendiumTools {
   private logger: Logger;
@@ -45,34 +43,36 @@ export class CompendiumTools {
       });
     this.formattingService = new CompendiumFormattingService({
       logger: this.logger,
-      getSystemAdapter: gameSystem => this.getSystemAdapter(gameSystem),
+      getSystemAdapter: (gameSystem): SystemAdapter | null => this.getSystemAdapter(gameSystem),
     });
     this.readService = new CompendiumReadService({
       foundryClient,
       logger: this.logger,
-      getGameSystem: () => this.getGameSystem(),
-      getSystemAdapter: gameSystem => this.getSystemAdapter(gameSystem),
-      requireSystemAdapter: (gameSystem, capability) =>
+      getGameSystem: (): Promise<GameSystem> => this.getGameSystem(),
+      getSystemAdapter: (gameSystem): SystemAdapter | null => this.getSystemAdapter(gameSystem),
+      requireSystemAdapter: (gameSystem, capability): SystemAdapter =>
         this.requireSystemAdapter(gameSystem, capability),
-      describeFilterSet: (filters, gameSystem) => this.describeFilterSet(filters, gameSystem),
-      formatCompendiumItem: (item, gameSystem) =>
+      describeFilterSet: (filters, gameSystem): string =>
+        this.describeFilterSet(filters, gameSystem),
+      formatCompendiumItem: (item, gameSystem): Record<string, unknown> =>
         this.formattingService.formatCompendiumItem(item, gameSystem),
-      isCreatureEntity: item => this.isCreatureEntity(item),
-      formatWithAdapter: (adapter, entity, mode) =>
+      isCreatureEntity: (item): boolean => this.isCreatureEntity(item),
+      formatWithAdapter: (adapter, entity, mode): Record<string, unknown> =>
         this.formattingService.formatWithAdapter(adapter, entity, mode),
-      extractDescription: item => this.formattingService.extractDescription(item),
-      extractFullDescription: item => this.formattingService.extractFullDescription(item),
-      sanitizeSystemData: systemData => this.formattingService.sanitizeSystemData(systemData),
-      extractItemProperties: item => this.formattingService.extractItemProperties(item),
+      extractDescription: (item): string => this.formattingService.extractDescription(item),
+      extractFullDescription: (item): string => this.formattingService.extractFullDescription(item),
+      sanitizeSystemData: (systemData): UnknownRecord =>
+        this.formattingService.sanitizeSystemData(systemData),
+      extractItemProperties: (item): unknown => this.formattingService.extractItemProperties(item),
     });
     this.creatureSearchService = new CompendiumCreatureSearchService({
       foundryClient,
       logger: this.logger,
-      getGameSystem: () => this.getGameSystem(),
-      requireSystemAdapter: (gameSystem, capability) =>
+      getGameSystem: (): Promise<GameSystem> => this.getGameSystem(),
+      requireSystemAdapter: (gameSystem, capability): SystemAdapter =>
         this.requireSystemAdapter(gameSystem, capability),
-      getSystemDisplayName: gameSystem => this.getSystemDisplayName(gameSystem),
-      formatCreatureListItem: (creature, gameSystem) =>
+      getSystemDisplayName: (gameSystem): string => this.getSystemDisplayName(gameSystem),
+      formatCreatureListItem: (creature, gameSystem): Record<string, unknown> =>
         this.formattingService.formatCreatureListItem(creature, gameSystem),
     });
     this.writeService = new CompendiumWriteService({
