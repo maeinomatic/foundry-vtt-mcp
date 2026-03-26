@@ -30,9 +30,7 @@ async function startBackend(): Promise<void> {
     host: '127.0.0.1',
   });
 
-  const { initializeMapGenerationRuntime } = (await import(
-    './app/map-generation-runtime.js'
-  )) as typeof import('./app/map-generation-runtime.js');
+  const { initializeMapGenerationRuntime } = await import('./app/map-generation-runtime.js');
   const { mapGenerationTools }: { mapGenerationTools: MapGenerationTools } =
     await initializeMapGenerationRuntime({
       logger,
