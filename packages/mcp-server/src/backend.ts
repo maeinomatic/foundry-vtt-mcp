@@ -87,17 +87,13 @@ async function startBackend(): Promise<void> {
 
   void autoStartComfyUI();
 
-  const { registerBackendShutdownHandlers } = (await import(
-    './app/backend-process-lifecycle.js'
-  )) as typeof import('./app/backend-process-lifecycle.js');
+  const { registerBackendShutdownHandlers } = await import('./app/backend-process-lifecycle.js');
   registerBackendShutdownHandlers(() => {
     foundryClient.disconnect();
   });
 }
 
 void (async (): Promise<void> => {
-  const { runBackendMain } = (await import(
-    './app/backend-process-lifecycle.js'
-  )) as typeof import('./app/backend-process-lifecycle.js');
+  const { runBackendMain } = await import('./app/backend-process-lifecycle.js');
   await runBackendMain(startBackend);
 })();
