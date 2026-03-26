@@ -2812,7 +2812,8 @@ export class CharacterTools {
             },
             targetLevel: {
               type: 'number',
-              description: 'Target DnD5e class level to reach using the guided progression workflow',
+              description:
+                'Target DnD5e class level to reach using the guided progression workflow',
             },
             classIdentifier: {
               type: 'string',
