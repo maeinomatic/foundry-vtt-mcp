@@ -1,45 +1,46 @@
 #!/usr/bin/env node
 
-import fs from 'node:fs';
-import path from 'node:path';
+import { assertVersionLike, readJson, versionFiles, writeJson } from './version-helpers.mjs';
 
-const root = process.cwd();
-
-const rootPackagePath = path.join(root, 'package.json');
-const serverPackagePath = path.join(root, 'packages', 'mcp-server', 'package.json');
-const moduleManifestPath = path.join(root, 'packages', 'foundry-module', 'module.json');
-
-function readJson(filePath) {
-  return JSON.parse(fs.readFileSync(filePath, 'utf8'));
-}
-
-function writeJson(filePath, data) {
-  fs.writeFileSync(filePath, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
-}
-
-const rootPackage = readJson(rootPackagePath);
+const rootPackage = readJson(versionFiles.rootPackage);
 const targetVersion = rootPackage.version;
 
-if (!/^\d+\.\d+\.\d+([-.].+)?$/.test(targetVersion)) {
-  console.error(`Invalid root package version: ${targetVersion}`);
+try {
+  assertVersionLike('root package', targetVersion);
+} catch (error) {
+  console.error(error.message);
   process.exit(1);
 }
 
-const serverPackage = readJson(serverPackagePath);
-const moduleManifest = readJson(moduleManifestPath);
+const serverPackage = readJson(versionFiles.serverPackage);
+const modulePackage = readJson(versionFiles.modulePackage);
+const moduleManifest = readJson(versionFiles.moduleManifest);
+const sharedPackage = readJson(versionFiles.sharedPackage);
 
 const changes = [];
 
 if (serverPackage.version !== targetVersion) {
   serverPackage.version = targetVersion;
-  writeJson(serverPackagePath, serverPackage);
+  writeJson(versionFiles.serverPackage, serverPackage);
   changes.push(`Updated packages/mcp-server/package.json to ${targetVersion}`);
+}
+
+if (modulePackage.version !== targetVersion) {
+  modulePackage.version = targetVersion;
+  writeJson(versionFiles.modulePackage, modulePackage);
+  changes.push(`Updated packages/foundry-module/package.json to ${targetVersion}`);
 }
 
 if (moduleManifest.version !== targetVersion) {
   moduleManifest.version = targetVersion;
-  writeJson(moduleManifestPath, moduleManifest);
+  writeJson(versionFiles.moduleManifest, moduleManifest);
   changes.push(`Updated packages/foundry-module/module.json to ${targetVersion}`);
+}
+
+if (sharedPackage.version !== targetVersion) {
+  sharedPackage.version = targetVersion;
+  writeJson(versionFiles.sharedPackage, sharedPackage);
+  changes.push(`Updated shared/package.json to ${targetVersion}`);
 }
 
 if (changes.length === 0) {

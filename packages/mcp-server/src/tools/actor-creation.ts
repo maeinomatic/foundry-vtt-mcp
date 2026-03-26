@@ -120,7 +120,7 @@ export class ActorCreationTools {
       {
         name: 'create-character-actor',
         description:
-          'Create a standalone character or NPC actor from a compendium Actor UUID. This does not create companion/familiar links.',
+          'Create a standalone character or NPC actor by cloning a compendium Actor UUID into the world. Use this for direct actor creation from an existing actor template. Do not use this for campaign journals. For DnD5e requests like "create a level 3 sorcerer" or any request that must run class/subclass/spell progression, use create-dnd5e-character-workflow instead.',
         inputSchema: {
           type: 'object',
           properties: {

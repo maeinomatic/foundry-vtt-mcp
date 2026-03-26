@@ -82,7 +82,7 @@ export class CampaignManagementTools {
       {
         name: 'create-campaign-dashboard',
         description:
-          'Create a comprehensive campaign dashboard journal with navigation, progress tracking, and part management',
+          'Create a campaign journal/dashboard for story structure, navigation, progress tracking, and part management. Use this only for campaign journals and quest structure. Do not use it for creating characters, NPCs, companions, monsters, or any other actors.',
         inputSchema: {
           type: 'object',
           properties: {

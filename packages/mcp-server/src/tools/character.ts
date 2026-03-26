@@ -2797,31 +2797,31 @@ export class CharacterTools {
       {
         name: 'create-dnd5e-character-workflow',
         description:
-          'DnD5e only: create a standalone world actor from a compendium Actor UUID, then run the class level-up workflow to the requested target level. This does not create companion links.',
+          'DnD5e only: create a standalone player character or NPC from a compendium Actor UUID, then run DnD5e class progression to the requested target level, including subclass and spell choices when needed. Use this for requests like "create a level 3 sorcerer" or other DnD5e character builds. Do not use campaign or journal tools for character creation.',
         inputSchema: {
           type: 'object',
           properties: {
             sourceUuid: {
               type: 'string',
               description:
-                'Compendium Actor UUID used as creation template, for example Compendium.dnd5e.heroes.Actor.2Pdtnswo8Nj2nafY',
+                'Compendium Actor UUID used as creation template, for example Compendium.dnd5e.heroes.Actor.2Pdtnswo8Nj2nafY. For a sorcerer workflow, pass a sorcerer actor template from a DnD5e Actor compendium.',
             },
             name: {
               type: 'string',
-              description: 'Name for the created actor',
+              description: 'Name for the created DnD5e actor',
             },
             targetLevel: {
               type: 'number',
-              description: 'Target DnD5e class level to reach using progression workflow',
+              description: 'Target DnD5e class level to reach using the guided progression workflow',
             },
             classIdentifier: {
               type: 'string',
               description:
-                'Optional class item name or ID for explicit class targeting, recommended for multiclass characters',
+                'Optional class item name or ID for explicit class targeting. Recommended for multiclass characters and acceptable for single-class requests such as Sorcerer.',
             },
             advancementSelections: {
               ...createAdvancementSelectionsInputSchema(
-                'Optional progression choices to apply during the level-up workflow.'
+                'Optional progression choices to apply during the level-up workflow, such as subclass picks, spell selections, and other required DnD5e advancement decisions.'
               ),
             },
             biography: {
