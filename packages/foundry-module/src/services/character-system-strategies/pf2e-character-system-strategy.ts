@@ -20,6 +20,7 @@ import {
   type ModulePF2eActionData,
   type ModulePF2eItemSystemData,
   type ModulePF2eSpellCollectionValue,
+  type ModulePF2eSpellcastingEntryDocument,
   type ModulePF2eSpellcastingSystemData,
   type ModuleSearchItemDocument,
   type SpellSearchFlags,
@@ -181,7 +182,15 @@ export class Pf2eCharacterSystemStrategy extends BaseCharacterSystemStrategy {
       const spellItem = ensureSpellItem(item);
       return spellItem ? [spellItem] : [];
     });
-    const spellcastingEntries = actorItems.filter(item => isPF2eSpellcastingEntryDocument(item));
+    const spellcastingEntries = actorItems.reduce<ModulePF2eSpellcastingEntryDocument[]>(
+      (entries, item) => {
+        if (isPF2eSpellcastingEntryDocument(item)) {
+          entries.push(item);
+        }
+        return entries;
+      },
+      []
+    );
     const entries: SpellcastingEntry[] = [];
 
     for (const entry of spellcastingEntries) {

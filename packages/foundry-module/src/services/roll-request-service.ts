@@ -761,9 +761,11 @@ export class FoundryRollRequestService {
     }
 
     if (character) {
+      const ownerCharacter = character;
       const ownerUser =
         allUsers.find(
-          candidate => character.testUserPermission?.(candidate, 'OWNER') && candidate.isGM !== true
+          candidate =>
+            ownerCharacter.testUserPermission?.(candidate, 'OWNER') && candidate.isGM !== true
         ) ?? undefined;
 
       if (ownerUser) {

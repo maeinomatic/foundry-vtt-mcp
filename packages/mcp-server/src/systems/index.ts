@@ -20,6 +20,7 @@ export type {
 
 // System registry (MCP server context)
 export { SystemRegistry, getSystemRegistry, resetSystemRegistry } from './system-registry.js';
+export { SystemContextService } from './system-context-service.js';
 
 // Index builder registry (Foundry browser context)
 export {

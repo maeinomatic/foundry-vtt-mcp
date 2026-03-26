@@ -1,8 +1,13 @@
 import { z } from 'zod';
 import { FoundryClient } from '../foundry-client.js';
+import { CharacterProgressionService } from '../domains/characters/character-progression-service.js';
+import { CharacterReadService } from '../domains/characters/character-read-service.js';
+import {
+  CharacterSpellbookService,
+  type DnD5eSpellcastingClassSummary,
+} from '../domains/characters/character-spellbook-service.js';
 import type {
   FoundryApplyCharacterAdvancementChoiceRequest,
-  FoundryApplyCharacterAdvancementChoiceResponse,
   FoundryApplyCharacterPatchTransactionRequest,
   FoundryApplyCharacterPatchTransactionResponse,
   FoundryActorDocumentBase,
@@ -25,16 +30,11 @@ import type {
   FoundryConfigureCharacterCompanionSummonResponse,
   FoundryDeleteActorEmbeddedItemRequest,
   FoundryDeleteActorEmbeddedItemResponse,
-  FoundryGetCharacterAdvancementOptionsRequest,
-  FoundryGetCharacterAdvancementOptionsResponse,
   FoundryGetCompendiumDocumentRequest,
   FoundryItemDocumentBase,
   FoundryItemSystemBase,
   FoundryListCharacterCompanionsRequest,
   FoundryListCharacterCompanionsResponse,
-  FoundryProgressionPreviewStep,
-  FoundryPreviewCharacterProgressionRequest,
-  FoundryPreviewCharacterProgressionResponse,
   FoundryRunDnD5eSummonActivityRequest,
   FoundryRunDnD5eSummonActivityResponse,
   FoundryRunDnD5eTransformActivityRequest,
@@ -59,6 +59,7 @@ import type {
   UnknownRecord,
 } from '../foundry-types.js';
 import { Logger } from '../logger.js';
+import { SystemContextService } from '../systems/system-context-service.js';
 import { SystemRegistry } from '../systems/system-registry.js';
 import type {
   CharacterAbilityScoreUpdateRequest,
@@ -70,15 +71,15 @@ import type {
   PreparedCharacterProgressionUpdate,
   SystemAdapter,
   SystemCharacterAction,
-  SystemSpellbookValidationIssue,
   SystemSpellcastingEntry,
 } from '../systems/types.js';
-import { detectGameSystem, type GameSystem } from '../utils/system-detection.js';
+import type { GameSystem } from '../utils/system-detection.js';
 
 export interface CharacterToolsOptions {
   foundryClient: FoundryClient;
   logger: Logger;
   systemRegistry?: SystemRegistry;
+  systemContextService?: SystemContextService;
 }
 
 type ActorListEntry = Pick<FoundryActorDocumentBase, 'id' | 'name' | 'type' | 'img'>;
@@ -107,41 +108,6 @@ type CharacterInfoResponse = Omit<
   itemVariants?: unknown[];
   itemToggles?: unknown[];
 } & UnknownRecord;
-
-type DnD5eSpellcastingClassSummary = {
-  id: string;
-  name: string;
-  spellcastingType?: string;
-  spellcastingProgression?: string;
-};
-
-type SpellbookWorkflowValidationState = {
-  character: {
-    id: string;
-    name: string;
-    type: string;
-  };
-  characterData: CharacterInfoResponse;
-  classes: DnD5eSpellcastingClassSummary[];
-  summary: Record<string, unknown>;
-  issues: SystemSpellbookValidationIssue[];
-  recommendations?: string[];
-};
-
-type SpellbookSourceClassWorkflowUpdate = {
-  spellId: string;
-  spellName: string;
-  classId: string;
-  className: string;
-  appliedBy: 'explicit' | 'auto';
-};
-
-type SpellbookPreparedFlagWorkflowUpdate = {
-  spellId: string;
-  spellName: string;
-  prepared: boolean;
-  appliedBy: 'explicit-plan' | 'auto';
-};
 
 type EffectDuration = {
   type: string | undefined;
@@ -211,15 +177,6 @@ type AdvancementSelectionSchemaInput = {
   sourceItemId?: string | undefined;
   sourceItemName?: string | undefined;
   choice: AdvancementChoiceSchemaInput;
-};
-
-type AppliedAdvancementStep = {
-  stepId: string;
-  stepType: string;
-  stepTitle: string;
-  choice: FoundryApplyCharacterAdvancementChoiceResponse['choice'];
-  appliedBy: 'selection' | 'auto-safe';
-  createdItemIds?: string[];
 };
 
 function createAdvancementChoiceSchema(): z.ZodType<AdvancementChoiceSchemaInput> {
@@ -529,32 +486,82 @@ interface UseItemResponse extends UnknownRecord {
 export class CharacterTools {
   private foundryClient: FoundryClient;
   private logger: Logger;
-  private systemRegistry: SystemRegistry | null;
-  private cachedGameSystem: GameSystem | null = null;
+  private systemContextService: SystemContextService;
+  private readService: CharacterReadService;
+  private progressionService: CharacterProgressionService;
+  private spellbookService: CharacterSpellbookService;
 
-  constructor({ foundryClient, logger, systemRegistry }: CharacterToolsOptions) {
+  constructor({
+    foundryClient,
+    logger,
+    systemRegistry,
+    systemContextService,
+  }: CharacterToolsOptions) {
     this.foundryClient = foundryClient;
     this.logger = logger.child({ component: 'CharacterTools' });
-    this.systemRegistry = systemRegistry ?? null;
+    this.systemContextService =
+      systemContextService ??
+      new SystemContextService({
+        foundryClient,
+        logger: this.logger,
+        systemRegistry: systemRegistry ?? null,
+      });
+    this.readService = new CharacterReadService({
+      foundryClient,
+      logger: this.logger,
+      formatCharacterResponse: async (characterData): Promise<UnknownRecord> =>
+        this.formatCharacterResponse(characterData as CharacterInfoResponse),
+      formatCharacterItemDetails: async (item): Promise<UnknownRecord> =>
+        this.formatCharacterItemDetails(item as CharacterItem),
+    });
+    this.progressionService = new CharacterProgressionService({
+      foundryClient,
+      logger: this.logger,
+      getGameSystem: (): Promise<GameSystem> => this.getGameSystem(),
+      getCharacterData: (identifier): Promise<CharacterInfoResponse> =>
+        this.getCharacterData(identifier),
+      prepareProgressionUpdate: (
+        characterData,
+        request
+      ): Promise<PreparedCharacterProgressionUpdate> =>
+        this.prepareProgressionUpdate(characterData as CharacterInfoResponse, request),
+      applyProgressionUpdate: (
+        characterIdentifier,
+        prepared
+      ): Promise<FoundryUpdateActorResponse | FoundryUpdateActorEmbeddedItemResponse> =>
+        this.applyProgressionUpdate(characterIdentifier, prepared),
+    });
+    this.spellbookService = new CharacterSpellbookService({
+      foundryClient,
+      logger: this.logger,
+      getGameSystem: (): Promise<GameSystem> => this.getGameSystem(),
+      getRequiredSystemAdapter: (
+        operation
+      ): Promise<{ adapter: SystemAdapter; system: GameSystem }> =>
+        this.getRequiredSystemAdapter(operation),
+      getCharacterData: (identifier): Promise<CharacterInfoResponse> =>
+        this.getCharacterData(identifier),
+      getDnD5eSpellcastingClassSummaries: (characterData): DnD5eSpellcastingClassSummary[] =>
+        this.getDnD5eSpellcastingClassSummaries(characterData as CharacterInfoResponse),
+      resolveDnD5eSpellcastingClass: (
+        characterData,
+        classIdentifier
+      ): DnD5eSpellcastingClassSummary =>
+        this.resolveDnD5eSpellcastingClass(characterData as CharacterInfoResponse, classIdentifier),
+      findDnD5eSpellItem: (characterData, spellIdentifier): CharacterItem =>
+        this.findDnD5eSpellItem(characterData as CharacterInfoResponse, spellIdentifier),
+      handleSetDnD5ePreparedSpells: (args): Promise<UnknownRecord> =>
+        this.handleSetDnD5ePreparedSpells(args),
+      toRecord: (value): UnknownRecord | undefined => this.toRecord(value),
+    });
   }
 
-  /**
-   * Get or detect the game system (cached)
-   */
   private async getGameSystem(): Promise<GameSystem> {
-    if (!this.cachedGameSystem || this.cachedGameSystem === 'other') {
-      const detectedSystem = await detectGameSystem(this.foundryClient, this.logger);
-      if (detectedSystem !== 'other') {
-        this.cachedGameSystem = detectedSystem;
-      } else if (!this.cachedGameSystem) {
-        this.cachedGameSystem = detectedSystem;
-      }
-    }
-    return this.cachedGameSystem;
+    return this.systemContextService.getGameSystem();
   }
 
   invalidateSystemCache(): void {
-    this.cachedGameSystem = null;
+    this.systemContextService.invalidateCache();
   }
 
   private async withSystemAdapter<T>(
@@ -562,13 +569,8 @@ export class CharacterTools {
     onAdapter: (adapter: SystemAdapter, system: GameSystem) => T,
     onFallback: () => T
   ): Promise<T> {
-    if (!this.systemRegistry) {
-      return onFallback();
-    }
-
     try {
-      const gameSystem = await this.getGameSystem();
-      const adapter = this.systemRegistry.getAdapter(gameSystem);
+      const { system: gameSystem, adapter } = await this.systemContextService.resolve();
       if (adapter) {
         this.logger.debug(`Using system adapter for ${operation}`, {
           system: gameSystem,
@@ -587,24 +589,7 @@ export class CharacterTools {
   private async getRequiredSystemAdapter(
     capability: string
   ): Promise<{ adapter: SystemAdapter; system: GameSystem }> {
-    if (!this.systemRegistry) {
-      throw new Error(
-        `UNSUPPORTED_CAPABILITY: No system adapter registry is available for ${capability}.`
-      );
-    }
-
-    const gameSystem = await this.getGameSystem();
-    const adapter = this.systemRegistry.getAdapter(gameSystem);
-    if (!adapter) {
-      throw new Error(
-        `UNSUPPORTED_CAPABILITY: No system adapter is available for ${capability} in this world.`
-      );
-    }
-
-    return {
-      adapter,
-      system: gameSystem,
-    };
+    return this.systemContextService.requireAdapter(capability);
   }
 
   private async getCharacterData(identifier: string): Promise<CharacterInfoResponse> {
@@ -1198,230 +1183,8 @@ export class CharacterTools {
 
   private async validateDnD5eSpellbookState(
     actorIdentifier: string
-  ): Promise<SpellbookWorkflowValidationState> {
-    const { adapter, system } = await this.getRequiredSystemAdapter('DnD5e spellbook validation');
-    if (system !== 'dnd5e') {
-      throw new Error(
-        'UNSUPPORTED_CAPABILITY: DnD5e spellbook workflows are only available when the active system is dnd5e.'
-      );
-    }
-
-    if (!adapter.validateSpellbook) {
-      throw new Error(
-        'UNSUPPORTED_CAPABILITY: The active system adapter does not support DnD5e spellbook validation.'
-      );
-    }
-
-    const characterData = await this.getCharacterData(actorIdentifier);
-    const classes = this.getDnD5eSpellcastingClassSummaries(characterData);
-    const validation = adapter.validateSpellbook(characterData);
-
-    return {
-      character: {
-        id: characterData.id,
-        name: characterData.name,
-        type: characterData.type,
-      },
-      characterData,
-      classes,
-      summary: validation.summary,
-      issues: validation.issues,
-      ...(validation.recommendations ? { recommendations: validation.recommendations } : {}),
-    };
-  }
-
-  private buildAutoDnD5eSpellbookSourceAssignments(
-    state: SpellbookWorkflowValidationState,
-    excludedSpellIds: Set<string>
-  ): SpellbookSourceClassWorkflowUpdate[] {
-    const assignments: SpellbookSourceClassWorkflowUpdate[] = [];
-    const assignedSpellIds = new Set(excludedSpellIds);
-    const soleSpellcastingClass = state.classes.length === 1 ? state.classes[0] : null;
-    const preparedSpellcastingClasses = state.classes.filter(
-      classSummary => classSummary.spellcastingType === 'prepared'
-    );
-    const solePreparedSpellcastingClass =
-      preparedSpellcastingClasses.length === 1 ? preparedSpellcastingClasses[0] : null;
-
-    for (const issue of state.issues) {
-      const issueRecord = this.toRecord(issue);
-      if (!issueRecord) {
-        continue;
-      }
-
-      const code = typeof issueRecord.code === 'string' ? issueRecord.code : undefined;
-      const spellId =
-        typeof issueRecord.spellId === 'string'
-          ? issueRecord.spellId
-          : typeof issueRecord.itemId === 'string'
-            ? issueRecord.itemId
-            : undefined;
-      const spellName =
-        typeof issueRecord.spellName === 'string'
-          ? issueRecord.spellName
-          : typeof issueRecord.itemName === 'string'
-            ? issueRecord.itemName
-            : undefined;
-
-      if (!code || !spellId || !spellName || assignedSpellIds.has(spellId)) {
-        continue;
-      }
-
-      let targetClass: DnD5eSpellcastingClassSummary | null = null;
-      if (
-        (code === 'unknown-source-class' || code === 'non-spellcasting-source-class') &&
-        soleSpellcastingClass
-      ) {
-        targetClass = soleSpellcastingClass;
-      } else if (code === 'missing-source-class' && solePreparedSpellcastingClass) {
-        targetClass = solePreparedSpellcastingClass;
-      }
-
-      if (!targetClass) {
-        continue;
-      }
-
-      assignments.push({
-        spellId,
-        spellName,
-        classId: targetClass.id,
-        className: targetClass.name,
-        appliedBy: 'auto',
-      });
-      assignedSpellIds.add(spellId);
-    }
-
-    return assignments;
-  }
-
-  private buildAutoDnD5eSpellbookPreparedUpdates(
-    issues: SystemSpellbookValidationIssue[],
-    excludedSpellIds: Set<string>
-  ): SpellbookPreparedFlagWorkflowUpdate[] {
-    const updates: SpellbookPreparedFlagWorkflowUpdate[] = [];
-    const updatedSpellIds = new Set(excludedSpellIds);
-
-    for (const issue of issues) {
-      const issueRecord = this.toRecord(issue);
-      if (!issueRecord) {
-        continue;
-      }
-
-      const code = typeof issueRecord.code === 'string' ? issueRecord.code : undefined;
-      const spellId =
-        typeof issueRecord.spellId === 'string'
-          ? issueRecord.spellId
-          : typeof issueRecord.itemId === 'string'
-            ? issueRecord.itemId
-            : undefined;
-      const spellName =
-        typeof issueRecord.spellName === 'string'
-          ? issueRecord.spellName
-          : typeof issueRecord.itemName === 'string'
-            ? issueRecord.itemName
-            : undefined;
-
-      if (
-        code !== 'preparation-mode-mismatch' ||
-        !spellId ||
-        !spellName ||
-        updatedSpellIds.has(spellId)
-      ) {
-        continue;
-      }
-
-      updates.push({
-        spellId,
-        spellName,
-        prepared: false,
-        appliedBy: 'auto',
-      });
-      updatedSpellIds.add(spellId);
-    }
-
-    return updates;
-  }
-
-  private async applyDnD5eSpellbookSourceAssignments(params: {
-    actorIdentifier: string;
-    assignments: SpellbookSourceClassWorkflowUpdate[];
-    reason?: string;
-  }): Promise<SpellbookSourceClassWorkflowUpdate[]> {
-    if (params.assignments.length === 0) {
-      return [];
-    }
-
-    await this.foundryClient.query<FoundryBatchUpdateActorEmbeddedItemsResponse>(
-      'maeinomatic-foundry-mcp.batchUpdateActorEmbeddedItems',
-      {
-        actorIdentifier: params.actorIdentifier,
-        updates: params.assignments.map(assignment => ({
-          itemIdentifier: assignment.spellId,
-          itemType: 'spell',
-          updates: {
-            'system.sourceClass': assignment.classId,
-          },
-        })),
-        ...(params.reason !== undefined ? { reason: params.reason } : {}),
-      } satisfies FoundryBatchUpdateActorEmbeddedItemsRequest
-    );
-
-    return params.assignments;
-  }
-
-  private async applyDnD5eSpellbookPreparedUpdates(params: {
-    actorIdentifier: string;
-    updates: SpellbookPreparedFlagWorkflowUpdate[];
-    reason?: string;
-  }): Promise<SpellbookPreparedFlagWorkflowUpdate[]> {
-    if (params.updates.length === 0) {
-      return [];
-    }
-
-    await this.foundryClient.query<FoundryBatchUpdateActorEmbeddedItemsResponse>(
-      'maeinomatic-foundry-mcp.batchUpdateActorEmbeddedItems',
-      {
-        actorIdentifier: params.actorIdentifier,
-        updates: params.updates.map(update => ({
-          itemIdentifier: update.spellId,
-          itemType: 'spell',
-          updates: {
-            'system.preparation.prepared': update.prepared,
-          },
-        })),
-        ...(params.reason !== undefined ? { reason: params.reason } : {}),
-      } satisfies FoundryBatchUpdateActorEmbeddedItemsRequest
-    );
-
-    return params.updates;
-  }
-
-  private collectDnD5ePreparedSpellWorkflowUpdates(
-    result: UnknownRecord
-  ): SpellbookPreparedFlagWorkflowUpdate[] {
-    const updatedSpells = Array.isArray(result.updatedSpells) ? result.updatedSpells : [];
-    const updates: SpellbookPreparedFlagWorkflowUpdate[] = [];
-
-    for (const entry of updatedSpells) {
-      const record = this.toRecord(entry);
-      if (
-        !record ||
-        typeof record.id !== 'string' ||
-        typeof record.name !== 'string' ||
-        typeof record.prepared !== 'boolean'
-      ) {
-        continue;
-      }
-
-      updates.push({
-        spellId: record.id,
-        spellName: record.name,
-        prepared: record.prepared,
-        appliedBy: 'explicit-plan',
-      });
-    }
-
-    return updates;
+  ): ReturnType<CharacterSpellbookService['validateDnD5eSpellbookState']> {
+    return this.spellbookService.validateDnD5eSpellbookState(actorIdentifier);
   }
 
   /**
@@ -3292,143 +3055,15 @@ export class CharacterTools {
   }
 
   async handleGetCharacter(args: unknown): Promise<UnknownRecord> {
-    const schema = z.object({
-      identifier: z.string().min(1, 'Character identifier cannot be empty'),
-    });
-
-    const { identifier } = schema.parse(args);
-
-    this.logger.info('Getting character information', { identifier });
-
-    try {
-      const characterData = await this.foundryClient.query<CharacterInfoResponse>(
-        'maeinomatic-foundry-mcp.getCharacterInfo',
-        {
-          identifier,
-        }
-      );
-
-      this.logger.debug('Successfully retrieved character data', {
-        characterId: characterData.id,
-        characterName: characterData.name,
-      });
-
-      return this.formatCharacterResponse(characterData);
-    } catch (error) {
-      this.logger.error('Failed to get character information', error);
-      throw new Error(
-        `Failed to retrieve character "${identifier}": ${error instanceof Error ? error.message : 'Unknown error'}`
-      );
-    }
+    return this.readService.handleGetCharacter(args);
   }
 
   async handleGetCharacterEntity(args: unknown): Promise<UnknownRecord> {
-    const schema = z.object({
-      characterIdentifier: z.string().min(1, 'Character identifier cannot be empty'),
-      entityIdentifier: z.string().min(1, 'Entity identifier cannot be empty'),
-    });
-
-    const { characterIdentifier, entityIdentifier } = schema.parse(args);
-
-    this.logger.info('Getting character entity', { characterIdentifier, entityIdentifier });
-
-    try {
-      const characterData = await this.foundryClient.query<CharacterInfoResponse>(
-        'maeinomatic-foundry-mcp.getCharacterInfo',
-        {
-          identifier: characterIdentifier,
-        }
-      );
-      const normalizedEntityIdentifier = entityIdentifier.toLowerCase();
-
-      const itemEntity = characterData.items?.find(
-        i => i.id === entityIdentifier || i.name.toLowerCase() === normalizedEntityIdentifier
-      );
-      if (itemEntity) {
-        return {
-          entityType: 'item',
-          ...(await this.formatCharacterItemDetails(itemEntity)),
-        };
-      }
-
-      const actionEntity = characterData.actions?.find(
-        a => a.name.toLowerCase() === normalizedEntityIdentifier
-      );
-      if (actionEntity) {
-        return {
-          entityType: 'action',
-          name: actionEntity.name,
-          type: actionEntity.type,
-          itemId: actionEntity.itemId,
-          traits: actionEntity.traits ?? [],
-          variants: actionEntity.variants ?? [],
-          ready: actionEntity.ready,
-          description: actionEntity.description ?? 'Action from character strikes/abilities',
-        };
-      }
-
-      const effectEntity = characterData.effects?.find(
-        e => e.name.toLowerCase() === normalizedEntityIdentifier
-      );
-      if (effectEntity) {
-        return {
-          ...effectEntity,
-          entityType: 'effect',
-          id: effectEntity.id,
-          name: effectEntity.name,
-          description: effectEntity.description ?? effectEntity.name,
-          traits: effectEntity.traits ?? [],
-          duration: effectEntity.duration,
-        };
-      }
-
-      throw new Error(
-        `Entity "${entityIdentifier}" not found on character "${characterIdentifier}". Tried items, actions, and effects.`
-      );
-    } catch (error) {
-      this.logger.error('Failed to get character entity', error);
-      throw new Error(
-        `Failed to retrieve entity "${entityIdentifier}" from character "${characterIdentifier}": ${error instanceof Error ? error.message : 'Unknown error'}`
-      );
-    }
+    return this.readService.handleGetCharacterEntity(args);
   }
 
   async handleListCharacters(args: unknown): Promise<UnknownRecord> {
-    const schema = z.object({
-      type: z.string().optional(),
-    });
-
-    const { type } = schema.parse(args);
-
-    this.logger.info('Listing characters', { type });
-
-    try {
-      const actors = await this.foundryClient.query<ActorListEntry[]>(
-        'maeinomatic-foundry-mcp.listActors',
-        {
-          type,
-        }
-      );
-
-      this.logger.debug('Successfully retrieved character list', { count: actors.length });
-
-      // Format the response for Claude
-      return {
-        characters: actors.map(actor => ({
-          id: actor.id,
-          name: actor.name,
-          type: actor.type,
-          hasImage: !!actor.img,
-        })),
-        total: actors.length,
-        filtered: type ? `Filtered by type: ${type}` : 'All characters',
-      };
-    } catch (error) {
-      this.logger.error('Failed to list characters', error);
-      throw new Error(
-        `Failed to list characters: ${error instanceof Error ? error.message : 'Unknown error'}`
-      );
-    }
+    return this.readService.handleListCharacters(args);
   }
 
   async handleUseItem(args: unknown): Promise<UseItemResponse> {
@@ -6313,283 +5948,25 @@ export class CharacterTools {
 
     const parsed = schema.parse(args);
 
-    this.logger.info('Running DnD5e spellbook organization workflow', parsed);
-
-    const gameSystem = await this.getGameSystem();
-    if (gameSystem !== 'dnd5e') {
-      throw new Error(
-        'UNSUPPORTED_CAPABILITY: organize-dnd5e-spellbook-workflow is only available when the active system is dnd5e.'
-      );
-    }
-
-    const workflowMetadata = this.createDnD5eWorkflowMetadata('organize-dnd5e-spellbook-workflow');
-    const workflowReason = parsed.reason ?? 'dnd5e spellbook organization workflow';
-    const initialState = await this.validateDnD5eSpellbookState(parsed.actorIdentifier);
-    let currentState = initialState;
-
-    const appliedSourceClassAssignments: SpellbookSourceClassWorkflowUpdate[] = [];
-    const appliedPreparationUpdates: SpellbookPreparedFlagWorkflowUpdate[] = [];
-    const spellPreparationPlanResults: UnknownRecord[] = [];
-
-    try {
-      if ((parsed.sourceClassAssignments?.length ?? 0) > 0) {
-        const seenSpellIds = new Set<string>();
-        const explicitAssignments = parsed.sourceClassAssignments!.map(assignment => {
-          const spell = this.findDnD5eSpellItem(
-            currentState.characterData,
-            assignment.spellIdentifier
-          );
-          if (seenSpellIds.has(spell.id)) {
-            throw new Error(
-              `Spell "${spell.name}" was assigned more than once in sourceClassAssignments.`
-            );
-          }
-          seenSpellIds.add(spell.id);
-
-          const targetClass = this.resolveDnD5eSpellcastingClass(
-            currentState.characterData,
-            assignment.classIdentifier
-          );
-
-          return {
-            spellId: spell.id,
-            spellName: spell.name,
-            classId: targetClass.id,
-            className: targetClass.name,
-            appliedBy: 'explicit' as const,
-          };
-        });
-
-        appliedSourceClassAssignments.push(
-          ...(await this.applyDnD5eSpellbookSourceAssignments({
-            actorIdentifier: parsed.actorIdentifier,
-            assignments: explicitAssignments,
-            reason: workflowReason,
-          }))
-        );
-        currentState = await this.validateDnD5eSpellbookState(parsed.actorIdentifier);
-      }
-
-      if (parsed.autoFixSourceClasses) {
-        const autoAssignments = this.buildAutoDnD5eSpellbookSourceAssignments(
-          currentState,
-          new Set(appliedSourceClassAssignments.map(assignment => assignment.spellId))
-        );
-
-        if (autoAssignments.length > 0) {
-          appliedSourceClassAssignments.push(
-            ...(await this.applyDnD5eSpellbookSourceAssignments({
-              actorIdentifier: parsed.actorIdentifier,
-              assignments: autoAssignments,
-              reason: workflowReason,
-            }))
-          );
-          currentState = await this.validateDnD5eSpellbookState(parsed.actorIdentifier);
-        }
-      }
-
-      for (const plan of parsed.spellPreparationPlans ?? []) {
-        const preparationResult = await this.handleSetDnD5ePreparedSpells({
-          actorIdentifier: parsed.actorIdentifier,
-          mode: plan.mode,
-          spellIdentifiers: plan.spellIdentifiers,
-          ...(plan.sourceClass !== undefined ? { sourceClass: plan.sourceClass } : {}),
-          reason: plan.reason ?? workflowReason,
-        });
-
-        spellPreparationPlanResults.push(preparationResult);
-        appliedPreparationUpdates.push(
-          ...this.collectDnD5ePreparedSpellWorkflowUpdates(preparationResult)
-        );
-      }
-
-      if (spellPreparationPlanResults.length > 0) {
-        currentState = await this.validateDnD5eSpellbookState(parsed.actorIdentifier);
-      }
-
-      if (parsed.autoFixPreparationMismatches) {
-        const autoPreparedUpdates = this.buildAutoDnD5eSpellbookPreparedUpdates(
-          currentState.issues,
-          new Set(appliedPreparationUpdates.map(update => update.spellId))
-        );
-
-        if (autoPreparedUpdates.length > 0) {
-          appliedPreparationUpdates.push(
-            ...(await this.applyDnD5eSpellbookPreparedUpdates({
-              actorIdentifier: parsed.actorIdentifier,
-              updates: autoPreparedUpdates,
-              reason: workflowReason,
-            }))
-          );
-          currentState = await this.validateDnD5eSpellbookState(parsed.actorIdentifier);
-        }
-      }
-    } catch (error) {
-      currentState = await this.validateDnD5eSpellbookState(parsed.actorIdentifier);
-
-      const autoApplied = {
-        sourceClassAssignments: appliedSourceClassAssignments.filter(
-          assignment => assignment.appliedBy === 'auto'
-        ),
-        preparationUpdates: appliedPreparationUpdates.filter(update => update.appliedBy === 'auto'),
-      };
-
-      return {
-        ...workflowMetadata,
-        success: false,
-        partialSuccess:
-          appliedSourceClassAssignments.length > 0 ||
-          appliedPreparationUpdates.length > 0 ||
-          spellPreparationPlanResults.length > 0,
-        workflowStatus: 'partial-failure',
-        character: currentState.character,
-        classes: currentState.classes,
-        initialValidation: {
-          summary: initialState.summary,
-          issues: initialState.issues,
-          ...(initialState.recommendations
-            ? { recommendations: initialState.recommendations }
-            : {}),
-        },
-        finalValidation: {
-          summary: currentState.summary,
-          issues: currentState.issues,
-          ...(currentState.recommendations
-            ? { recommendations: currentState.recommendations }
-            : {}),
-        },
-        verification: {
-          verified: false,
-          initial: {
-            summary: initialState.summary,
-            issues: initialState.issues,
-            ...(initialState.recommendations
-              ? { recommendations: initialState.recommendations }
-              : {}),
-          },
-          final: {
-            summary: currentState.summary,
-            issues: currentState.issues,
-            ...(currentState.recommendations
-              ? { recommendations: currentState.recommendations }
-              : {}),
-          },
-        },
-        ...(appliedSourceClassAssignments.length > 0 ? { appliedSourceClassAssignments } : {}),
-        ...(appliedPreparationUpdates.length > 0 ? { appliedPreparationUpdates } : {}),
-        ...(spellPreparationPlanResults.length > 0
-          ? { spellPreparationPlans: spellPreparationPlanResults }
-          : {}),
-        ...(autoApplied.sourceClassAssignments.length > 0 ||
-        autoApplied.preparationUpdates.length > 0
-          ? {
-              autoApplied: {
-                ...(autoApplied.sourceClassAssignments.length > 0
-                  ? { sourceClassAssignments: autoApplied.sourceClassAssignments }
-                  : {}),
-                ...(autoApplied.preparationUpdates.length > 0
-                  ? { preparationUpdates: autoApplied.preparationUpdates }
-                  : {}),
-              },
-            }
-          : {}),
-        unresolved: {
-          kind: 'spellbook-review',
-          reviewRequired: true,
-          issues: currentState.issues,
-          ...(currentState.recommendations
-            ? { recommendations: currentState.recommendations }
-            : {}),
-        },
-        message: error instanceof Error ? error.message : 'Unknown spellbook workflow error.',
-      };
-    }
-
-    const remainingIssues = currentState.issues;
-    const workflowCompleted = remainingIssues.length === 0;
-    const autoApplied = {
-      sourceClassAssignments: appliedSourceClassAssignments.filter(
-        assignment => assignment.appliedBy === 'auto'
-      ),
-      preparationUpdates: appliedPreparationUpdates.filter(update => update.appliedBy === 'auto'),
-    };
-
-    return {
-      ...workflowMetadata,
-      success: workflowCompleted,
-      partialSuccess:
-        !workflowCompleted &&
-        (appliedSourceClassAssignments.length > 0 ||
-          appliedPreparationUpdates.length > 0 ||
-          spellPreparationPlanResults.length > 0),
-      workflowStatus: workflowCompleted ? 'completed' : 'needs-review',
-      ...(workflowCompleted ? { completed: true } : { reviewRequired: true }),
-      character: currentState.character,
-      classes: currentState.classes,
-      initialValidation: {
-        summary: initialState.summary,
-        issues: initialState.issues,
-        ...(initialState.recommendations ? { recommendations: initialState.recommendations } : {}),
-      },
-      finalValidation: {
-        summary: currentState.summary,
-        issues: currentState.issues,
-        ...(currentState.recommendations ? { recommendations: currentState.recommendations } : {}),
-      },
-      verification: {
-        verified: workflowCompleted,
-        initial: {
-          summary: initialState.summary,
-          issues: initialState.issues,
-          ...(initialState.recommendations
-            ? { recommendations: initialState.recommendations }
-            : {}),
-        },
-        final: {
-          summary: currentState.summary,
-          issues: currentState.issues,
-          ...(currentState.recommendations
-            ? { recommendations: currentState.recommendations }
-            : {}),
-        },
-      },
-      fixes: {
-        sourceClassAssignmentsApplied: appliedSourceClassAssignments.length,
-        preparationUpdatesApplied: appliedPreparationUpdates.length,
-        spellPreparationPlansApplied: spellPreparationPlanResults.length,
-      },
-      ...(appliedSourceClassAssignments.length > 0 ? { appliedSourceClassAssignments } : {}),
-      ...(appliedPreparationUpdates.length > 0 ? { appliedPreparationUpdates } : {}),
-      ...(spellPreparationPlanResults.length > 0
-        ? { spellPreparationPlans: spellPreparationPlanResults }
+    return this.spellbookService.handleOrganizeDnD5eSpellbookWorkflow({
+      actorIdentifier: parsed.actorIdentifier,
+      ...(parsed.sourceClassAssignments !== undefined
+        ? { sourceClassAssignments: parsed.sourceClassAssignments }
         : {}),
-      ...(autoApplied.sourceClassAssignments.length > 0 || autoApplied.preparationUpdates.length > 0
+      ...(parsed.spellPreparationPlans !== undefined
         ? {
-            autoApplied: {
-              ...(autoApplied.sourceClassAssignments.length > 0
-                ? { sourceClassAssignments: autoApplied.sourceClassAssignments }
-                : {}),
-              ...(autoApplied.preparationUpdates.length > 0
-                ? { preparationUpdates: autoApplied.preparationUpdates }
-                : {}),
-            },
+            spellPreparationPlans: parsed.spellPreparationPlans.map(plan => ({
+              mode: plan.mode,
+              spellIdentifiers: plan.spellIdentifiers,
+              ...(plan.sourceClass !== undefined ? { sourceClass: plan.sourceClass } : {}),
+              ...(plan.reason !== undefined ? { reason: plan.reason } : {}),
+            })),
           }
         : {}),
-      ...(!workflowCompleted
-        ? {
-            unresolved: {
-              kind: 'spellbook-review',
-              reviewRequired: true,
-              issues: currentState.issues,
-              ...(currentState.recommendations
-                ? { recommendations: currentState.recommendations }
-                : {}),
-            },
-            nextStep:
-              'Review the remaining spellbook issues and either provide explicit sourceClassAssignments or spellPreparationPlans, or use the lower-level DnD5e spellbook tools for the remaining ambiguous cases.',
-          }
-        : {}),
-    };
+      autoFixSourceClasses: parsed.autoFixSourceClasses,
+      autoFixPreparationMismatches: parsed.autoFixPreparationMismatches,
+      ...(parsed.reason !== undefined ? { reason: parsed.reason } : {}),
+    });
   }
 
   async handleCreateCharacterCompanion(args: unknown): Promise<UnknownRecord> {
@@ -7008,18 +6385,7 @@ export class CharacterTools {
 
     this.logger.info('Previewing character progression', parsed);
 
-    const previewResult = await this.buildProgressionPreviewResult(parsed);
-
-    return {
-      success: true,
-      safeToApplyDirectly: previewResult.preview?.safeToApplyDirectly ?? true,
-      character: previewResult.character,
-      progression: previewResult.prepared.summary,
-      target: previewResult.prepared.target,
-      proposedUpdates: previewResult.prepared.updates,
-      pendingAdvancements: previewResult.preview?.pendingSteps ?? [],
-      ...(previewResult.warnings.length > 0 ? { warnings: previewResult.warnings } : {}),
-    };
+    return this.progressionService.handlePreviewCharacterProgression(parsed);
   }
 
   async handleGetCharacterAdvancementOptions(args: unknown): Promise<UnknownRecord> {
@@ -7036,39 +6402,14 @@ export class CharacterTools {
 
     this.logger.info('Getting character advancement options', parsed);
 
-    const request: FoundryGetCharacterAdvancementOptionsRequest = {
-      actorIdentifier: parsed.characterIdentifier,
+    return this.progressionService.handleGetCharacterAdvancementOptions({
+      characterIdentifier: parsed.characterIdentifier,
       targetLevel: parsed.targetLevel,
       stepId: parsed.stepId,
       ...(parsed.classIdentifier !== undefined ? { classIdentifier: parsed.classIdentifier } : {}),
       ...(parsed.query !== undefined ? { query: parsed.query } : {}),
       ...(parsed.limit !== undefined ? { limit: parsed.limit } : {}),
-    };
-
-    const result = await this.foundryClient.query<FoundryGetCharacterAdvancementOptionsResponse>(
-      'maeinomatic-foundry-mcp.getCharacterAdvancementOptions',
-      request
-    );
-
-    return {
-      success: true,
-      character: {
-        id: result.actorId,
-        name: result.actorName,
-        type: result.actorType,
-      },
-      step: {
-        id: result.stepId,
-        type: result.stepType,
-        title: result.stepTitle,
-        ...(result.choiceDetails ? { choiceDetails: result.choiceDetails } : {}),
-      },
-      options: result.options,
-      totalOptions: result.totalOptions,
-      ...(result.classId ? { classId: result.classId } : {}),
-      ...(result.className ? { className: result.className } : {}),
-      ...(result.warnings ? { warnings: result.warnings } : {}),
-    };
+    });
   }
 
   async handleApplyCharacterAdvancementChoice(args: unknown): Promise<UnknownRecord> {
@@ -7088,63 +6429,13 @@ export class CharacterTools {
 
     const choice = normalizeAdvancementChoice(parsed.choice);
 
-    const request: FoundryApplyCharacterAdvancementChoiceRequest = {
-      actorIdentifier: parsed.characterIdentifier,
+    return this.progressionService.handleApplyCharacterAdvancementChoice({
+      characterIdentifier: parsed.characterIdentifier,
       targetLevel: parsed.targetLevel,
       stepId: parsed.stepId,
       ...(parsed.classIdentifier !== undefined ? { classIdentifier: parsed.classIdentifier } : {}),
       choice,
-    };
-
-    const result = await this.foundryClient.query<FoundryApplyCharacterAdvancementChoiceResponse>(
-      'maeinomatic-foundry-mcp.applyCharacterAdvancementChoice',
-      request
-    );
-
-    let preview: FoundryPreviewCharacterProgressionResponse | null = null;
-    try {
-      preview = await this.previewCharacterProgression({
-        actorIdentifier: parsed.characterIdentifier,
-        targetLevel: parsed.targetLevel,
-        ...(parsed.classIdentifier !== undefined
-          ? { classIdentifier: parsed.classIdentifier }
-          : {}),
-      });
-    } catch (error) {
-      this.logger.warn('Failed to refresh character progression preview after applying choice', {
-        error,
-      });
-    }
-
-    const warnings = this.mergeWarnings(result.warnings, preview?.warnings);
-
-    return {
-      success: result.success,
-      character: {
-        id: result.actorId,
-        name: result.actorName,
-        type: result.actorType,
-      },
-      step: {
-        id: result.stepId,
-        type: result.stepType,
-        title: result.stepTitle,
-      },
-      choice: result.choice,
-      ...(result.classId ? { classId: result.classId } : {}),
-      ...(result.className ? { className: result.className } : {}),
-      ...(result.createdItemIds ? { createdItemIds: result.createdItemIds } : {}),
-      ...(preview
-        ? {
-            safeToApplyDirectly: preview.safeToApplyDirectly,
-            remainingPendingAdvancements: preview.pendingSteps,
-            nextStep: preview.safeToApplyDirectly
-              ? 'Run update-character-progression to finalize the class level change.'
-              : 'Continue applying the remaining advancement choices before finalizing the level change.',
-          }
-        : {}),
-      ...(warnings.length > 0 ? { warnings } : {}),
-    };
+    });
   }
 
   async handleUpdateCharacterProgression(args: unknown): Promise<UnknownRecord> {
@@ -7152,7 +6443,7 @@ export class CharacterTools {
 
     this.logger.info('Updating character progression', parsed);
 
-    return this.runProgressionUpdateFlow(parsed);
+    return this.progressionService.handleUpdateCharacterProgression(parsed);
   }
 
   async handleCompleteDnD5eLevelUpWorkflow(args: unknown): Promise<UnknownRecord> {
@@ -7160,156 +6451,7 @@ export class CharacterTools {
 
     this.logger.info('Running complete DnD5e level-up workflow', parsed);
 
-    const gameSystem = await this.getGameSystem();
-    if (gameSystem !== 'dnd5e') {
-      throw new Error(
-        'UNSUPPORTED_CAPABILITY: complete-dnd5e-level-up-workflow is only available when the active system is dnd5e.'
-      );
-    }
-
-    const workflowMetadata = this.createDnD5eWorkflowMetadata('complete-dnd5e-level-up-workflow');
-    let previewResult = await this.buildProgressionPreviewResult(parsed);
-    let appliedAdvancements: AppliedAdvancementStep[] = [];
-
-    try {
-      appliedAdvancements =
-        previewResult.preview && parsed.targetLevel !== undefined
-          ? await this.autoApplySafeAdvancements(parsed, previewResult.preview)
-          : [];
-    } catch (error) {
-      this.logger.warn('DnD5e level-up workflow stopped on an invalid advancement selection', {
-        error,
-        actorIdentifier: parsed.characterIdentifier,
-        classIdentifier: parsed.classIdentifier,
-        targetLevel: parsed.targetLevel,
-      });
-
-      previewResult = await this.buildProgressionPreviewResult(parsed);
-      const pendingStepOptions =
-        previewResult.preview && previewResult.preview.pendingSteps.length > 0
-          ? await this.collectPendingAdvancementOptions(previewResult.preview.pendingSteps, parsed)
-          : [];
-
-      return {
-        ...workflowMetadata,
-        success: false,
-        workflowStatus: 'invalid-selection',
-        requiresChoices: true,
-        character: previewResult.character,
-        progression: previewResult.prepared.summary,
-        message: error instanceof Error ? error.message : 'Invalid advancement selection.',
-        ...(previewResult.preview
-          ? { pendingAdvancements: previewResult.preview.pendingSteps }
-          : {}),
-        ...(pendingStepOptions.length > 0 ? { pendingAdvancementOptions: pendingStepOptions } : {}),
-        ...(appliedAdvancements.length > 0 ? { appliedAdvancements } : {}),
-        ...(appliedAdvancements.some(step => step.appliedBy === 'auto-safe')
-          ? {
-              autoApplied: {
-                advancements: appliedAdvancements.filter(step => step.appliedBy === 'auto-safe'),
-              },
-            }
-          : {}),
-        unresolved: {
-          kind: 'advancement',
-          requiresChoices: true,
-          ...(previewResult.preview
-            ? { pendingAdvancements: previewResult.preview.pendingSteps }
-            : {}),
-          ...(pendingStepOptions.length > 0
-            ? { pendingAdvancementOptions: pendingStepOptions }
-            : {}),
-        },
-        nextStep:
-          'Correct the invalid advancement selection, then rerun complete-dnd5e-level-up-workflow with the remaining required choices.',
-        ...(previewResult.warnings.length > 0 ? { warnings: previewResult.warnings } : {}),
-      };
-    }
-
-    if (appliedAdvancements.length > 0) {
-      previewResult = await this.buildProgressionPreviewResult(parsed);
-    }
-
-    if (previewResult.preview && !previewResult.preview.safeToApplyDirectly) {
-      const pendingStepOptions = await this.collectPendingAdvancementOptions(
-        previewResult.preview.pendingSteps,
-        parsed
-      );
-
-      return {
-        ...workflowMetadata,
-        success: false,
-        workflowStatus: 'needs-choices',
-        requiresChoices: true,
-        character: previewResult.character,
-        progression: previewResult.prepared.summary,
-        pendingAdvancements: previewResult.preview.pendingSteps,
-        ...(pendingStepOptions.length > 0 ? { pendingAdvancementOptions: pendingStepOptions } : {}),
-        ...(appliedAdvancements.length > 0 ? { appliedAdvancements } : {}),
-        ...(appliedAdvancements.some(step => step.appliedBy === 'auto-safe')
-          ? {
-              autoApplied: {
-                advancements: appliedAdvancements.filter(step => step.appliedBy === 'auto-safe'),
-              },
-            }
-          : {}),
-        unresolved: {
-          kind: 'advancement',
-          requiresChoices: true,
-          pendingAdvancements: previewResult.preview.pendingSteps,
-          ...(pendingStepOptions.length > 0
-            ? { pendingAdvancementOptions: pendingStepOptions }
-            : {}),
-        },
-        nextStep:
-          'Review the unresolved advancement steps, provide advancementSelections for the remaining required choices, and rerun complete-dnd5e-level-up-workflow.',
-        ...(previewResult.warnings.length > 0 ? { warnings: previewResult.warnings } : {}),
-      };
-    }
-
-    const result = await this.applyProgressionUpdate(
-      parsed.characterIdentifier,
-      previewResult.prepared
-    );
-    const validation = await this.foundryClient.query<FoundryValidateCharacterBuildResponse>(
-      'maeinomatic-foundry-mcp.validateCharacterBuild',
-      {
-        actorIdentifier: parsed.characterIdentifier,
-      } satisfies FoundryValidateCharacterBuildRequest
-    );
-    const verification = this.createCharacterBuildVerification(validation);
-
-    return {
-      ...workflowMetadata,
-      success: result.success,
-      workflowStatus: 'completed',
-      completed: true,
-      character:
-        'actorType' in result
-          ? {
-              id: result.actorId,
-              name: result.actorName,
-              type: result.actorType,
-            }
-          : {
-              id: result.actorId,
-              name: result.actorName,
-            },
-      progression: previewResult.prepared.summary,
-      appliedUpdates: result.appliedUpdates,
-      updatedFields: result.updatedFields,
-      ...(appliedAdvancements.length > 0 ? { appliedAdvancements } : {}),
-      ...(appliedAdvancements.some(step => step.appliedBy === 'auto-safe')
-        ? {
-            autoApplied: {
-              advancements: appliedAdvancements.filter(step => step.appliedBy === 'auto-safe'),
-            },
-          }
-        : {}),
-      verification,
-      validation: verification,
-      ...(previewResult.warnings.length > 0 ? { warnings: previewResult.warnings } : {}),
-    };
+    return this.progressionService.handleCompleteDnD5eLevelUpWorkflow(parsed);
   }
 
   async handleCreateDnD5eCharacterWorkflow(args: unknown): Promise<UnknownRecord> {
@@ -7419,396 +6561,6 @@ export class CharacterTools {
     };
   }
 
-  private async runProgressionUpdateFlow(parsed: {
-    characterIdentifier: string;
-    targetLevel?: number;
-    classIdentifier?: string;
-    experiencePoints?: number;
-    experienceSpent?: number;
-    advancementSelections?: AdvancementSelectionInput[];
-  }): Promise<UnknownRecord> {
-    let previewResult = await this.buildProgressionPreviewResult(parsed);
-    const autoAppliedAdvancements =
-      previewResult.preview && parsed.targetLevel !== undefined
-        ? await this.autoApplySafeAdvancements(parsed, previewResult.preview)
-        : [];
-
-    if (autoAppliedAdvancements.length > 0) {
-      previewResult = await this.buildProgressionPreviewResult(parsed);
-    }
-
-    if (previewResult.preview && !previewResult.preview.safeToApplyDirectly) {
-      return {
-        success: false,
-        requiresChoices: true,
-        character: previewResult.character,
-        progression: previewResult.prepared.summary,
-        pendingAdvancements: previewResult.preview.pendingSteps,
-        ...(autoAppliedAdvancements.length > 0 ? { autoAppliedAdvancements } : {}),
-        nextStep:
-          'Review the pending DnD5e advancement steps and complete the required choices through a dedicated advancement flow before applying the level change.',
-        ...(previewResult.warnings.length > 0 ? { warnings: previewResult.warnings } : {}),
-      };
-    }
-
-    const result = await this.applyProgressionUpdate(
-      parsed.characterIdentifier,
-      previewResult.prepared
-    );
-
-    return {
-      success: result.success,
-      character:
-        'actorType' in result
-          ? {
-              id: result.actorId,
-              name: result.actorName,
-              type: result.actorType,
-            }
-          : {
-              id: result.actorId,
-              name: result.actorName,
-            },
-      progression: previewResult.prepared.summary,
-      appliedUpdates: result.appliedUpdates,
-      updatedFields: result.updatedFields,
-      ...(autoAppliedAdvancements.length > 0 ? { autoAppliedAdvancements } : {}),
-      ...(previewResult.warnings.length > 0 ? { warnings: previewResult.warnings } : {}),
-      ...(previewResult.preview && previewResult.preview.pendingSteps.length > 0
-        ? { pendingAdvancements: previewResult.preview.pendingSteps }
-        : {}),
-    };
-  }
-
-  private async previewCharacterProgression(
-    request: FoundryPreviewCharacterProgressionRequest
-  ): Promise<FoundryPreviewCharacterProgressionResponse> {
-    return this.foundryClient.query<FoundryPreviewCharacterProgressionResponse>(
-      'maeinomatic-foundry-mcp.previewCharacterProgression',
-      request
-    );
-  }
-
-  private async autoApplySafeAdvancements(
-    parsed: {
-      characterIdentifier: string;
-      targetLevel?: number;
-      classIdentifier?: string;
-      experiencePoints?: number;
-      experienceSpent?: number;
-      advancementSelections?: AdvancementSelectionInput[];
-    },
-    initialPreview: FoundryPreviewCharacterProgressionResponse
-  ): Promise<AppliedAdvancementStep[]> {
-    if (parsed.targetLevel === undefined) {
-      return [];
-    }
-
-    const applied: AppliedAdvancementStep[] = [];
-    const remainingSelections = [...(parsed.advancementSelections ?? [])];
-
-    let preview = initialPreview;
-    for (let iteration = 0; iteration < 10; iteration += 1) {
-      const matchedSelection = this.findMatchingAdvancementSelection(
-        preview.pendingSteps,
-        remainingSelections
-      );
-      if (matchedSelection && matchedSelection.kind === 'ambiguous') {
-        throw new Error(
-          `The provided advancement selection for "${matchedSelection.selection.stepType ?? matchedSelection.selection.stepId ?? 'unknown'}" matched multiple pending steps. Include stepId or more source-item context to disambiguate it.`
-        );
-      }
-
-      const nextSafeStep = preview.pendingSteps.find(step => step.autoApplySafe === true);
-      const nextAction =
-        matchedSelection && matchedSelection.kind === 'match'
-          ? {
-              step: matchedSelection.step,
-              choice: matchedSelection.selection.choice,
-              selectionIndex: matchedSelection.selectionIndex,
-            }
-          : nextSafeStep
-            ? {
-                step: nextSafeStep,
-                choice: this.buildAutoAdvancementChoice(nextSafeStep),
-                selectionIndex: undefined,
-              }
-            : null;
-
-      if (!nextAction?.choice) {
-        break;
-      }
-
-      const request: FoundryApplyCharacterAdvancementChoiceRequest = {
-        actorIdentifier: parsed.characterIdentifier,
-        targetLevel: parsed.targetLevel,
-        stepId: nextAction.step.id,
-        ...(parsed.classIdentifier !== undefined
-          ? { classIdentifier: parsed.classIdentifier }
-          : {}),
-        choice: nextAction.choice,
-      };
-
-      const result = await this.foundryClient.query<FoundryApplyCharacterAdvancementChoiceResponse>(
-        'maeinomatic-foundry-mcp.applyCharacterAdvancementChoice',
-        request
-      );
-
-      applied.push({
-        stepId: result.stepId,
-        stepType: result.stepType,
-        stepTitle: result.stepTitle,
-        choice: result.choice,
-        appliedBy: nextAction.selectionIndex !== undefined ? 'selection' : 'auto-safe',
-        ...(result.createdItemIds ? { createdItemIds: result.createdItemIds } : {}),
-      });
-
-      if (nextAction.selectionIndex !== undefined) {
-        remainingSelections.splice(nextAction.selectionIndex, 1);
-      }
-
-      preview = await this.previewCharacterProgression({
-        actorIdentifier: parsed.characterIdentifier,
-        targetLevel: parsed.targetLevel,
-        ...(parsed.classIdentifier !== undefined
-          ? { classIdentifier: parsed.classIdentifier }
-          : {}),
-      });
-    }
-
-    const unresolvedSelections = this.findUnmatchedAdvancementSelections(
-      preview.pendingSteps,
-      remainingSelections
-    );
-    if (unresolvedSelections.length > 0) {
-      const labels = unresolvedSelections.map(
-        selection =>
-          selection.stepId ??
-          `${selection.stepType ?? selection.choice.type}${
-            selection.sourceItemName ? ` (${selection.sourceItemName})` : ''
-          }`
-      );
-      throw new Error(
-        `The provided advancement selections did not match the actual pending steps for this level-up: ${labels.join(', ')}.`
-      );
-    }
-
-    return applied;
-  }
-
-  private buildAutoAdvancementChoice(
-    step: FoundryProgressionPreviewStep
-  ): FoundryApplyCharacterAdvancementChoiceRequest['choice'] | null {
-    const lowerType = step.type.toLowerCase();
-    const choiceDetails = step.choiceDetails;
-
-    if (lowerType === 'itemgrant') {
-      const defaultOptionUuids =
-        choiceDetails?.options
-          ?.filter(option => {
-            const optionRecord = option as Record<string, unknown>;
-            return optionRecord.selectedByDefault === true && typeof option.uuid === 'string';
-          })
-          .map(option => option.uuid as string) ?? [];
-
-      return {
-        type: 'item-grant',
-        ...(defaultOptionUuids.length > 0 ? { itemUuids: defaultOptionUuids } : {}),
-        ...(choiceDetails?.abilityOptions?.length === 1
-          ? { ability: choiceDetails.abilityOptions[0] }
-          : {}),
-      };
-    }
-
-    if (lowerType === 'size') {
-      const sizeOption = choiceDetails?.options?.[0];
-      if (!sizeOption) {
-        return null;
-      }
-
-      return {
-        type: 'size',
-        size: sizeOption.id,
-      };
-    }
-
-    return null;
-  }
-
-  private async collectPendingAdvancementOptions(
-    pendingSteps: FoundryProgressionPreviewStep[],
-    parsed: {
-      characterIdentifier: string;
-      targetLevel: number;
-      classIdentifier?: string;
-      optionQuery?: string;
-      optionLimit: number;
-    }
-  ): Promise<UnknownRecord[]> {
-    const results: UnknownRecord[] = [];
-
-    for (const step of pendingSteps) {
-      if (step.choiceDetails?.options && step.choiceDetails.options.length > 0) {
-        results.push({
-          stepId: step.id,
-          stepType: step.type,
-          stepTitle: step.title,
-          level: step.level,
-          choiceDetails: step.choiceDetails,
-          options: step.choiceDetails.options,
-          totalOptions: step.choiceDetails.options.length,
-          ...(step.sourceItemId ? { sourceItemId: step.sourceItemId } : {}),
-          ...(step.sourceItemName ? { sourceItemName: step.sourceItemName } : {}),
-          ...(step.sourceItemType ? { sourceItemType: step.sourceItemType } : {}),
-        });
-        continue;
-      }
-
-      try {
-        const response =
-          await this.foundryClient.query<FoundryGetCharacterAdvancementOptionsResponse>(
-            'maeinomatic-foundry-mcp.getCharacterAdvancementOptions',
-            {
-              actorIdentifier: parsed.characterIdentifier,
-              targetLevel: parsed.targetLevel,
-              stepId: step.id,
-              ...(parsed.classIdentifier !== undefined
-                ? { classIdentifier: parsed.classIdentifier }
-                : {}),
-              ...(parsed.optionQuery !== undefined ? { query: parsed.optionQuery } : {}),
-              limit: parsed.optionLimit,
-            } satisfies FoundryGetCharacterAdvancementOptionsRequest
-          );
-
-        results.push({
-          stepId: response.stepId,
-          stepType: response.stepType,
-          stepTitle: response.stepTitle,
-          level: step.level,
-          choiceDetails: response.choiceDetails ?? step.choiceDetails,
-          options: response.options,
-          totalOptions: response.totalOptions,
-          ...(step.sourceItemId ? { sourceItemId: step.sourceItemId } : {}),
-          ...(step.sourceItemName ? { sourceItemName: step.sourceItemName } : {}),
-          ...(step.sourceItemType ? { sourceItemType: step.sourceItemType } : {}),
-          ...(response.warnings ? { warnings: response.warnings } : {}),
-        });
-      } catch (error) {
-        results.push({
-          stepId: step.id,
-          stepType: step.type,
-          stepTitle: step.title,
-          level: step.level,
-          choiceDetails: step.choiceDetails,
-          options: [],
-          totalOptions: 0,
-          ...(step.sourceItemId ? { sourceItemId: step.sourceItemId } : {}),
-          ...(step.sourceItemName ? { sourceItemName: step.sourceItemName } : {}),
-          ...(step.sourceItemType ? { sourceItemType: step.sourceItemType } : {}),
-          warnings: [
-            `Failed to derive concrete options for this advancement step: ${
-              error instanceof Error ? error.message : 'Unknown error'
-            }`,
-          ],
-        });
-      }
-    }
-
-    return results;
-  }
-
-  private findMatchingAdvancementSelection(
-    pendingSteps: FoundryProgressionPreviewStep[],
-    selections: AdvancementSelectionInput[]
-  ):
-    | {
-        kind: 'match';
-        selectionIndex: number;
-        selection: AdvancementSelectionInput;
-        step: FoundryProgressionPreviewStep;
-      }
-    | {
-        kind: 'ambiguous';
-        selectionIndex: number;
-        selection: AdvancementSelectionInput;
-      }
-    | null {
-    for (const [selectionIndex, selection] of selections.entries()) {
-      if (selection.stepId !== undefined) {
-        const step = pendingSteps.find(candidate => candidate.id === selection.stepId);
-        if (step) {
-          return { kind: 'match', selectionIndex, selection, step };
-        }
-        continue;
-      }
-
-      const candidates = pendingSteps.filter(candidate =>
-        this.matchesSelection(candidate, selection)
-      );
-
-      if (candidates.length === 1) {
-        return {
-          kind: 'match',
-          selectionIndex,
-          selection,
-          step: candidates[0],
-        };
-      }
-
-      if (candidates.length > 1) {
-        return {
-          kind: 'ambiguous',
-          selectionIndex,
-          selection,
-        };
-      }
-    }
-
-    return null;
-  }
-
-  private findUnmatchedAdvancementSelections(
-    pendingSteps: FoundryProgressionPreviewStep[],
-    selections: AdvancementSelectionInput[]
-  ): AdvancementSelectionInput[] {
-    return selections.filter(selection => {
-      if (selection.stepId !== undefined) {
-        return !pendingSteps.some(candidate => candidate.id === selection.stepId);
-      }
-
-      return !pendingSteps.some(candidate => this.matchesSelection(candidate, selection));
-    });
-  }
-
-  private matchesSelection(
-    step: FoundryProgressionPreviewStep,
-    selection: AdvancementSelectionInput
-  ): boolean {
-    if (
-      selection.stepType !== undefined &&
-      step.type.toLowerCase() !== selection.stepType.toLowerCase()
-    ) {
-      return false;
-    }
-
-    if (selection.sourceItemId !== undefined && step.sourceItemId !== selection.sourceItemId) {
-      return false;
-    }
-
-    if (
-      selection.sourceItemName !== undefined &&
-      step.sourceItemName?.toLowerCase() !== selection.sourceItemName.toLowerCase()
-    ) {
-      return false;
-    }
-
-    return (
-      selection.stepType !== undefined ||
-      selection.sourceItemId !== undefined ||
-      selection.sourceItemName !== undefined
-    );
-  }
-
   private parseProgressionArgs(args: unknown): {
     characterIdentifier: string;
     targetLevel?: number;
@@ -7859,6 +6611,17 @@ export class CharacterTools {
     };
   }
 
+  private async runProgressionUpdateFlow(args: {
+    characterIdentifier: string;
+    targetLevel?: number;
+    classIdentifier?: string;
+    experiencePoints?: number;
+    experienceSpent?: number;
+    advancementSelections?: AdvancementSelectionInput[];
+  }): Promise<UnknownRecord> {
+    return this.progressionService.handleUpdateCharacterProgression(args);
+  }
+
   private parseCompleteDnD5eLevelUpWorkflowArgs(args: unknown): {
     characterIdentifier: string;
     targetLevel: number;
@@ -7899,61 +6662,6 @@ export class CharacterTools {
         : {}),
       ...(parsed.optionQuery !== undefined ? { optionQuery: parsed.optionQuery } : {}),
       optionLimit: parsed.optionLimit,
-    };
-  }
-
-  private async buildProgressionPreviewResult(parsed: {
-    characterIdentifier: string;
-    targetLevel?: number;
-    classIdentifier?: string;
-    experiencePoints?: number;
-    experienceSpent?: number;
-  }): Promise<{
-    character: { id: string; name: string; type: string };
-    prepared: PreparedCharacterProgressionUpdate;
-    preview: FoundryPreviewCharacterProgressionResponse | null;
-    warnings: string[];
-  }> {
-    const characterData = await this.foundryClient.query<CharacterInfoResponse>(
-      'maeinomatic-foundry-mcp.getCharacterInfo',
-      {
-        identifier: parsed.characterIdentifier,
-      }
-    );
-
-    const progressionRequest: CharacterProgressionUpdateRequest = {
-      ...(parsed.targetLevel !== undefined ? { targetLevel: parsed.targetLevel } : {}),
-      ...(parsed.classIdentifier !== undefined ? { classIdentifier: parsed.classIdentifier } : {}),
-      ...(parsed.experiencePoints !== undefined
-        ? { experiencePoints: parsed.experiencePoints }
-        : {}),
-      ...(parsed.experienceSpent !== undefined ? { experienceSpent: parsed.experienceSpent } : {}),
-    };
-
-    const prepared = await this.prepareProgressionUpdate(characterData, progressionRequest);
-    const gameSystem = await this.getGameSystem();
-    const preview =
-      gameSystem === 'dnd5e' &&
-      parsed.targetLevel !== undefined &&
-      prepared.target.kind === 'embedded-item'
-        ? await this.previewCharacterProgression({
-            actorIdentifier: parsed.characterIdentifier,
-            targetLevel: parsed.targetLevel,
-            ...(parsed.classIdentifier !== undefined
-              ? { classIdentifier: parsed.classIdentifier }
-              : {}),
-          })
-        : null;
-
-    return {
-      character: {
-        id: characterData.id,
-        name: characterData.name,
-        type: characterData.type,
-      },
-      prepared,
-      preview,
-      warnings: this.mergeWarnings(prepared.warnings, preview?.warnings),
     };
   }
 
