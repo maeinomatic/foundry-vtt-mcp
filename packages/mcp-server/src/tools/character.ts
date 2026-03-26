@@ -179,6 +179,17 @@ type AdvancementSelectionSchemaInput = {
   choice: AdvancementChoiceSchemaInput;
 };
 
+type DnD5eCharacterCustomizationInput = {
+  biography?: string | undefined;
+  alignment?: string | undefined;
+  race?: string | undefined;
+  gender?: string | undefined;
+  appearance?: string | undefined;
+  conceptNotes?: string | undefined;
+};
+
+const DND5E_CONCEPT_FLAG_BASE_PATH = 'flags.maeinomatic-foundry-mcp.characterConcept';
+
 function createAdvancementChoiceSchema(): z.ZodType<AdvancementChoiceSchemaInput> {
   const choiceSchema = z.discriminatedUnion('mode', [
     z.object({
@@ -390,6 +401,19 @@ function createAdvancementSelectionsInputSchema(description: string): Record<str
       required: ['choice'],
     },
   };
+}
+
+function createDnD5eCharacterCustomizationSchema(): z.ZodType<DnD5eCharacterCustomizationInput> {
+  return z
+    .object({
+      biography: z.string().min(1).optional(),
+      alignment: z.string().min(1).optional(),
+      race: z.string().min(1).optional(),
+      gender: z.string().min(1).optional(),
+      appearance: z.string().min(1).optional(),
+      conceptNotes: z.string().min(1).optional(),
+    })
+    .strict();
 }
 
 function createSpellPreparationPlanSchema(): z.ZodEffects<
@@ -2828,6 +2852,46 @@ export class CharacterTools {
             biography: {
               type: 'string',
               description: 'Optional biography text to write to system.details.biography.value',
+            },
+            customization: {
+              type: 'object',
+              description:
+                'Optional concept customization for DnD5e identity fields. Safe mapped fields are written to actor data; other concept fields are preserved under MCP flags so they are not silently dropped.',
+              properties: {
+                biography: {
+                  type: 'string',
+                  description:
+                    'Optional biography override. If omitted and preserveSourceProfile is false, inherited source biography is cleared.',
+                },
+                alignment: {
+                  type: 'string',
+                  description: 'Optional DnD5e alignment value written to system.details.alignment',
+                },
+                race: {
+                  type: 'string',
+                  description: 'Optional DnD5e race value written to system.details.race',
+                },
+                gender: {
+                  type: 'string',
+                  description:
+                    'Optional concept gender value preserved under MCP concept flags because no stable DnD5e actor data path is currently mapped in this server.',
+                },
+                appearance: {
+                  type: 'string',
+                  description:
+                    'Optional appearance description preserved under MCP concept flags because no stable DnD5e actor data path is currently mapped in this server.',
+                },
+                conceptNotes: {
+                  type: 'string',
+                  description:
+                    'Optional freeform concept notes preserved under MCP concept flags for later inspection or downstream tooling.',
+                },
+              },
+            },
+            preserveSourceProfile: {
+              type: 'boolean',
+              description:
+                'Whether to preserve source-template biography and concept profile fields. Defaults to false for concept-safe creation.',
             },
             addToScene: {
               type: 'boolean',
@@ -6457,6 +6521,7 @@ export class CharacterTools {
 
   async handleCreateDnD5eCharacterWorkflow(args: unknown): Promise<UnknownRecord> {
     const advancementSelectionSchema = createAdvancementSelectionSchema();
+    const customizationSchema = createDnD5eCharacterCustomizationSchema();
     const schema = z
       .object({
         sourceUuid: z.string().min(1, 'sourceUuid cannot be empty'),
@@ -6465,6 +6530,8 @@ export class CharacterTools {
         classIdentifier: z.string().min(1).optional(),
         advancementSelections: z.array(advancementSelectionSchema).optional(),
         biography: z.string().min(1).optional(),
+        customization: customizationSchema.optional(),
+        preserveSourceProfile: z.boolean().default(false),
         addToScene: z.boolean().default(false),
         placement: z
           .object({
@@ -6514,15 +6581,20 @@ export class CharacterTools {
       throw new Error('Failed to create actor from source UUID.');
     }
 
-    if (parsed.biography !== undefined) {
-      await this.foundryClient.query<FoundryUpdateActorResponse>(
+    const profileApplication = this.buildDnD5eConceptProfileApplication({
+      legacyBiography: parsed.biography,
+      customization: parsed.customization,
+      preserveSourceProfile: parsed.preserveSourceProfile,
+    });
+
+    let profileUpdateResult: FoundryUpdateActorResponse | null = null;
+    if (Object.keys(profileApplication.updates).length > 0) {
+      profileUpdateResult = await this.foundryClient.query<FoundryUpdateActorResponse>(
         'maeinomatic-foundry-mcp.updateActor',
         {
           identifier: actor.id,
-          updates: {
-            'system.details.biography.value': parsed.biography,
-          },
-          reason: 'create-dnd5e-character-workflow biography update',
+          updates: profileApplication.updates,
+          reason: 'create-dnd5e-character-workflow concept profile update',
         }
       );
     }
@@ -6536,11 +6608,27 @@ export class CharacterTools {
         : {}),
     });
 
+    const validationResult = await this.foundryClient.query<FoundryValidateCharacterBuildResponse>(
+      'maeinomatic-foundry-mcp.validateCharacterBuild',
+      {
+        actorIdentifier: actor.id,
+      } satisfies FoundryValidateCharacterBuildRequest
+    );
+
+    const verification = this.createCharacterBuildVerification(validationResult);
+    const verificationRecord = this.toRecord(verification);
+    const workflowRecord = this.toRecord(workflowResult);
+    const warnings = this.mergeWarnings(
+      profileApplication.warnings,
+      Array.isArray(workflowRecord?.warnings)
+        ? workflowRecord.warnings.filter(
+            (warning): warning is string => typeof warning === 'string'
+          )
+        : undefined
+    );
+
     return {
-      success:
-        workflowResult &&
-        typeof workflowResult === 'object' &&
-        (workflowResult as Record<string, unknown>).success === true,
+      success: workflowRecord?.success === true && verificationRecord?.verified === true,
       linked: false,
       source: {
         sourceUuid: parsed.sourceUuid,
@@ -6558,7 +6646,74 @@ export class CharacterTools {
           ? { tokensPlaced: creationResult.tokensPlaced }
           : {}),
       },
+      ...(profileUpdateResult
+        ? {
+            profileUpdate: {
+              appliedUpdates: profileUpdateResult.appliedUpdates,
+              updatedFields: profileUpdateResult.updatedFields,
+            },
+          }
+        : {}),
       progression: workflowResult,
+      verification,
+      ...(warnings.length > 0 ? { warnings } : {}),
+    };
+  }
+
+  private buildDnD5eConceptProfileApplication(input: {
+    legacyBiography: string | undefined;
+    customization: DnD5eCharacterCustomizationInput | undefined;
+    preserveSourceProfile: boolean;
+  }): {
+    updates: Record<string, unknown>;
+    warnings?: string[];
+  } {
+    const updates: Record<string, unknown> = {};
+    const warnings: string[] = [];
+
+    const biography = input.legacyBiography ?? input.customization?.biography;
+    if (
+      input.legacyBiography !== undefined &&
+      input.customization?.biography !== undefined &&
+      input.legacyBiography !== input.customization.biography
+    ) {
+      warnings.push('Top-level biography overrides customization.biography.');
+    }
+
+    if (biography !== undefined) {
+      updates['system.details.biography.value'] = biography;
+    } else if (!input.preserveSourceProfile) {
+      updates['system.details.biography.value'] = '';
+    }
+
+    if (input.customization?.alignment !== undefined) {
+      updates['system.details.alignment'] = input.customization.alignment;
+    }
+
+    if (input.customization?.race !== undefined) {
+      updates['system.details.race'] = input.customization.race;
+    }
+
+    const conceptFlagFields: Array<
+      keyof Pick<DnD5eCharacterCustomizationInput, 'gender' | 'appearance' | 'conceptNotes'>
+    > = ['gender', 'appearance', 'conceptNotes'];
+    const preservedConceptFields = conceptFlagFields.filter(
+      field => input.customization?.[field] !== undefined
+    );
+
+    for (const field of preservedConceptFields) {
+      updates[`${DND5E_CONCEPT_FLAG_BASE_PATH}.${field}`] = input.customization?.[field];
+    }
+
+    if (preservedConceptFields.length > 0) {
+      warnings.push(
+        `Preserved concept fields under MCP flags because no stable DnD5e actor data path is mapped yet: ${preservedConceptFields.join(', ')}.`
+      );
+    }
+
+    return {
+      updates,
+      ...(warnings.length > 0 ? { warnings } : {}),
     };
   }
 

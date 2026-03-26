@@ -63,6 +63,291 @@ describe('CharacterTools', () => {
     expect(query).not.toHaveBeenCalled();
   });
 
+  it('applies DnD5e concept customization, clears inherited biography by default, and preserves unmapped concept fields under MCP flags', async () => {
+    const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
+      if (method === 'maeinomatic-foundry-mcp.getWorldInfo') {
+        return Promise.resolve({ system: 'dnd5e' });
+      }
+
+      if (method === 'maeinomatic-foundry-mcp.createActorFromCompendium') {
+        expect(data).toEqual({
+          packId: 'dnd5e.heroes',
+          itemId: '2Pdtnswo8Nj2nafY',
+          customNames: ['Danny Phantom'],
+          quantity: 1,
+          addToScene: false,
+        });
+        return Promise.resolve({
+          actors: [{ id: 'actor-1', name: 'Danny Phantom', type: 'character' }],
+          tokensPlaced: 0,
+        });
+      }
+
+      if (method === 'maeinomatic-foundry-mcp.updateActor') {
+        expect(data).toEqual({
+          identifier: 'actor-1',
+          updates: {
+            'system.details.biography.value': '',
+            'system.details.alignment': 'Chaotic Good',
+            'system.details.race': 'Human',
+            'flags.maeinomatic-foundry-mcp.characterConcept.gender': 'male',
+            'flags.maeinomatic-foundry-mcp.characterConcept.appearance':
+              'young man with white hair and green eyes',
+            'flags.maeinomatic-foundry-mcp.characterConcept.conceptNotes':
+              'Ghost-touched hero from a mining town.',
+          },
+          reason: 'create-dnd5e-character-workflow concept profile update',
+        });
+        return Promise.resolve({
+          success: true,
+          actorId: 'actor-1',
+          actorName: 'Danny Phantom',
+          actorType: 'character',
+          appliedUpdates: {
+            'system.details.biography.value': '',
+            'system.details.alignment': 'Chaotic Good',
+            'system.details.race': 'Human',
+            'flags.maeinomatic-foundry-mcp.characterConcept.gender': 'male',
+            'flags.maeinomatic-foundry-mcp.characterConcept.appearance':
+              'young man with white hair and green eyes',
+            'flags.maeinomatic-foundry-mcp.characterConcept.conceptNotes':
+              'Ghost-touched hero from a mining town.',
+          },
+          updatedFields: [
+            'system.details.biography.value',
+            'system.details.alignment',
+            'system.details.race',
+            'flags.maeinomatic-foundry-mcp.characterConcept.gender',
+            'flags.maeinomatic-foundry-mcp.characterConcept.appearance',
+            'flags.maeinomatic-foundry-mcp.characterConcept.conceptNotes',
+          ],
+        });
+      }
+
+      if (method === 'maeinomatic-foundry-mcp.validateCharacterBuild') {
+        expect(data).toEqual({ actorIdentifier: 'actor-1' });
+        return Promise.resolve({
+          actorId: 'actor-1',
+          actorName: 'Danny Phantom',
+          actorType: 'character',
+          summary: {
+            classCount: 1,
+            totalClassLevels: 3,
+            outstandingAdvancementCount: 0,
+            issueCount: 0,
+            errorCount: 0,
+            warningCount: 0,
+            infoCount: 0,
+          },
+          issues: [],
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected query: ${method}`));
+    });
+
+    const tools = new CharacterTools({
+      foundryClient: { query } as unknown as FoundryClient,
+      logger: createLoggerStub(),
+    });
+    const workflowSpy = vi
+      .spyOn(tools, 'handleCompleteDnD5eLevelUpWorkflow')
+      .mockResolvedValue({ success: true, workflowStatus: 'completed' });
+
+    const result = (await tools.handleCreateDnD5eCharacterWorkflow({
+      sourceUuid: 'Compendium.dnd5e.heroes.Actor.2Pdtnswo8Nj2nafY',
+      name: 'Danny Phantom',
+      targetLevel: 3,
+      customization: {
+        alignment: 'Chaotic Good',
+        race: 'Human',
+        gender: 'male',
+        appearance: 'young man with white hair and green eyes',
+        conceptNotes: 'Ghost-touched hero from a mining town.',
+      },
+    })) as Record<string, unknown>;
+
+    expect(workflowSpy).toHaveBeenCalledWith({
+      characterIdentifier: 'actor-1',
+      targetLevel: 3,
+    });
+    expect(result).toMatchObject({
+      success: true,
+      actor: {
+        id: 'actor-1',
+        name: 'Danny Phantom',
+      },
+      profileUpdate: {
+        updatedFields: [
+          'system.details.biography.value',
+          'system.details.alignment',
+          'system.details.race',
+          'flags.maeinomatic-foundry-mcp.characterConcept.gender',
+          'flags.maeinomatic-foundry-mcp.characterConcept.appearance',
+          'flags.maeinomatic-foundry-mcp.characterConcept.conceptNotes',
+        ],
+      },
+      verification: {
+        verified: true,
+      },
+    });
+    expect(result.warnings).toEqual([
+      'Preserved concept fields under MCP flags because no stable DnD5e actor data path is mapped yet: gender, appearance, conceptNotes.',
+    ]);
+  });
+
+  it('preserves source profile when preserveSourceProfile is true and no concept updates are provided', async () => {
+    const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
+      if (method === 'maeinomatic-foundry-mcp.getWorldInfo') {
+        return Promise.resolve({ system: 'dnd5e' });
+      }
+
+      if (method === 'maeinomatic-foundry-mcp.createActorFromCompendium') {
+        return Promise.resolve({
+          actors: [{ id: 'actor-2', name: 'Template Clone', type: 'character' }],
+          tokensPlaced: 0,
+        });
+      }
+
+      if (method === 'maeinomatic-foundry-mcp.validateCharacterBuild') {
+        expect(data).toEqual({ actorIdentifier: 'actor-2' });
+        return Promise.resolve({
+          actorId: 'actor-2',
+          actorName: 'Template Clone',
+          actorType: 'character',
+          summary: {
+            classCount: 1,
+            totalClassLevels: 2,
+            outstandingAdvancementCount: 0,
+            issueCount: 0,
+            errorCount: 0,
+            warningCount: 0,
+            infoCount: 0,
+          },
+          issues: [],
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected query: ${method}`));
+    });
+
+    const tools = new CharacterTools({
+      foundryClient: { query } as unknown as FoundryClient,
+      logger: createLoggerStub(),
+    });
+    vi.spyOn(tools, 'handleCompleteDnD5eLevelUpWorkflow').mockResolvedValue({ success: true });
+
+    const result = (await tools.handleCreateDnD5eCharacterWorkflow({
+      sourceUuid: 'Compendium.dnd5e.heroes.Actor.2Pdtnswo8Nj2nafY',
+      name: 'Template Clone',
+      targetLevel: 2,
+      preserveSourceProfile: true,
+    })) as Record<string, unknown>;
+
+    expect(query).not.toHaveBeenCalledWith(
+      'maeinomatic-foundry-mcp.updateActor',
+      expect.anything()
+    );
+    expect(result).not.toHaveProperty('profileUpdate');
+    expect(result).toMatchObject({
+      success: true,
+      verification: { verified: true },
+    });
+  });
+
+  it('returns success false when DnD5e build verification fails after creation', async () => {
+    const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
+      if (method === 'maeinomatic-foundry-mcp.getWorldInfo') {
+        return Promise.resolve({ system: 'dnd5e' });
+      }
+
+      if (method === 'maeinomatic-foundry-mcp.createActorFromCompendium') {
+        return Promise.resolve({
+          actors: [{ id: 'actor-3', name: 'Danny Phantom', type: 'character' }],
+          tokensPlaced: 0,
+        });
+      }
+
+      if (method === 'maeinomatic-foundry-mcp.validateCharacterBuild') {
+        expect(data).toEqual({ actorIdentifier: 'actor-3' });
+        return Promise.resolve({
+          actorId: 'actor-3',
+          actorName: 'Danny Phantom',
+          actorType: 'character',
+          summary: {
+            classCount: 1,
+            totalClassLevels: 3,
+            outstandingAdvancementCount: 2,
+            issueCount: 2,
+            errorCount: 1,
+            warningCount: 1,
+            infoCount: 0,
+          },
+          issues: [
+            {
+              severity: 'error',
+              code: 'outstanding-advancement',
+              category: 'advancement',
+              stepId: 'step-1',
+              stepType: 'Trait',
+              message: 'Required advancement is unresolved.',
+            },
+          ],
+          outstandingAdvancements: [
+            {
+              id: 'step-1',
+              level: 1,
+              type: 'Trait',
+              title: 'Skills',
+              required: true,
+            },
+          ],
+        });
+      }
+
+      if (method === 'maeinomatic-foundry-mcp.updateActor') {
+        return Promise.resolve({
+          success: true,
+          actorId: 'actor-3',
+          actorName: 'Danny Phantom',
+          actorType: 'character',
+          appliedUpdates: {
+            'system.details.biography.value': '',
+          },
+          updatedFields: ['system.details.biography.value'],
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected query: ${method}`));
+    });
+
+    const tools = new CharacterTools({
+      foundryClient: { query } as unknown as FoundryClient,
+      logger: createLoggerStub(),
+    });
+    vi.spyOn(tools, 'handleCompleteDnD5eLevelUpWorkflow').mockResolvedValue({
+      success: true,
+      workflowStatus: 'completed',
+    });
+
+    const result = (await tools.handleCreateDnD5eCharacterWorkflow({
+      sourceUuid: 'Compendium.dnd5e.heroes.Actor.2Pdtnswo8Nj2nafY',
+      name: 'Danny Phantom',
+      targetLevel: 3,
+    })) as Record<string, unknown>;
+
+    expect(result).toMatchObject({
+      success: false,
+      verification: {
+        verified: false,
+        summary: {
+          outstandingAdvancementCount: 2,
+          errorCount: 1,
+        },
+      },
+    });
+  });
+
   it('uses the shared character-info bridge request shape', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
       if (method === 'maeinomatic-foundry-mcp.getCharacterInfo') {
