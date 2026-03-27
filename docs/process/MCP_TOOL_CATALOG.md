@@ -136,6 +136,8 @@ an MCP client wants fine-grained control.
 - `run-dnd5e-group-rest-workflow`
 - `complete-dnd5e-level-up-workflow`
 - `complete-dnd5e-multiclass-entry-workflow`
+- `create-dnd5e-character-workflow`
+- `clone-dnd5e-character-template-workflow`
 - `award-dnd5e-party-resources`
 - `run-dnd5e-summon-activity`
 - `run-dnd5e-transform-activity-workflow`
@@ -163,7 +165,8 @@ Add a workflow tool only when all of the following are true:
 ### Character Creation Decision Tree
 
 - Standalone actor creation (no owner link): `create-character-actor`
-- Standalone DnD5e actor + level progression in one flow: `create-dnd5e-character-workflow`
+- Standalone DnD5e concept creation + level progression in one flow: `create-dnd5e-character-workflow`
+- Explicit clone or adaptation of an authored DnD5e template: `clone-dnd5e-character-template-workflow`
 - Owner-linked familiar/companion lifecycle: `create-character-companion` and related companion tools
 
 ### Current Direction

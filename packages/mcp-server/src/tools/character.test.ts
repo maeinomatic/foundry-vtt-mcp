@@ -74,6 +74,27 @@ describe('CharacterTools', () => {
     expect(query).not.toHaveBeenCalled();
   });
 
+  it('rejects legacy preserveSourceProfile on concept-safe create-dnd5e-character-workflow', async () => {
+    const query = vi.fn();
+
+    const tools = new CharacterTools({
+      foundryClient: { query } as unknown as FoundryClient,
+      logger: createLoggerStub(),
+      systemRegistry: createRegistry(new DnD5eAdapter()),
+    });
+
+    await expect(
+      tools.handleCreateDnD5eCharacterWorkflow({
+        sourceUuid: 'Compendium.dnd5e.heroes.Actor.2Pdtnswo8Nj2nafY',
+        name: 'Bram Ironfield',
+        targetLevel: 2,
+        preserveSourceProfile: true,
+      })
+    ).rejects.toThrow();
+
+    expect(query).not.toHaveBeenCalled();
+  });
+
   it('applies DnD5e concept customization, clears inherited biography by default, and preserves unmapped concept fields under MCP flags', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
       if (method === 'maeinomatic-foundry-mcp.getWorldInfo') {
@@ -214,7 +235,7 @@ describe('CharacterTools', () => {
     ]);
   });
 
-  it('preserves source profile when preserveSourceProfile is true and no concept updates are provided', async () => {
+  it('preserves source profile by default in clone-dnd5e-character-template-workflow', async () => {
     const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
       if (method === 'maeinomatic-foundry-mcp.getWorldInfo') {
         return Promise.resolve({ system: 'dnd5e' });
@@ -259,11 +280,10 @@ describe('CharacterTools', () => {
       workflowStatus: 'completed',
     });
 
-    const result = (await tools.handleCreateDnD5eCharacterWorkflow({
+    const result = (await tools.handleCloneDnD5eCharacterTemplateWorkflow({
       sourceUuid: 'Compendium.dnd5e.heroes.Actor.2Pdtnswo8Nj2nafY',
       name: 'Template Clone',
       targetLevel: 2,
-      preserveSourceProfile: true,
     })) as Record<string, unknown>;
 
     expect(query).not.toHaveBeenCalledWith(
@@ -273,6 +293,10 @@ describe('CharacterTools', () => {
     expect(result).not.toHaveProperty('profileUpdate');
     expect(result).toMatchObject({
       success: true,
+      workflow: {
+        name: 'clone-dnd5e-character-template-workflow',
+        system: 'dnd5e',
+      },
       workflowStatus: 'completed',
       verification: { verified: true },
     });
@@ -506,6 +530,78 @@ describe('CharacterTools', () => {
       type: 'character',
       items: [],
       effects: [],
+    });
+  });
+
+  it('round-trips MCP-owned DnD5e concept flags through get-character basicInfo', async () => {
+    const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
+      if (method === 'maeinomatic-foundry-mcp.getWorldInfo') {
+        return Promise.resolve({ system: 'dnd5e' });
+      }
+
+      if (method === 'maeinomatic-foundry-mcp.getCharacterInfo') {
+        expect(data).toEqual({ identifier: 'Danny Phantom' });
+        return Promise.resolve({
+          id: 'actor-concept-1',
+          name: 'Danny Phantom',
+          type: 'character',
+          system: {
+            attributes: {
+              hp: { value: 18, max: 18, temp: 0 },
+              ac: { value: 14 },
+            },
+            details: {
+              level: { value: 3 },
+              class: 'Sorcerer',
+              alignment: 'Chaotic Good',
+              race: 'Human',
+              biography: {
+                value: 'Ghost-touched hero who protects Amity Park.',
+              },
+            },
+          },
+          flags: {
+            'maeinomatic-foundry-mcp': {
+              characterConcept: {
+                gender: 'male',
+                appearance: 'young man with white hair and green eyes',
+                conceptNotes: 'Ghost-touched hero from a mining town.',
+              },
+            },
+          },
+          items: [],
+          effects: [],
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected query: ${method}`));
+    });
+
+    const tools = new CharacterTools({
+      foundryClient: { query } as unknown as FoundryClient,
+      logger: createLoggerStub(),
+      systemRegistry: createRegistry(new DnD5eAdapter()),
+    });
+
+    const result = (await tools.handleGetCharacter({
+      identifier: 'Danny Phantom',
+    })) as Record<string, unknown>;
+
+    expect(result).toMatchObject({
+      id: 'actor-concept-1',
+      name: 'Danny Phantom',
+      basicInfo: {
+        level: 3,
+        class: 'Sorcerer',
+        alignment: 'Chaotic Good',
+        race: 'Human',
+        biography: 'Ghost-touched hero who protects Amity Park.',
+        concept: {
+          gender: 'male',
+          appearance: 'young man with white hair and green eyes',
+          conceptNotes: 'Ghost-touched hero from a mining town.',
+        },
+      },
     });
   });
 

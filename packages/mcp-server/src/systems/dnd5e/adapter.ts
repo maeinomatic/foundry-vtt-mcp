@@ -77,6 +77,42 @@ function toStringField(value: unknown): string | undefined {
 }
 
 const DND5E_CONCEPT_FLAG_BASE_PATH = 'flags.maeinomatic-foundry-mcp.characterConcept';
+const DND5E_CONCEPT_FLAG_SCOPE = 'maeinomatic-foundry-mcp';
+const DND5E_CONCEPT_FLAG_KEY = 'characterConcept';
+
+function extractCharacterConceptFlags(actor: DnD5eActorDocument): UnknownRecord | undefined {
+  const flags = asRecord(actor.flags);
+  const scopeFlags = asRecord(flags?.[DND5E_CONCEPT_FLAG_SCOPE]);
+  const conceptFlags = asRecord(scopeFlags?.[DND5E_CONCEPT_FLAG_KEY]);
+  if (!conceptFlags) {
+    return undefined;
+  }
+
+  const concept: UnknownRecord = {};
+
+  const gender = toStringValue(conceptFlags.gender);
+  if (gender) {
+    concept.gender = gender;
+  }
+
+  const appearance = toStringValue(conceptFlags.appearance);
+  if (appearance) {
+    concept.appearance = appearance;
+  }
+
+  const conceptNotes = toStringValue(conceptFlags.conceptNotes);
+  if (conceptNotes) {
+    concept.conceptNotes = conceptNotes;
+  }
+
+  return Object.keys(concept).length > 0 ? concept : undefined;
+}
+
+function extractBiography(actor: DnD5eActorDocument): string | undefined {
+  const details = asRecord(actor.system?.details);
+  const biography = asRecord(details?.biography);
+  return toStringValue(biography?.value) ?? toStringValue(details?.biography);
+}
 
 /**
  * D&D 5e system adapter
@@ -521,9 +557,24 @@ export class DnD5eAdapter implements SystemAdapter {
       basicInfo.class = className;
     }
 
+    const alignment = toStringField(system?.details?.alignment);
+    if (alignment) {
+      basicInfo.alignment = alignment;
+    }
+
     const race = toStringValue(system?.details?.race);
     if (race) {
       basicInfo.race = race;
+    }
+
+    const biography = extractBiography(actor);
+    if (biography) {
+      basicInfo.biography = biography;
+    }
+
+    const concept = extractCharacterConceptFlags(actor);
+    if (concept) {
+      basicInfo.concept = concept;
     }
 
     return basicInfo;

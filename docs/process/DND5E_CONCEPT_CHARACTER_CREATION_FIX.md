@@ -4,6 +4,16 @@
 
 This note analyzes the live request to create a DnD5e level 3 sorcerer named Benny Danton and documents the concrete fix required to make this class of request produce a character whose identity and mechanics actually match the requested concept.
 
+## Implementation Status
+
+The core contract split described in this note is now implemented.
+
+- `create-dnd5e-character-workflow` is the concept-safe DnD5e creation path
+- `clone-dnd5e-character-template-workflow` is the explicit template-clone path
+- concept-safe creation no longer exposes `preserveSourceProfile`
+- preserved MCP concept fields round-trip on read under `basicInfo.concept`
+- native DnD5e `alignment` and `biography` now round-trip on read under `basicInfo`
+
 ## Original Intent
 
 The user intent was concept-driven character creation:
@@ -248,17 +258,17 @@ the system must create a new concept-faithful actor, not a renamed pre-authored 
 
 ## Fix 1: Split Concept Creation from Template Cloning
 
-Add an explicit concept-driven path instead of overloading `create-dnd5e-character-workflow` with named hero templates.
+This split is now implemented instead of remaining a proposal.
 
 Recommended rule:
 
 - If the user asks to create a new character concept, do not use `dnd5e.heroes` or any other pre-authored named PC actor as the default source.
 - Only use a named actor template when the user explicitly asks to clone or adapt that exact actor.
 
-Implementation options:
+Implemented contract:
 
-1. Preferred: add a new tool such as `create-dnd5e-character-from-concept`.
-2. Acceptable: extend `create-dnd5e-character-workflow` with a `mode` or `customization` object and disallow named-hero templates in concept mode.
+1. `create-dnd5e-character-workflow` is the concept-safe path for fresh character concepts.
+2. `clone-dnd5e-character-template-workflow` is the explicit path for cloning or adapting an authored template.
 
 ## Fix 2: Add a DnD5e Customization Payload
 
@@ -298,15 +308,11 @@ Required default behavior in concept mode:
 - if `biography` was not provided, clear inherited biography instead of preserving source text
 - clear or overwrite other source-specific profile text fields that would leak the template character identity
 
-Recommended option:
+Implemented behavior:
 
-```json
-{
-  "preserveSourceProfile": false
-}
-```
-
-with `false` as the default for concept-driven requests.
+- concept-safe creation hard-codes source-profile clearing semantics through the workflow choice itself
+- explicit source-profile preservation now lives behind `clone-dnd5e-character-template-workflow`
+- callers no longer opt into concept-mode behavior by passing `preserveSourceProfile: false`
 
 ## Fix 4: Do Not Return Success While Required Advancements Remain Unresolved
 
@@ -365,21 +371,21 @@ Then the orchestration layer must choose a creation workflow that can actually r
 
 ## Concrete Code Changes
 
-### Files to change
+### Files changed
 
 - `packages/mcp-server/src/tools/character.ts`
 - `packages/mcp-server/src/tools/character.test.ts`
-- optionally a new DnD5e concept-creation service under `packages/mcp-server/src/systems/dnd5e/` or `packages/mcp-server/src/domains/characters/`
+- `packages/mcp-server/src/systems/dnd5e/adapter.ts`
+- `packages/mcp-server/src/transport/mcp-tool-router.ts`
 
-### Required implementation changes
+### Implemented changes
 
-1. Extend the DnD5e creation args schema with a `customization` object.
-2. Add a `preserveSourceProfile` flag defaulting to `false` in concept mode.
-3. Apply customization updates immediately after actor creation.
-4. If no biography is provided in concept mode, blank inherited biography fields.
-5. Run validation before returning final success.
-6. If unresolved advancements remain, return a non-success result and surface the exact pending steps.
-7. Block named starter-hero templates for concept mode unless the caller explicitly opts in.
+1. Extended the DnD5e creation args schema with a `customization` object.
+2. Removed public `preserveSourceProfile` from concept-safe creation and encoded that behavior in the workflow split.
+3. Added `clone-dnd5e-character-template-workflow` for explicit template-preserving semantics.
+4. Kept customization updates in adapter-owned DnD5e mapping instead of core tool orchestration.
+5. Preserved concept-only fields under MCP flags and exposed them again on read.
+6. Kept validation and unresolved advancement reporting in the workflow result envelope.
 
 ## Tests To Add
 
@@ -390,17 +396,19 @@ Then the orchestration layer must choose a creation workflow that can actually r
 5. Workflow returns `success: false` when validation still shows unresolved required advancements.
 6. Concept request fields are preserved end to end in the final actor state.
 
-## Practical Short-Term Workaround
+## Current Operator Guidance
 
-Until the code fix exists, a live agent run should do all of the following instead of only calling `create-dnd5e-character-workflow` with `name` and `targetLevel`:
+With the split implemented, a live agent run should do all of the following:
 
-1. avoid `dnd5e.heroes` unless explicit cloning is intended
-2. if a template must be used, immediately overwrite or clear source biography/profile text
-3. run post-creation `update-character` for concept text fields that the workflow does not set
+1. use `create-dnd5e-character-workflow` for concept-driven requests even when a compendium actor supplies mechanics
+2. use `clone-dnd5e-character-template-workflow` only when the caller explicitly wants to clone or adapt an authored template
+3. supply `customization` when concept identity fields are known
 4. run `validate-dnd5e-character-build`
 5. do not report success if required advancement steps remain unresolved
 
-This workaround is still weaker than the proper fix because the current DnD5e workflow surface does not cleanly represent the full concept payload.
+Remaining limitation:
+
+- the workflow still accepts a `sourceUuid`, so source selection policy remains an orchestration concern even though the profile-preservation contract is now explicit
 
 ## Bottom Line
 

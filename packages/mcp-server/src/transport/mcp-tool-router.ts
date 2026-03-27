@@ -104,6 +104,8 @@ export async function dispatchMcpToolCall(
       return characterTools.handleCompleteDnD5eLevelUpWorkflow(args);
     case 'create-dnd5e-character-workflow':
       return characterTools.handleCreateDnD5eCharacterWorkflow(args);
+    case 'clone-dnd5e-character-template-workflow':
+      return characterTools.handleCloneDnD5eCharacterTemplateWorkflow(args);
     case 'award-dnd5e-party-resources':
       return characterTools.handleAwardDnD5ePartyResources(args);
     case 'run-dnd5e-summon-activity':
