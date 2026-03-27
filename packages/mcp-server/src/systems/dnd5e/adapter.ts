@@ -1274,4 +1274,3 @@ export class DnD5eAdapter implements SystemAdapter {
     };
   }
 }
-
