@@ -39,7 +39,6 @@
     "no-case-declarations": "warn",
     "no-useless-escape": "warn",
     "no-async-promise-executor": "warn",
-    "@typescript-eslint/no-misused-promises": "warn",
     "@typescript-eslint/no-redundant-type-constituents": "warn",
     "@typescript-eslint/no-unnecessary-type-assertion": "warn",
     "@typescript-eslint/ban-ts-comment": "warn",
@@ -52,5 +51,13 @@
     "node": true,
     "es2022": true
   },
+  "overrides": [
+    {
+      "files": ["scripts/**/*.mjs"],
+      "rules": {
+        "@typescript-eslint/explicit-function-return-type": "off"
+      }
+    }
+  ],
   "ignorePatterns": ["dist/", "build/", "node_modules/", "*.js", "**/*.d.ts"]
 }

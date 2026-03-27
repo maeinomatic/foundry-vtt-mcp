@@ -2,7 +2,22 @@
 
 import { assertVersionLike, normalizeVersionInput, readVersionState } from './version-helpers.mjs';
 
-const versions = readVersionState();
+/**
+ * @typedef {object} VersionState
+ * @property {string | undefined} root
+ * @property {string | undefined} server
+ * @property {string | undefined} modulePackage
+ * @property {string | undefined} moduleManifest
+ * @property {string | undefined} shared
+ * @property {string | undefined} packageLock
+ * @property {string | undefined} packageLockRoot
+ * @property {string | undefined} packageLockServer
+ * @property {string | undefined} packageLockModule
+ * @property {string | undefined} packageLockShared
+ */
+
+/** @type {VersionState} */
+const versions = /** @type {VersionState} */ (readVersionState());
 
 try {
   for (const [name, version] of Object.entries(versions)) {
@@ -18,7 +33,8 @@ try {
 }
 
 const expected = versions.root;
-const mismatches = Object.entries({
+/** @type {Record<string, string | undefined>} */
+const versionTargets = {
   'packages/mcp-server/package.json': versions.server,
   'packages/foundry-module/package.json': versions.modulePackage,
   'packages/foundry-module/module.json': versions.moduleManifest,
@@ -27,8 +43,9 @@ const mismatches = Object.entries({
   'package-lock.json packages[""]': versions.packageLockRoot,
   'package-lock.json packages["packages/mcp-server"]': versions.packageLockServer,
   'package-lock.json packages["packages/foundry-module"]': versions.packageLockModule,
-  'package-lock.json packages["shared"]': versions.packageLockShared
-}).filter(([, version]) => version !== expected);
+  'package-lock.json packages["shared"]': versions.packageLockShared,
+};
+const mismatches = Object.entries(versionTargets).filter(([, version]) => version !== expected);
 
 if (mismatches.length > 0) {
   console.error('Version mismatch detected:');
@@ -40,14 +57,15 @@ if (mismatches.length > 0) {
   process.exit(1);
 }
 
-const refType = process.env.GITHUB_REF_TYPE || '';
-const refName = process.env.GITHUB_REF_NAME || '';
+const refType = process.env.GITHUB_REF_TYPE ?? '';
+const refName = process.env.GITHUB_REF_NAME ?? '';
 if (refType === 'tag' && refName) {
-  const tagVersion = normalizeVersionInput(refName);
-  if (tagVersion !== expected) {
-    console.error(`Tag/version mismatch: tag ${refName} does not match package version ${expected}`);
+  if (normalizeVersionInput(refName) !== expected) {
+    console.error(
+      `Tag/version mismatch: tag ${refName} does not match package version ${expected}`
+    );
     process.exit(1);
   }
 }
 
-console.log(`Version check passed (${expected})`);
+process.stdout.write(`Version check passed (${expected})\n`);
