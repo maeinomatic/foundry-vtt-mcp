@@ -63,6 +63,7 @@ import { SystemContextService } from '../systems/system-context-service.js';
 import { SystemRegistry } from '../systems/system-registry.js';
 import type {
   CharacterAbilityScoreUpdateRequest,
+  CharacterConceptProfileRequest,
   CharacterResourceUpdateRequest,
   CharacterSkillProficiencyUpdateRequest,
   CharacterSystemProficiencyUpdateRequest,
@@ -187,8 +188,6 @@ type DnD5eCharacterCustomizationInput = {
   appearance?: string | undefined;
   conceptNotes?: string | undefined;
 };
-
-const DND5E_CONCEPT_FLAG_BASE_PATH = 'flags.maeinomatic-foundry-mcp.characterConcept';
 
 function createAdvancementChoiceSchema(): z.ZodType<AdvancementChoiceSchemaInput> {
   const choiceSchema = z.discriminatedUnion('mode', [
@@ -6564,6 +6563,8 @@ export class CharacterTools {
       );
     }
 
+    const workflowMetadata = this.createDnD5eWorkflowMetadata('create-dnd5e-character-workflow');
+
     const creationResult = await this.foundryClient.query<FoundryActorCreationResult>(
       'maeinomatic-foundry-mcp.createActorFromCompendium',
       {
@@ -6581,19 +6582,22 @@ export class CharacterTools {
       throw new Error('Failed to create actor from source UUID.');
     }
 
-    const profileApplication = this.buildDnD5eConceptProfileApplication({
+    const profileRequest = this.createCharacterConceptProfileRequest({
       legacyBiography: parsed.biography,
       customization: parsed.customization,
       preserveSourceProfile: parsed.preserveSourceProfile,
     });
+    const profileMutation = await this.prepareCharacterConceptProfileMutation(
+      profileRequest.request
+    );
 
     let profileUpdateResult: FoundryUpdateActorResponse | null = null;
-    if (Object.keys(profileApplication.updates).length > 0) {
+    if (profileMutation.actorUpdates && Object.keys(profileMutation.actorUpdates).length > 0) {
       profileUpdateResult = await this.foundryClient.query<FoundryUpdateActorResponse>(
         'maeinomatic-foundry-mcp.updateActor',
         {
           identifier: actor.id,
-          updates: profileApplication.updates,
+          updates: profileMutation.actorUpdates,
           reason: 'create-dnd5e-character-workflow concept profile update',
         }
       );
@@ -6618,8 +6622,11 @@ export class CharacterTools {
     const verification = this.createCharacterBuildVerification(validationResult);
     const verificationRecord = this.toRecord(verification);
     const workflowRecord = this.toRecord(workflowResult);
+    const progressionCompleted =
+      workflowRecord?.success === true && workflowRecord.workflowStatus === 'completed';
     const warnings = this.mergeWarnings(
-      profileApplication.warnings,
+      profileRequest.warnings,
+      profileMutation.warnings,
       Array.isArray(workflowRecord?.warnings)
         ? workflowRecord.warnings.filter(
             (warning): warning is string => typeof warning === 'string'
@@ -6627,8 +6634,8 @@ export class CharacterTools {
         : undefined
     );
 
-    return {
-      success: workflowRecord?.success === true && verificationRecord?.verified === true,
+    const baseResponse = {
+      ...workflowMetadata,
       linked: false,
       source: {
         sourceUuid: parsed.sourceUuid,
@@ -6656,19 +6663,65 @@ export class CharacterTools {
         : {}),
       progression: workflowResult,
       verification,
+      ...(workflowRecord?.autoApplied
+        ? { autoApplied: { progression: workflowRecord.autoApplied } }
+        : {}),
       ...(warnings.length > 0 ? { warnings } : {}),
+    };
+
+    if (!progressionCompleted) {
+      return {
+        ...baseResponse,
+        success: false,
+        partialSuccess: true,
+        workflowStatus:
+          typeof workflowRecord?.workflowStatus === 'string'
+            ? workflowRecord.workflowStatus
+            : 'needs-choices',
+        unresolved: {
+          phase: 'progression',
+          ...(this.toRecord(workflowRecord?.unresolved) ?? {}),
+        },
+        nextStep: `Provide the remaining advancement selections and rerun complete-dnd5e-level-up-workflow for actor ${actor.id}.`,
+      };
+    }
+
+    if (verificationRecord?.verified !== true) {
+      return {
+        ...baseResponse,
+        success: false,
+        partialSuccess: true,
+        workflowStatus: 'needs-review',
+        unresolved: {
+          phase: 'verification',
+          ...(verificationRecord?.outstandingAdvancements
+            ? { outstandingAdvancements: verificationRecord.outstandingAdvancements }
+            : {}),
+          ...(verificationRecord?.recommendations
+            ? { recommendations: verificationRecord.recommendations }
+            : {}),
+        },
+        nextStep:
+          'Review the build verification issues and complete any remaining advancement or spellbook steps for the created actor.',
+      };
+    }
+
+    return {
+      ...baseResponse,
+      success: true,
+      workflowStatus: 'completed',
+      completed: true,
     };
   }
 
-  private buildDnD5eConceptProfileApplication(input: {
+  private createCharacterConceptProfileRequest(input: {
     legacyBiography: string | undefined;
     customization: DnD5eCharacterCustomizationInput | undefined;
     preserveSourceProfile: boolean;
   }): {
-    updates: Record<string, unknown>;
+    request: UnknownRecord;
     warnings?: string[];
   } {
-    const updates: Record<string, unknown> = {};
     const warnings: string[] = [];
 
     const biography = input.legacyBiography ?? input.customization?.biography;
@@ -6680,41 +6733,54 @@ export class CharacterTools {
       warnings.push('Top-level biography overrides customization.biography.');
     }
 
+    const request: UnknownRecord = {
+      preserveSourceProfile: input.preserveSourceProfile,
+    };
+
     if (biography !== undefined) {
-      updates['system.details.biography.value'] = biography;
-    } else if (!input.preserveSourceProfile) {
-      updates['system.details.biography.value'] = '';
+      request.biography = biography;
     }
 
     if (input.customization?.alignment !== undefined) {
-      updates['system.details.alignment'] = input.customization.alignment;
+      request.alignment = input.customization.alignment;
     }
 
     if (input.customization?.race !== undefined) {
-      updates['system.details.race'] = input.customization.race;
+      request.race = input.customization.race;
     }
 
-    const conceptFlagFields: Array<
-      keyof Pick<DnD5eCharacterCustomizationInput, 'gender' | 'appearance' | 'conceptNotes'>
-    > = ['gender', 'appearance', 'conceptNotes'];
-    const preservedConceptFields = conceptFlagFields.filter(
-      field => input.customization?.[field] !== undefined
-    );
-
-    for (const field of preservedConceptFields) {
-      updates[`${DND5E_CONCEPT_FLAG_BASE_PATH}.${field}`] = input.customization?.[field];
+    if (input.customization?.gender !== undefined) {
+      request.gender = input.customization.gender;
     }
 
-    if (preservedConceptFields.length > 0) {
-      warnings.push(
-        `Preserved concept fields under MCP flags because no stable DnD5e actor data path is mapped yet: ${preservedConceptFields.join(', ')}.`
-      );
+    if (input.customization?.appearance !== undefined) {
+      request.appearance = input.customization.appearance;
+    }
+
+    if (input.customization?.conceptNotes !== undefined) {
+      request.conceptNotes = input.customization.conceptNotes;
     }
 
     return {
-      updates,
+      request,
       ...(warnings.length > 0 ? { warnings } : {}),
     };
+  }
+
+  private async prepareCharacterConceptProfileMutation(
+    request: UnknownRecord
+  ): Promise<PreparedCharacterWriteMutation> {
+    const { adapter } = await this.getRequiredSystemAdapter('character concept profile updates');
+    const prepareConceptProfileUpdates = adapter.prepareCharacterConceptProfileUpdates as
+      | ((request: CharacterConceptProfileRequest) => PreparedCharacterWriteMutation)
+      | undefined;
+    if (typeof prepareConceptProfileUpdates !== 'function') {
+      throw new Error(
+        'UNSUPPORTED_CAPABILITY: The active system adapter does not support concept profile updates.'
+      );
+    }
+
+    return prepareConceptProfileUpdates(request as CharacterConceptProfileRequest);
   }
 
   private parseProgressionArgs(args: unknown): {

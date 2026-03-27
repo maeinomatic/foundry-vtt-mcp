@@ -20,6 +20,15 @@ function createLoggerStub(): Logger {
   return logger as unknown as Logger;
 }
 
+function createRegistry(...adapters: Array<DnD5eAdapter | PF2eAdapter>): SystemRegistry {
+  const registry = new SystemRegistry();
+  for (const adapter of adapters) {
+    registry.register(adapter);
+  }
+
+  return registry;
+}
+
 describe('CharacterTools', () => {
   beforeEach(() => {
     clearSystemCache();
@@ -31,6 +40,7 @@ describe('CharacterTools', () => {
     const tools = new CharacterTools({
       foundryClient: { query } as unknown as FoundryClient,
       logger: createLoggerStub(),
+      systemRegistry: createRegistry(new DnD5eAdapter()),
     });
 
     await expect(
@@ -49,6 +59,7 @@ describe('CharacterTools', () => {
     const tools = new CharacterTools({
       foundryClient: { query } as unknown as FoundryClient,
       logger: createLoggerStub(),
+      systemRegistry: createRegistry(new DnD5eAdapter()),
     });
 
     await expect(
@@ -149,6 +160,7 @@ describe('CharacterTools', () => {
     const tools = new CharacterTools({
       foundryClient: { query } as unknown as FoundryClient,
       logger: createLoggerStub(),
+      systemRegistry: createRegistry(new DnD5eAdapter()),
     });
     const workflowSpy = vi
       .spyOn(tools, 'handleCompleteDnD5eLevelUpWorkflow')
@@ -173,6 +185,12 @@ describe('CharacterTools', () => {
     });
     expect(result).toMatchObject({
       success: true,
+      workflowStatus: 'completed',
+      completed: true,
+      workflow: {
+        name: 'create-dnd5e-character-workflow',
+        system: 'dnd5e',
+      },
       actor: {
         id: 'actor-1',
         name: 'Danny Phantom',
@@ -234,8 +252,12 @@ describe('CharacterTools', () => {
     const tools = new CharacterTools({
       foundryClient: { query } as unknown as FoundryClient,
       logger: createLoggerStub(),
+      systemRegistry: createRegistry(new DnD5eAdapter()),
     });
-    vi.spyOn(tools, 'handleCompleteDnD5eLevelUpWorkflow').mockResolvedValue({ success: true });
+    vi.spyOn(tools, 'handleCompleteDnD5eLevelUpWorkflow').mockResolvedValue({
+      success: true,
+      workflowStatus: 'completed',
+    });
 
     const result = (await tools.handleCreateDnD5eCharacterWorkflow({
       sourceUuid: 'Compendium.dnd5e.heroes.Actor.2Pdtnswo8Nj2nafY',
@@ -251,6 +273,7 @@ describe('CharacterTools', () => {
     expect(result).not.toHaveProperty('profileUpdate');
     expect(result).toMatchObject({
       success: true,
+      workflowStatus: 'completed',
       verification: { verified: true },
     });
   });
@@ -324,6 +347,7 @@ describe('CharacterTools', () => {
     const tools = new CharacterTools({
       foundryClient: { query } as unknown as FoundryClient,
       logger: createLoggerStub(),
+      systemRegistry: createRegistry(new DnD5eAdapter()),
     });
     vi.spyOn(tools, 'handleCompleteDnD5eLevelUpWorkflow').mockResolvedValue({
       success: true,
@@ -338,6 +362,11 @@ describe('CharacterTools', () => {
 
     expect(result).toMatchObject({
       success: false,
+      partialSuccess: true,
+      workflowStatus: 'needs-review',
+      unresolved: {
+        phase: 'verification',
+      },
       verification: {
         verified: false,
         summary: {
@@ -346,6 +375,100 @@ describe('CharacterTools', () => {
         },
       },
     });
+  });
+
+  it('returns a normalized partial workflow result when progression remains unresolved', async () => {
+    const query = vi.fn().mockImplementation((method: string, data?: unknown) => {
+      if (method === 'maeinomatic-foundry-mcp.getWorldInfo') {
+        return Promise.resolve({ system: 'dnd5e' });
+      }
+
+      if (method === 'maeinomatic-foundry-mcp.createActorFromCompendium') {
+        return Promise.resolve({
+          actors: [{ id: 'actor-4', name: 'Danny Phantom', type: 'character' }],
+          tokensPlaced: 0,
+        });
+      }
+
+      if (method === 'maeinomatic-foundry-mcp.updateActor') {
+        return Promise.resolve({
+          success: true,
+          actorId: 'actor-4',
+          actorName: 'Danny Phantom',
+          actorType: 'character',
+          appliedUpdates: {
+            'system.details.biography.value': '',
+          },
+          updatedFields: ['system.details.biography.value'],
+        });
+      }
+
+      if (method === 'maeinomatic-foundry-mcp.validateCharacterBuild') {
+        expect(data).toEqual({ actorIdentifier: 'actor-4' });
+        return Promise.resolve({
+          actorId: 'actor-4',
+          actorName: 'Danny Phantom',
+          actorType: 'character',
+          summary: {
+            classCount: 1,
+            totalClassLevels: 1,
+            outstandingAdvancementCount: 1,
+            issueCount: 0,
+            errorCount: 0,
+            warningCount: 0,
+            infoCount: 0,
+          },
+          issues: [],
+          outstandingAdvancements: [
+            {
+              id: 'step-2',
+              level: 1,
+              type: 'Subclass',
+              title: 'Sorcerous Origin',
+              required: true,
+            },
+          ],
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected query: ${method}`));
+    });
+
+    const tools = new CharacterTools({
+      foundryClient: { query } as unknown as FoundryClient,
+      logger: createLoggerStub(),
+      systemRegistry: createRegistry(new DnD5eAdapter()),
+    });
+    vi.spyOn(tools, 'handleCompleteDnD5eLevelUpWorkflow').mockResolvedValue({
+      success: false,
+      workflowStatus: 'needs-choices',
+      unresolved: {
+        stepId: 'step-2',
+        stepType: 'subclass',
+      },
+    });
+
+    const result = (await tools.handleCreateDnD5eCharacterWorkflow({
+      sourceUuid: 'Compendium.dnd5e.heroes.Actor.2Pdtnswo8Nj2nafY',
+      name: 'Danny Phantom',
+      targetLevel: 3,
+    })) as Record<string, unknown>;
+
+    expect(result).toMatchObject({
+      success: false,
+      partialSuccess: true,
+      workflowStatus: 'needs-choices',
+      workflow: {
+        name: 'create-dnd5e-character-workflow',
+        system: 'dnd5e',
+      },
+      unresolved: {
+        phase: 'progression',
+        stepId: 'step-2',
+        stepType: 'subclass',
+      },
+    });
+    expect(result.nextStep).toContain('complete-dnd5e-level-up-workflow');
   });
 
   it('uses the shared character-info bridge request shape', async () => {
