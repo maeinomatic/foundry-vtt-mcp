@@ -74,16 +74,39 @@ Response:
 
 2. `create-dnd5e-character-workflow`
 
-Purpose: create standalone DnD5e character from template and set target class level correctly
+Purpose: create a standalone concept-safe DnD5e character and set target class level correctly
 
 Request:
 
-- `sourceUuid` (starter template/classed template)
+- `sourceUuid` (mechanical source/template actor)
 - `customName`
 - `targetLevel` (required)
 - `classIdentifier` (optional but recommended)
 - `advancementSelections` (optional)
-- `biography` (optional)
+- `biography` (optional legacy shortcut)
+- `customization` (optional concept identity payload)
+- `addToScene` (optional)
+
+Response:
+
+- creation result
+- progression workflow status
+- unresolved advancement steps if choices are needed
+- verification payload from build validation
+
+2a. `clone-dnd5e-character-template-workflow`
+
+Purpose: explicitly clone or adapt an authored DnD5e template while preserving source-profile data by default
+
+Request:
+
+- `sourceUuid` (explicit authored template source)
+- `customName`
+- `targetLevel` (required)
+- `classIdentifier` (optional but recommended)
+- `advancementSelections` (optional)
+- `biography` (optional override)
+- `customization` (optional identity override payload)
 - `addToScene` (optional)
 
 Response:

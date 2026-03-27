@@ -22,6 +22,7 @@ import type {
   CharacterResourceUpdateRequest,
   CharacterProgressionUpdateRequest,
   CharacterSkillProficiencyUpdateRequest,
+  CharacterConceptProfileRequest,
   CharacterSystemProficiencyUpdateRequest,
   PreparedCharacterProgressionUpdate,
   PreparedCharacterWriteMutation,
@@ -73,6 +74,44 @@ function toStringField(value: unknown): string | undefined {
   }
 
   return toStringValue(value);
+}
+
+const DND5E_CONCEPT_FLAG_BASE_PATH = 'flags.maeinomatic-foundry-mcp.characterConcept';
+const DND5E_CONCEPT_FLAG_SCOPE = 'maeinomatic-foundry-mcp';
+const DND5E_CONCEPT_FLAG_KEY = 'characterConcept';
+
+function extractCharacterConceptFlags(actor: DnD5eActorDocument): UnknownRecord | undefined {
+  const flags = asRecord(actor.flags);
+  const scopeFlags = asRecord(flags?.[DND5E_CONCEPT_FLAG_SCOPE]);
+  const conceptFlags = asRecord(scopeFlags?.[DND5E_CONCEPT_FLAG_KEY]);
+  if (!conceptFlags) {
+    return undefined;
+  }
+
+  const concept: UnknownRecord = {};
+
+  const gender = toStringValue(conceptFlags.gender);
+  if (gender) {
+    concept.gender = gender;
+  }
+
+  const appearance = toStringValue(conceptFlags.appearance);
+  if (appearance) {
+    concept.appearance = appearance;
+  }
+
+  const conceptNotes = toStringValue(conceptFlags.conceptNotes);
+  if (conceptNotes) {
+    concept.conceptNotes = conceptNotes;
+  }
+
+  return Object.keys(concept).length > 0 ? concept : undefined;
+}
+
+function extractBiography(actor: DnD5eActorDocument): string | undefined {
+  const details = asRecord(actor.system?.details);
+  const biography = asRecord(details?.biography);
+  return toStringValue(biography?.value) ?? toStringValue(details?.biography);
 }
 
 /**
@@ -518,9 +557,24 @@ export class DnD5eAdapter implements SystemAdapter {
       basicInfo.class = className;
     }
 
+    const alignment = toStringField(system?.details?.alignment);
+    if (alignment) {
+      basicInfo.alignment = alignment;
+    }
+
     const race = toStringValue(system?.details?.race);
     if (race) {
       basicInfo.race = race;
+    }
+
+    const biography = extractBiography(actor);
+    if (biography) {
+      basicInfo.biography = biography;
+    }
+
+    const concept = extractCharacterConceptFlags(actor);
+    if (concept) {
+      basicInfo.concept = concept;
     }
 
     return basicInfo;
@@ -1176,6 +1230,47 @@ export class DnD5eAdapter implements SystemAdapter {
       warnings: [
         'DnD5e progression is applied to the owned class item, not the actor level field.',
       ],
+    };
+  }
+
+  prepareCharacterConceptProfileUpdates(
+    request: CharacterConceptProfileRequest
+  ): PreparedCharacterWriteMutation {
+    const actorUpdates: UnknownRecord = {};
+    const warnings: string[] = [];
+
+    if (request.biography !== undefined) {
+      actorUpdates['system.details.biography.value'] = request.biography;
+    } else if (!request.preserveSourceProfile) {
+      actorUpdates['system.details.biography.value'] = '';
+    }
+
+    if (request.alignment !== undefined) {
+      actorUpdates['system.details.alignment'] = request.alignment;
+    }
+
+    if (request.race !== undefined) {
+      actorUpdates['system.details.race'] = request.race;
+    }
+
+    const conceptFlagFields: Array<
+      keyof Pick<CharacterConceptProfileRequest, 'gender' | 'appearance' | 'conceptNotes'>
+    > = ['gender', 'appearance', 'conceptNotes'];
+    const preservedConceptFields = conceptFlagFields.filter(field => request[field] !== undefined);
+
+    for (const field of preservedConceptFields) {
+      actorUpdates[`${DND5E_CONCEPT_FLAG_BASE_PATH}.${field}`] = request[field];
+    }
+
+    if (preservedConceptFields.length > 0) {
+      warnings.push(
+        `Preserved concept fields under MCP flags because no stable DnD5e actor data path is mapped yet: ${preservedConceptFields.join(', ')}.`
+      );
+    }
+
+    return {
+      ...(Object.keys(actorUpdates).length > 0 ? { actorUpdates } : {}),
+      ...(warnings.length > 0 ? { warnings } : {}),
     };
   }
 }

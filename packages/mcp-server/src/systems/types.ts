@@ -135,6 +135,16 @@ export interface CharacterSkillProficiencyUpdateRequest {
   }>;
 }
 
+export interface CharacterConceptProfileRequest {
+  biography?: string;
+  alignment?: string;
+  race?: string;
+  gender?: string;
+  appearance?: string;
+  conceptNotes?: string;
+  preserveSourceProfile?: boolean;
+}
+
 export interface CharacterProficiencyCollectionUpdate {
   values?: string[];
   custom?: string;
@@ -476,6 +486,15 @@ export interface SystemAdapter {
     actorData: SystemCharacterInfo,
     request: CharacterProgressionUpdateRequest
   ): PreparedCharacterProgressionUpdate;
+
+  /**
+   * Prepare system-safe actor updates for concept and profile customization.
+   * This is used by workflow tools that need to apply identity-facing fields
+   * without hard-coding system data paths in core orchestration.
+   */
+  prepareCharacterConceptProfileUpdates?(
+    request: CharacterConceptProfileRequest
+  ): PreparedCharacterWriteMutation;
 
   /**
    * Prepare system-safe actor update payloads for base ability score changes.

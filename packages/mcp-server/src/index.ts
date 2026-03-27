@@ -272,19 +272,7 @@ class BackendClient {
   }
 
   cleanup(): void {
-    this.log('cleanup(): shutting down backend');
-
-    if (this.backendProcess && !this.backendProcess.killed) {
-      try {
-        // Kill backend process - works cross-platform
-
-        this.backendProcess.kill();
-
-        this.log('cleanup(): backend process killed');
-      } catch (e) {
-        this.log('cleanup(): error killing backend', { error: getErrorMessage(e) });
-      }
-    }
+    this.log('cleanup(): closing wrapper connection and leaving backend running');
 
     if (this.socket && !this.socket.destroyed) {
       this.socket.destroy();
@@ -317,7 +305,8 @@ async function startWrapper(): Promise<void> {
 
   // Setup cleanup handlers - cross-platform approach
 
-  // When stdin closes (Claude Desktop exits), clean up the backend
+  // When stdin closes, clean up only the wrapper connection.
+  // The backend must stay alive so Foundry can remain attached across wrapper restarts.
 
   process.stdin.on('end', () => {
     backend.cleanup();

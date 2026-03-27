@@ -63,6 +63,7 @@ import { SystemContextService } from '../systems/system-context-service.js';
 import { SystemRegistry } from '../systems/system-registry.js';
 import type {
   CharacterAbilityScoreUpdateRequest,
+  CharacterConceptProfileRequest,
   CharacterResourceUpdateRequest,
   CharacterSkillProficiencyUpdateRequest,
   CharacterSystemProficiencyUpdateRequest,
@@ -177,6 +178,32 @@ type AdvancementSelectionSchemaInput = {
   sourceItemId?: string | undefined;
   sourceItemName?: string | undefined;
   choice: AdvancementChoiceSchemaInput;
+};
+
+type DnD5eCharacterCustomizationInput = {
+  biography?: string | undefined;
+  alignment?: string | undefined;
+  race?: string | undefined;
+  gender?: string | undefined;
+  appearance?: string | undefined;
+  conceptNotes?: string | undefined;
+};
+
+type DnD5eCharacterWorkflowInput = {
+  sourceUuid: string;
+  name: string;
+  targetLevel: number;
+  classIdentifier?: string | undefined;
+  advancementSelections?: AdvancementSelectionSchemaInput[] | undefined;
+  biography?: string | undefined;
+  customization?: DnD5eCharacterCustomizationInput | undefined;
+  addToScene: boolean;
+  placement?:
+    | {
+        type: 'random' | 'grid' | 'center' | 'coordinates';
+        coordinates?: Array<{ x: number; y: number }> | undefined;
+      }
+    | undefined;
 };
 
 function createAdvancementChoiceSchema(): z.ZodType<AdvancementChoiceSchemaInput> {
@@ -390,6 +417,19 @@ function createAdvancementSelectionsInputSchema(description: string): Record<str
       required: ['choice'],
     },
   };
+}
+
+function createDnD5eCharacterCustomizationSchema(): z.ZodType<DnD5eCharacterCustomizationInput> {
+  return z
+    .object({
+      biography: z.string().min(1).optional(),
+      alignment: z.string().min(1).optional(),
+      race: z.string().min(1).optional(),
+      gender: z.string().min(1).optional(),
+      appearance: z.string().min(1).optional(),
+      conceptNotes: z.string().min(1).optional(),
+    })
+    .strict();
 }
 
 function createSpellPreparationPlanSchema(): z.ZodEffects<
@@ -2797,36 +2837,170 @@ export class CharacterTools {
       {
         name: 'create-dnd5e-character-workflow',
         description:
-          'DnD5e only: create a standalone world actor from a compendium Actor UUID, then run the class level-up workflow to the requested target level. This does not create companion links.',
+          'DnD5e only: create a new concept-safe player character or NPC from a compendium Actor UUID, then run DnD5e class progression to the requested target level. This workflow clears inherited source-template biography/profile data unless you explicitly replace it through customization. Use this for requests like "create a level 3 sorcerer" or other new DnD5e character concepts. Do not use it to clone an authored starter hero profile.',
         inputSchema: {
           type: 'object',
           properties: {
             sourceUuid: {
               type: 'string',
               description:
-                'Compendium Actor UUID used as creation template, for example Compendium.dnd5e.heroes.Actor.2Pdtnswo8Nj2nafY',
+                'Compendium Actor UUID used as creation template, for example Compendium.dnd5e.heroes.Actor.2Pdtnswo8Nj2nafY. For a sorcerer workflow, pass a sorcerer actor template from a DnD5e Actor compendium.',
             },
             name: {
               type: 'string',
-              description: 'Name for the created actor',
+              description: 'Name for the created DnD5e actor',
             },
             targetLevel: {
               type: 'number',
-              description: 'Target DnD5e class level to reach using progression workflow',
+              description:
+                'Target DnD5e class level to reach using the guided progression workflow',
             },
             classIdentifier: {
               type: 'string',
               description:
-                'Optional class item name or ID for explicit class targeting, recommended for multiclass characters',
+                'Optional class item name or ID for explicit class targeting. Recommended for multiclass characters and acceptable for single-class requests such as Sorcerer.',
             },
             advancementSelections: {
               ...createAdvancementSelectionsInputSchema(
-                'Optional progression choices to apply during the level-up workflow.'
+                'Optional progression choices to apply during the level-up workflow, such as subclass picks, spell selections, and other required DnD5e advancement decisions.'
               ),
             },
             biography: {
               type: 'string',
               description: 'Optional biography text to write to system.details.biography.value',
+            },
+            customization: {
+              type: 'object',
+              description:
+                'Optional concept customization for DnD5e identity fields. Safe mapped fields are written to actor data; other concept fields are preserved under MCP flags so they are not silently dropped.',
+              properties: {
+                biography: {
+                  type: 'string',
+                  description:
+                    'Optional biography override. If omitted and preserveSourceProfile is false, inherited source biography is cleared.',
+                },
+                alignment: {
+                  type: 'string',
+                  description: 'Optional DnD5e alignment value written to system.details.alignment',
+                },
+                race: {
+                  type: 'string',
+                  description: 'Optional DnD5e race value written to system.details.race',
+                },
+                gender: {
+                  type: 'string',
+                  description:
+                    'Optional concept gender value preserved under MCP concept flags because no stable DnD5e actor data path is currently mapped in this server.',
+                },
+                appearance: {
+                  type: 'string',
+                  description:
+                    'Optional appearance description preserved under MCP concept flags because no stable DnD5e actor data path is currently mapped in this server.',
+                },
+                conceptNotes: {
+                  type: 'string',
+                  description:
+                    'Optional freeform concept notes preserved under MCP concept flags for later inspection or downstream tooling.',
+                },
+              },
+            },
+            addToScene: {
+              type: 'boolean',
+              description: 'Whether to place the actor on the current scene when created',
+            },
+            placement: {
+              type: 'object',
+              properties: {
+                type: {
+                  type: 'string',
+                  enum: ['random', 'grid', 'center', 'coordinates'],
+                },
+                coordinates: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      x: { type: 'number' },
+                      y: { type: 'number' },
+                    },
+                    required: ['x', 'y'],
+                  },
+                },
+              },
+            },
+          },
+          required: ['sourceUuid', 'name', 'targetLevel'],
+        },
+      },
+      {
+        name: 'clone-dnd5e-character-template-workflow',
+        description:
+          'DnD5e only: clone a compendium Actor template into the world, preserving the source-template profile by default, then run DnD5e class progression to the requested target level. Use this only when the caller explicitly wants to clone or adapt a specific authored template rather than create a fresh character concept.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            sourceUuid: {
+              type: 'string',
+              description:
+                'Compendium Actor UUID used as the explicit clone source, for example Compendium.dnd5e.heroes.Actor.2Pdtnswo8Nj2nafY.',
+            },
+            name: {
+              type: 'string',
+              description: 'Name for the created DnD5e actor',
+            },
+            targetLevel: {
+              type: 'number',
+              description:
+                'Target DnD5e class level to reach using the guided progression workflow',
+            },
+            classIdentifier: {
+              type: 'string',
+              description:
+                'Optional class item name or ID for explicit class targeting. Recommended for multiclass characters and acceptable for single-class requests such as Sorcerer.',
+            },
+            advancementSelections: {
+              ...createAdvancementSelectionsInputSchema(
+                'Optional progression choices to apply during the workflow, such as subclass picks, spell selections, and other required DnD5e advancement decisions.'
+              ),
+            },
+            biography: {
+              type: 'string',
+              description:
+                'Optional biography override written to system.details.biography.value after cloning the source template.',
+            },
+            customization: {
+              type: 'object',
+              description:
+                'Optional identity overrides for the cloned template. Native mapped fields are written to actor data; other concept fields are preserved under MCP flags.',
+              properties: {
+                biography: {
+                  type: 'string',
+                  description: 'Optional biography override for the cloned character.',
+                },
+                alignment: {
+                  type: 'string',
+                  description: 'Optional DnD5e alignment value written to system.details.alignment',
+                },
+                race: {
+                  type: 'string',
+                  description: 'Optional DnD5e race value written to system.details.race',
+                },
+                gender: {
+                  type: 'string',
+                  description:
+                    'Optional concept gender value preserved under MCP concept flags because no stable DnD5e actor data path is currently mapped in this server.',
+                },
+                appearance: {
+                  type: 'string',
+                  description:
+                    'Optional appearance description preserved under MCP concept flags because no stable DnD5e actor data path is currently mapped in this server.',
+                },
+                conceptNotes: {
+                  type: 'string',
+                  description:
+                    'Optional freeform concept notes preserved under MCP concept flags for later inspection or downstream tooling.',
+                },
+              },
             },
             addToScene: {
               type: 'boolean',
@@ -6455,7 +6629,24 @@ export class CharacterTools {
   }
 
   async handleCreateDnD5eCharacterWorkflow(args: unknown): Promise<UnknownRecord> {
+    const parsed = this.parseDnD5eCharacterWorkflowArgs(args);
+    return this.runDnD5eCharacterWorkflowCreation(parsed, {
+      workflowName: 'create-dnd5e-character-workflow',
+      preserveSourceProfile: false,
+    });
+  }
+
+  async handleCloneDnD5eCharacterTemplateWorkflow(args: unknown): Promise<UnknownRecord> {
+    const parsed = this.parseDnD5eCharacterWorkflowArgs(args);
+    return this.runDnD5eCharacterWorkflowCreation(parsed, {
+      workflowName: 'clone-dnd5e-character-template-workflow',
+      preserveSourceProfile: true,
+    });
+  }
+
+  private parseDnD5eCharacterWorkflowArgs(args: unknown): DnD5eCharacterWorkflowInput {
     const advancementSelectionSchema = createAdvancementSelectionSchema();
+    const customizationSchema = createDnD5eCharacterCustomizationSchema();
     const schema = z
       .object({
         sourceUuid: z.string().min(1, 'sourceUuid cannot be empty'),
@@ -6464,6 +6655,7 @@ export class CharacterTools {
         classIdentifier: z.string().min(1).optional(),
         advancementSelections: z.array(advancementSelectionSchema).optional(),
         biography: z.string().min(1).optional(),
+        customization: customizationSchema.optional(),
         addToScene: z.boolean().default(false),
         placement: z
           .object({
@@ -6481,11 +6673,20 @@ export class CharacterTools {
       })
       .strict();
 
-    const parsed = schema.parse(args);
+    return schema.parse(args);
+  }
+
+  private async runDnD5eCharacterWorkflowCreation(
+    parsed: DnD5eCharacterWorkflowInput,
+    options: {
+      workflowName: 'create-dnd5e-character-workflow' | 'clone-dnd5e-character-template-workflow';
+      preserveSourceProfile: boolean;
+    }
+  ): Promise<UnknownRecord> {
     const gameSystem = await this.getGameSystem();
     if (gameSystem !== 'dnd5e') {
       throw new Error(
-        'UNSUPPORTED_CAPABILITY: create-dnd5e-character-workflow is only available when the active system is dnd5e.'
+        `UNSUPPORTED_CAPABILITY: ${options.workflowName} is only available when the active system is dnd5e.`
       );
     }
 
@@ -6495,6 +6696,8 @@ export class CharacterTools {
         'sourceUuid must be a Compendium Actor UUID in the format Compendium.<pack>.<collection>.Actor.<id>'
       );
     }
+
+    const workflowMetadata = this.createDnD5eWorkflowMetadata(options.workflowName);
 
     const creationResult = await this.foundryClient.query<FoundryActorCreationResult>(
       'maeinomatic-foundry-mcp.createActorFromCompendium',
@@ -6513,15 +6716,23 @@ export class CharacterTools {
       throw new Error('Failed to create actor from source UUID.');
     }
 
-    if (parsed.biography !== undefined) {
-      await this.foundryClient.query<FoundryUpdateActorResponse>(
+    const profileRequest = this.createCharacterConceptProfileRequest({
+      legacyBiography: parsed.biography,
+      customization: parsed.customization,
+      preserveSourceProfile: options.preserveSourceProfile,
+    });
+    const profileMutation = await this.prepareCharacterConceptProfileMutation(
+      profileRequest.request
+    );
+
+    let profileUpdateResult: FoundryUpdateActorResponse | null = null;
+    if (profileMutation.actorUpdates && Object.keys(profileMutation.actorUpdates).length > 0) {
+      profileUpdateResult = await this.foundryClient.query<FoundryUpdateActorResponse>(
         'maeinomatic-foundry-mcp.updateActor',
         {
           identifier: actor.id,
-          updates: {
-            'system.details.biography.value': parsed.biography,
-          },
-          reason: 'create-dnd5e-character-workflow biography update',
+          updates: profileMutation.actorUpdates,
+          reason: `${options.workflowName} concept profile update`,
         }
       );
     }
@@ -6535,11 +6746,30 @@ export class CharacterTools {
         : {}),
     });
 
-    return {
-      success:
-        workflowResult &&
-        typeof workflowResult === 'object' &&
-        (workflowResult as Record<string, unknown>).success === true,
+    const validationResult = await this.foundryClient.query<FoundryValidateCharacterBuildResponse>(
+      'maeinomatic-foundry-mcp.validateCharacterBuild',
+      {
+        actorIdentifier: actor.id,
+      } satisfies FoundryValidateCharacterBuildRequest
+    );
+
+    const verification = this.createCharacterBuildVerification(validationResult);
+    const verificationRecord = this.toRecord(verification);
+    const workflowRecord = this.toRecord(workflowResult);
+    const progressionCompleted =
+      workflowRecord?.success === true && workflowRecord.workflowStatus === 'completed';
+    const warnings = this.mergeWarnings(
+      profileRequest.warnings,
+      profileMutation.warnings,
+      Array.isArray(workflowRecord?.warnings)
+        ? workflowRecord.warnings.filter(
+            (warning): warning is string => typeof warning === 'string'
+          )
+        : undefined
+    );
+
+    const baseResponse = {
+      ...workflowMetadata,
       linked: false,
       source: {
         sourceUuid: parsed.sourceUuid,
@@ -6557,8 +6787,131 @@ export class CharacterTools {
           ? { tokensPlaced: creationResult.tokensPlaced }
           : {}),
       },
+      ...(profileUpdateResult
+        ? {
+            profileUpdate: {
+              appliedUpdates: profileUpdateResult.appliedUpdates,
+              updatedFields: profileUpdateResult.updatedFields,
+            },
+          }
+        : {}),
       progression: workflowResult,
+      verification,
+      ...(workflowRecord?.autoApplied
+        ? { autoApplied: { progression: workflowRecord.autoApplied } }
+        : {}),
+      ...(warnings.length > 0 ? { warnings } : {}),
     };
+
+    if (!progressionCompleted) {
+      return {
+        ...baseResponse,
+        success: false,
+        partialSuccess: true,
+        workflowStatus:
+          typeof workflowRecord?.workflowStatus === 'string'
+            ? workflowRecord.workflowStatus
+            : 'needs-choices',
+        unresolved: {
+          phase: 'progression',
+          ...(this.toRecord(workflowRecord?.unresolved) ?? {}),
+        },
+        nextStep: `Provide the remaining advancement selections and rerun complete-dnd5e-level-up-workflow for actor ${actor.id}.`,
+      };
+    }
+
+    if (verificationRecord?.verified !== true) {
+      return {
+        ...baseResponse,
+        success: false,
+        partialSuccess: true,
+        workflowStatus: 'needs-review',
+        unresolved: {
+          phase: 'verification',
+          ...(verificationRecord?.outstandingAdvancements
+            ? { outstandingAdvancements: verificationRecord.outstandingAdvancements }
+            : {}),
+          ...(verificationRecord?.recommendations
+            ? { recommendations: verificationRecord.recommendations }
+            : {}),
+        },
+        nextStep:
+          'Review the build verification issues and complete any remaining advancement or spellbook steps for the created actor.',
+      };
+    }
+
+    return {
+      ...baseResponse,
+      success: true,
+      workflowStatus: 'completed',
+      completed: true,
+    };
+  }
+
+  private createCharacterConceptProfileRequest(input: {
+    legacyBiography: string | undefined;
+    customization: DnD5eCharacterCustomizationInput | undefined;
+    preserveSourceProfile: boolean;
+  }): {
+    request: UnknownRecord;
+    warnings?: string[];
+  } {
+    const warnings: string[] = [];
+
+    const biography = input.legacyBiography ?? input.customization?.biography;
+    if (
+      input.legacyBiography !== undefined &&
+      input.customization?.biography !== undefined &&
+      input.legacyBiography !== input.customization.biography
+    ) {
+      warnings.push('Top-level biography overrides customization.biography.');
+    }
+
+    const request: UnknownRecord = {
+      preserveSourceProfile: input.preserveSourceProfile,
+    };
+
+    if (biography !== undefined) {
+      request.biography = biography;
+    }
+
+    if (input.customization?.alignment !== undefined) {
+      request.alignment = input.customization.alignment;
+    }
+
+    if (input.customization?.race !== undefined) {
+      request.race = input.customization.race;
+    }
+
+    if (input.customization?.gender !== undefined) {
+      request.gender = input.customization.gender;
+    }
+
+    if (input.customization?.appearance !== undefined) {
+      request.appearance = input.customization.appearance;
+    }
+
+    if (input.customization?.conceptNotes !== undefined) {
+      request.conceptNotes = input.customization.conceptNotes;
+    }
+
+    return {
+      request,
+      ...(warnings.length > 0 ? { warnings } : {}),
+    };
+  }
+
+  private async prepareCharacterConceptProfileMutation(
+    request: UnknownRecord
+  ): Promise<PreparedCharacterWriteMutation> {
+    const { adapter } = await this.getRequiredSystemAdapter('character concept profile updates');
+    if (typeof adapter.prepareCharacterConceptProfileUpdates !== 'function') {
+      throw new Error(
+        'UNSUPPORTED_CAPABILITY: The active system adapter does not support concept profile updates.'
+      );
+    }
+
+    return adapter.prepareCharacterConceptProfileUpdates(request as CharacterConceptProfileRequest);
   }
 
   private parseProgressionArgs(args: unknown): {
