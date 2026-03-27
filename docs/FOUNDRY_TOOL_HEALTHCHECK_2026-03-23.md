@@ -163,6 +163,13 @@ Not a pure connection issue:
 
 ## MCP Character Workflow Probe (2026-03-24)
 
+Status note:
+
+- This probe predates the later split between concept-safe creation and explicit template cloning.
+- Current intended usage is:
+  - `create-dnd5e-character-workflow` for fresh concept-driven DnD5e characters
+  - `clone-dnd5e-character-template-workflow` for explicit cloning or adaptation of an authored template
+
 Goal:
 
 - Validate character creation through the MCP workflow path (call_tool -> create-dnd5e-character-workflow), not manual socket-side document edits.
@@ -229,3 +236,16 @@ Foundry module query dispatch and progression application:
 - This run confirms a progression-pipeline bug specific to nontrivial DnD advancement selections (ItemGrant at level-up), not a generic connectivity failure.
 - Level-1 creation succeeds.
 - Level-up to level 2 fails when automatic advancement-choice application is attempted with an option id/shape rejected by applyCharacterAdvancementChoice.
+
+### Clone Workflow Exposure Check (2026-03-27)
+
+- Method: local MCP stdio client against the current `packages/mcp-server/dist/index.js` build
+- Result after restarting a stale persistent backend process:
+  - `clone-dnd5e-character-template-workflow` is present in `tools/list`
+  - tool count observed: 84
+- Runtime outcome:
+  - direct tool call reached the server and routed correctly
+  - execution stopped at the system gate with `UNSUPPORTED_CAPABILITY: clone-dnd5e-character-template-workflow is only available when the active system is dnd5e.`
+- Interpretation:
+  - tool exposure and routing are verified in the current build
+  - full end-to-end clone validation was not possible in this session because no active DnD5e Foundry world was connected at test time
