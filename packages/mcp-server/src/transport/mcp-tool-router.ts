@@ -1,5 +1,6 @@
 import { ActorCreationTools } from '../tools/actor-creation.js';
 import { CampaignManagementTools } from '../tools/campaign-management.js';
+import { ChatOutputTools } from '../tools/chat-output.js';
 import { CharacterTools } from '../tools/character.js';
 import { CompendiumTools } from '../tools/compendium.js';
 import { DiceRollTools } from '../tools/dice-roll.js';
@@ -17,6 +18,7 @@ export interface MpcToolRouterDependencies {
   actorCreationTools: ActorCreationTools;
   dsa5CharacterCreator: DSA5CharacterCreator;
   questCreationTools: QuestCreationTools;
+  chatOutputTools: ChatOutputTools;
   diceRollTools: DiceRollTools;
   campaignManagementTools: CampaignManagementTools;
   ownershipTools: OwnershipTools;
@@ -36,6 +38,7 @@ export async function dispatchMcpToolCall(
     actorCreationTools,
     dsa5CharacterCreator,
     questCreationTools,
+    chatOutputTools,
     diceRollTools,
     campaignManagementTools,
     ownershipTools,
@@ -182,6 +185,8 @@ export async function dispatchMcpToolCall(
       return questCreationTools.handleSearchJournals(args);
     case 'request-player-rolls':
       return diceRollTools.handleRequestPlayerRolls(args);
+    case 'post-chat-message':
+      return chatOutputTools.handlePostChatMessage(args);
     case 'create-campaign-dashboard':
       return campaignManagementTools.handleCreateCampaignDashboard(args);
     case 'assign-actor-ownership':

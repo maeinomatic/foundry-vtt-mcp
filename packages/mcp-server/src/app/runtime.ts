@@ -8,6 +8,7 @@ import { Logger } from '../logger.js';
 import { DSA5CharacterCreator } from '../systems/dsa5/character-creator.js';
 import { ActorCreationTools } from '../tools/actor-creation.js';
 import { CampaignManagementTools } from '../tools/campaign-management.js';
+import { ChatOutputTools } from '../tools/chat-output.js';
 import { CharacterTools } from '../tools/character.js';
 import { CompendiumTools } from '../tools/compendium.js';
 import { DiceRollTools } from '../tools/dice-roll.js';
@@ -25,6 +26,7 @@ export interface BackendCoreRuntime {
   actorCreationTools: ActorCreationTools;
   dsa5CharacterCreator: DSA5CharacterCreator;
   questCreationTools: QuestCreationTools;
+  chatOutputTools: ChatOutputTools;
   diceRollTools: DiceRollTools;
   campaignManagementTools: CampaignManagementTools;
   ownershipTools: OwnershipTools;
@@ -80,6 +82,7 @@ export async function createBackendCoreRuntime(): Promise<BackendCoreRuntime> {
   const actorCreationTools = new ActorCreationTools({ foundryClient, logger });
   const dsa5CharacterCreator = new DSA5CharacterCreator({ foundryClient, logger });
   const questCreationTools = new QuestCreationTools({ foundryClient, logger });
+  const chatOutputTools = new ChatOutputTools({ foundryClient, logger });
   const diceRollTools = new DiceRollTools({ foundryClient, logger });
   const campaignManagementTools = new CampaignManagementTools(foundryClient, logger);
   const ownershipTools = new OwnershipTools({ foundryClient, logger });
@@ -92,6 +95,7 @@ export async function createBackendCoreRuntime(): Promise<BackendCoreRuntime> {
     ...actorCreationTools.getToolDefinitions(),
     ...dsa5CharacterCreator.getToolDefinitions(),
     ...questCreationTools.getToolDefinitions(),
+    ...chatOutputTools.getToolDefinitions(),
     ...diceRollTools.getToolDefinitions(),
     ...campaignManagementTools.getToolDefinitions(),
     ...ownershipTools.getToolDefinitions(),
@@ -107,6 +111,7 @@ export async function createBackendCoreRuntime(): Promise<BackendCoreRuntime> {
     actorCreationTools,
     dsa5CharacterCreator,
     questCreationTools,
+    chatOutputTools,
     diceRollTools,
     campaignManagementTools,
     ownershipTools,

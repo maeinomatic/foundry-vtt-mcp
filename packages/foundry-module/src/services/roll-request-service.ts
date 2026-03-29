@@ -58,6 +58,14 @@ interface UserCollectionLike {
   [Symbol.iterator]?: () => Iterator<unknown>;
 }
 
+type LegacyRollMode = 'publicroll' | 'gmroll';
+
+interface RollToMessageOptionsLike {
+  create: boolean;
+  rollMode: LegacyRollMode;
+  messageMode?: string;
+}
+
 export interface RollRequestServiceContext {
   moduleId: string;
   validateFoundryState(): void;
@@ -96,6 +104,41 @@ function getActorArray(): ActorLookupLike[] {
   return Array.from(actors as Iterable<unknown>).filter((candidate): candidate is ActorLookupLike =>
     Boolean(candidate && typeof candidate === 'object')
   );
+}
+
+function getPrivateWhisperTargets(targetUserId?: string | null): string[] {
+  const whisperTargets: string[] = [];
+
+  if (targetUserId) {
+    whisperTargets.push(targetUserId);
+  }
+
+  for (const gm of getUserArray()) {
+    if (gm.isGM === true && gm.active === true && gm.id && !whisperTargets.includes(gm.id)) {
+      whisperTargets.push(gm.id);
+    }
+  }
+
+  return whisperTargets;
+}
+
+function resolveChatMessageMode(isPublic: boolean): string | undefined {
+  const chatMessageConfig = (
+    CONFIG as unknown as {
+      ChatMessage?: { modes?: Record<string, unknown> };
+    }
+  ).ChatMessage;
+  const availableModes = Object.keys(chatMessageConfig?.modes ?? {});
+  const preferredModes = isPublic ? ['public', 'publicroll'] : ['private', 'gmroll'];
+
+  return preferredModes.find(mode => availableModes.includes(mode));
+}
+
+function buildRollToMessageOptions(isPublic: boolean): RollToMessageOptionsLike {
+  const rollMode: LegacyRollMode = isPublic ? 'publicroll' : 'gmroll';
+  const messageMode = resolveChatMessageMode(isPublic);
+
+  return messageMode ? { create: true, rollMode, messageMode } : { create: true, rollMode };
 }
 
 export class FoundryRollRequestService {
@@ -158,20 +201,7 @@ export class FoundryRollRequestService {
         </div>
       `;
 
-      const whisperTargets: string[] = [];
-      if (!data.isPublic) {
-        if (playerInfo.user?.id) {
-          whisperTargets.push(playerInfo.user.id);
-        }
-
-        for (const gm of getUserArray().filter(
-          user => user.isGM === true && user.active === true
-        )) {
-          if (gm.id && !whisperTargets.includes(gm.id)) {
-            whisperTargets.push(gm.id);
-          }
-        }
-      }
+      const whisperTargets = data.isPublic ? [] : getPrivateWhisperTargets(playerInfo.user?.id);
 
       const chatMessageApi = ChatMessage as unknown as {
         getSpeaker: (data: { actor?: unknown }) => unknown;
@@ -334,7 +364,7 @@ export class FoundryRollRequestService {
             evaluate: () => Promise<unknown>;
             toMessage: (
               message: Record<string, unknown>,
-              options: { create: boolean; rollMode: string }
+              options: RollToMessageOptionsLike
             ) => Promise<unknown>;
           };
           const roll = new RollCtor(rollFormula);
@@ -347,25 +377,7 @@ export class FoundryRollRequestService {
           const character =
             characterId && actorsCollection ? actorsCollection.get(characterId) : null;
 
-          const rollMode = isPublic ? 'publicroll' : 'whisper';
-          const whisperTargets: string[] = [];
-
-          if (!isPublic) {
-            if (targetUserId) {
-              whisperTargets.push(targetUserId);
-            }
-
-            for (const gm of getUserArray()) {
-              if (
-                gm.isGM === true &&
-                gm.active === true &&
-                gm.id &&
-                !whisperTargets.includes(gm.id)
-              ) {
-                whisperTargets.push(gm.id);
-              }
-            }
-          }
+          const whisperTargets = isPublic ? [] : getPrivateWhisperTargets(targetUserId);
 
           const messageData: Record<string, unknown> = {
             speaker: (
@@ -375,10 +387,7 @@ export class FoundryRollRequestService {
             ...(whisperTargets.length > 0 ? { whisper: whisperTargets } : {}),
           };
 
-          await roll.toMessage(messageData, {
-            create: true,
-            rollMode,
-          });
+          await roll.toMessage(messageData, buildRollToMessageOptions(isPublic));
 
           const currentButtonIdRaw: unknown = button.data('button-id') as unknown;
           const currentButtonId =
