@@ -19,33 +19,33 @@ Not available in this workspace:
 
 ## Branch Validation
 
-| Check | Status | Evidence |
-| --- | --- | --- |
-| TypeScript typecheck | pass | `npm run typecheck` |
-| Build | pass | `npm run build` |
-| MCP server unit tests | pass | `npm -w @maeinomatic/foundry-mcp-server test -- --run` (117 passed) |
-| MCP schema smoke | pass | `npm run test:mcp:schema` |
+| Check                 | Status | Evidence                                                            |
+| --------------------- | ------ | ------------------------------------------------------------------- |
+| TypeScript typecheck  | pass   | `npm run typecheck`                                                 |
+| Build                 | pass   | `npm run build`                                                     |
+| MCP server unit tests | pass   | `npm -w @maeinomatic/foundry-mcp-server test -- --run` (117 passed) |
+| MCP schema smoke      | pass   | `npm run test:mcp:schema`                                           |
 
 ## DnD-Focused v14 Readiness Snapshot
 
-| Area | Status | Evidence | Linked Issue |
-| --- | --- | --- | --- |
-| DataModel operator audit | pass | Static audit completed; no active deprecated operator usage found in current packages tree | #13 |
-| `parseHTML` null safety | pass | Static audit completed; no active `parseHTML` call sites remain in current packages tree | #15 |
-| Token detection modes | pass | Static audit completed; current token tooling does not read or write `TokenDocument.detectionModes` | #16 |
-| Chat visibility assumptions | pass | `request-player-rolls` hardened to use supported legacy roll modes and v14-aware `messageMode` fallback | #17 |
-| ActiveEffect transferral retirement | pass | Static audit completed; token-condition flow creates and removes actor-owned effects directly | #14 |
+| Area                                | Status | Evidence                                                                                                | Linked Issue |
+| ----------------------------------- | ------ | ------------------------------------------------------------------------------------------------------- | ------------ |
+| DataModel operator audit            | pass   | Static audit completed; no active deprecated operator usage found in current packages tree              | #13          |
+| `parseHTML` null safety             | pass   | Static audit completed; no active `parseHTML` call sites remain in current packages tree                | #15          |
+| Token detection modes               | pass   | Static audit completed; current token tooling does not read or write `TokenDocument.detectionModes`     | #16          |
+| Chat visibility assumptions         | pass   | `request-player-rolls` hardened to use supported legacy roll modes and v14-aware `messageMode` fallback | #17          |
+| ActiveEffect transferral retirement | pass   | Static audit completed; token-condition flow creates and removes actor-owned effects directly           | #14          |
 
 ## Runtime Matrix
 
-| Environment | Status | Notes | Blocking Issue |
-| --- | --- | --- | --- |
-| Foundry v13 + DnD5e | blocked | No live Foundry runtime/world available in this workspace | #18 |
-| Foundry v14 + DnD5e | blocked | No live Foundry v14 runtime/world available in this workspace | #18 |
-| Foundry v13 + PF2e | blocked | No live Foundry runtime/world available in this workspace | #18 |
-| Foundry v14 + PF2e | blocked | No live Foundry v14 runtime/world available in this workspace | #18 |
-| Foundry v13 + DSA5 | blocked | No live Foundry runtime/world available in this workspace | #18 |
-| Foundry v14 + DSA5 | blocked | No live Foundry v14 runtime/world available in this workspace | #18 |
+| Environment         | Status  | Notes                                                         | Blocking Issue |
+| ------------------- | ------- | ------------------------------------------------------------- | -------------- |
+| Foundry v13 + DnD5e | blocked | No live Foundry runtime/world available in this workspace     | #18            |
+| Foundry v14 + DnD5e | blocked | No live Foundry v14 runtime/world available in this workspace | #18            |
+| Foundry v13 + PF2e  | blocked | No live Foundry runtime/world available in this workspace     | #18            |
+| Foundry v14 + PF2e  | blocked | No live Foundry v14 runtime/world available in this workspace | #18            |
+| Foundry v13 + DSA5  | blocked | No live Foundry runtime/world available in this workspace     | #18            |
+| Foundry v14 + DSA5  | blocked | No live Foundry v14 runtime/world available in this workspace | #18            |
 
 ## Blocking Defects And Gaps
 
