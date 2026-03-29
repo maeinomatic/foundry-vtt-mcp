@@ -17,6 +17,14 @@ type UpdateCampaignProgressRequest = {
   newStatus: string;
 };
 
+type PostChatMessageRequest = {
+  content: string;
+  visibility: 'public' | 'gm-only' | 'recipients';
+  recipientUsers?: string[];
+  speakerActorIdentifier?: string;
+  speakerAlias?: string;
+};
+
 export interface UtilityQueryHandlersOptions {
   dataAccess: FoundryModuleFacade;
 }
@@ -53,6 +61,27 @@ export class UtilityQueryHandlers {
     } catch (error) {
       throw new Error(
         `Failed to request player rolls: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+    }
+  }
+
+  async handlePostChatMessage(data: PostChatMessageRequest): Promise<unknown> {
+    try {
+      const gmCheck = this.validateGMAccess();
+      if (!gmCheck.allowed) {
+        return { error: 'Access denied', success: false };
+      }
+
+      this.dataAccess.validateFoundryState();
+
+      if (!data.content || !data.visibility) {
+        throw new Error('content and visibility are required');
+      }
+
+      return await this.dataAccess.postChatMessage(data);
+    } catch (error) {
+      throw new Error(
+        `Failed to post chat message: ${error instanceof Error ? error.message : 'Unknown error'}`
       );
     }
   }

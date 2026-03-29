@@ -123,9 +123,11 @@ function getPrivateWhisperTargets(targetUserId?: string | null): string[] {
 }
 
 function resolveChatMessageMode(isPublic: boolean): string | undefined {
-  const chatMessageConfig = (CONFIG as unknown as {
-    ChatMessage?: { modes?: Record<string, unknown> };
-  }).ChatMessage;
+  const chatMessageConfig = (
+    CONFIG as unknown as {
+      ChatMessage?: { modes?: Record<string, unknown> };
+    }
+  ).ChatMessage;
   const availableModes = Object.keys(chatMessageConfig?.modes ?? {});
   const preferredModes = isPublic ? ['public', 'publicroll'] : ['private', 'gmroll'];
 

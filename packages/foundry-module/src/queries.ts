@@ -178,6 +178,12 @@ export class QueryHandlers {
       'request-player-rolls': this.utilityQueryHandlers.handleRequestPlayerRolls.bind(
         this.utilityQueryHandlers
       ),
+      postChatMessage: this.utilityQueryHandlers.handlePostChatMessage.bind(
+        this.utilityQueryHandlers
+      ),
+      'post-chat-message': this.utilityQueryHandlers.handlePostChatMessage.bind(
+        this.utilityQueryHandlers
+      ),
       getEnhancedCreatureIndex: this.utilityQueryHandlers.handleGetEnhancedCreatureIndex.bind(
         this.utilityQueryHandlers
       ),

@@ -16,6 +16,11 @@ import { FoundryCharacterBuildValidationService } from './services/character-bui
 import { FoundryCharacterPatchTransactionService } from './services/character-patch-transaction-service.js';
 import { FoundryCharacterRestWorkflowService } from './services/character-rest-workflow-service.js';
 import { FoundryCharacterService } from './services/character-service.js';
+import {
+  FoundryChatMessageService,
+  type PostChatMessageRequest,
+  type PostChatMessageResponse,
+} from './services/chat-message-service.js';
 import { FoundryCompanionService } from './services/companion-service.js';
 import { FoundryCompendiumService } from './services/compendium-service.js';
 import { FoundryDnD5eSummonActivityWorkflowService } from './services/dnd5e-summon-activity-workflow-service.js';
@@ -154,6 +159,7 @@ export class FoundryModuleFacade {
   private characterPatchTransactionService: FoundryCharacterPatchTransactionService;
   private characterRestWorkflowService: FoundryCharacterRestWorkflowService;
   private characterService: FoundryCharacterService;
+  private chatMessageService: FoundryChatMessageService;
   private companionService: FoundryCompanionService;
   private compendiumService: FoundryCompendiumService;
   private dnd5eSummonActivityWorkflowService: FoundryDnD5eSummonActivityWorkflowService;
@@ -344,6 +350,18 @@ export class FoundryModuleFacade {
         status: 'success' | 'failure',
         errorMessage?: string
       ): void => this.auditLog(action, data, status, errorMessage),
+    });
+    this.chatMessageService = new FoundryChatMessageService({
+      moduleId: this.moduleId,
+      validateFoundryState: (): void => this.validateFoundryState(),
+      auditLog: (
+        action: string,
+        data: unknown,
+        status: 'success' | 'failure',
+        errorMessage?: string
+      ): void => this.auditLog(action, data, status, errorMessage),
+      findActorByIdentifier: (identifier: string): ActorLookupLike | null =>
+        this.findActorByIdentifier(identifier),
     });
     this.sceneInteractionService = new FoundrySceneInteractionService({
       moduleId: this.moduleId,
@@ -946,6 +964,13 @@ export class FoundryModuleFacade {
     flavor: string;
   }): Promise<{ success: boolean; message: string; error?: string }> {
     return this.rollRequestService.requestPlayerRolls(data);
+  }
+
+  /**
+   * Post a guarded plain-text chat message with explicit visibility controls
+   */
+  async postChatMessage(data: PostChatMessageRequest): Promise<PostChatMessageResponse> {
+    return this.chatMessageService.postChatMessage(data);
   }
 
   /**
