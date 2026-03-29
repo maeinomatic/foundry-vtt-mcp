@@ -52,7 +52,7 @@ function formatSeverity(name, vulnerability) {
 let report;
 
 try {
-  const raw = execSync('npm audit --json --omit=dev --workspaces', {
+  const raw = execSync('npm audit --json --omit=dev', {
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
   });
