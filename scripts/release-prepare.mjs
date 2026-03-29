@@ -22,7 +22,9 @@ if (!versionPattern.test(targetVersion)) {
 const currentVersion = readVersionState().root;
 
 if (dryRun) {
-  console.log(`[dry-run] Would update root package version from ${currentVersion} to ${targetVersion}`);
+  console.log(
+    `[dry-run] Would update root package version from ${currentVersion} to ${targetVersion}`
+  );
   console.log('[dry-run] Would sync workspace and module manifest versions');
   console.log('[dry-run] Would refresh package-lock.json metadata');
   console.log('[dry-run] Would run npm run version:check');
@@ -39,13 +41,13 @@ const commands = [
   ['npm', ['version', targetVersion, '--no-git-tag-version']],
   ['node', ['scripts/sync-versions.mjs']],
   ['npm', ['install', '--package-lock-only', '--workspaces', '--include-workspace-root']],
-  ['node', ['scripts/verify-versions.mjs']]
+  ['node', ['scripts/verify-versions.mjs']],
 ];
 
 for (const [command, commandArgs] of commands) {
   const result = spawnSync(command, commandArgs, {
     stdio: 'inherit',
-    shell: process.platform === 'win32'
+    shell: process.platform === 'win32',
   });
 
   if (result.status !== 0) {
