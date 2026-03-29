@@ -110,6 +110,10 @@ Implementation checklist:
 
 Run these checks in separate worlds and record results.
 
+Current published snapshot: `docs/foundry-v14-matrix-results.md`
+
+Current status: branch-level validation is complete, but live world execution is still blocked pending access to Foundry v13/v14 runtime environments.
+
 1. Foundry v13 + DnD5e
 2. Foundry v13 + PF2e
 3. Foundry v13 + DSA5
