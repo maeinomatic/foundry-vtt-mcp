@@ -2,7 +2,13 @@
 
 import { assertVersionLike, readJson, versionFiles, writeJson } from './version-helpers.mjs';
 
-const rootPackage = readJson(versionFiles.rootPackage);
+/**
+ * @typedef {object} VersionedJsonFile
+ * @property {string | undefined} version
+ */
+
+/** @type {VersionedJsonFile} */
+const rootPackage = /** @type {VersionedJsonFile} */ (readJson(versionFiles.rootPackage));
 const targetVersion = rootPackage.version;
 
 try {
@@ -12,10 +18,14 @@ try {
   process.exit(1);
 }
 
-const serverPackage = readJson(versionFiles.serverPackage);
-const modulePackage = readJson(versionFiles.modulePackage);
-const moduleManifest = readJson(versionFiles.moduleManifest);
-const sharedPackage = readJson(versionFiles.sharedPackage);
+/** @type {VersionedJsonFile} */
+const serverPackage = /** @type {VersionedJsonFile} */ (readJson(versionFiles.serverPackage));
+/** @type {VersionedJsonFile} */
+const modulePackage = /** @type {VersionedJsonFile} */ (readJson(versionFiles.modulePackage));
+/** @type {VersionedJsonFile} */
+const moduleManifest = /** @type {VersionedJsonFile} */ (readJson(versionFiles.moduleManifest));
+/** @type {VersionedJsonFile} */
+const sharedPackage = /** @type {VersionedJsonFile} */ (readJson(versionFiles.sharedPackage));
 
 const changes = [];
 
@@ -44,10 +54,10 @@ if (sharedPackage.version !== targetVersion) {
 }
 
 if (changes.length === 0) {
-  console.log(`Versions already in sync at ${targetVersion}`);
+  process.stdout.write(`Versions already in sync at ${targetVersion}\n`);
 } else {
-  console.log(`Synchronized versions to ${targetVersion}`);
+  process.stdout.write(`Synchronized versions to ${targetVersion}\n`);
   for (const change of changes) {
-    console.log(`- ${change}`);
+    process.stdout.write(`- ${change}\n`);
   }
 }

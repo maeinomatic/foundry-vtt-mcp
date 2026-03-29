@@ -71,7 +71,10 @@ try {
 }
 
 const vulnerabilities =
-  report && typeof report === 'object' && report.vulnerabilities && typeof report.vulnerabilities === 'object'
+  report &&
+  typeof report === 'object' &&
+  report.vulnerabilities &&
+  typeof report.vulnerabilities === 'object'
     ? report.vulnerabilities
     : {};
 
