@@ -6,8 +6,8 @@ The supported release path is:
 
 1. Prepare release metadata and lockfile.
 2. Review and commit the version bump.
-3. Create an annotated tag from the committed release commit.
-4. Push `master` and the tag.
+3. Create and push an annotated tag from the committed release commit.
+4. Let the remote tag push trigger the release workflow.
 5. Let `build-complete-release.yml` publish the release from the tag-triggered run.
 
 ## Commands
@@ -46,12 +46,12 @@ git status
 git commit -am "chore: release v0.6.8"
 ```
 
-### 3. Create the release tag
+### 3. Create and push the release tag
 
 Run:
 
 ```bash
-npm run release:tag
+npm run release:publish
 ```
 
 What it does:
@@ -59,16 +59,23 @@ What it does:
 - verifies all release versions are aligned
 - refuses to tag if the working tree is dirty
 - creates annotated tag `vX.Y.Z` at `HEAD`
+- pushes the current branch and annotated tag to `origin` using `--follow-tags`
 
 Dry-run preview:
 
 ```bash
-npm run release:tag -- --dry-run
+npm run release:publish -- --dry-run
 ```
 
-### 4. Push commit and tag
+### 4. Optional manual fallback
 
-Run:
+If you need to split tag creation from pushing for recovery or debugging, you can still use:
+
+```bash
+npm run release:tag
+```
+
+Then push manually:
 
 ```bash
 git push origin master
@@ -81,10 +88,11 @@ git push origin v0.6.8
 - Do not manually edit multiple version files unless you are repairing a broken release.
 - Do not rely on a manual Actions run to create a normal release from `master`.
 - The real publish path is the tag-triggered run for `vX.Y.Z`.
+- Prefer `npm run release:publish` so branch and tag push happen in one release step.
 
 ## Verification
 
-Before tagging, you can always run:
+Before publishing, you can always run:
 
 ```bash
 npm run version:check

@@ -3,7 +3,9 @@
 import { spawnSync } from 'node:child_process';
 import { readVersionState } from './version-helpers.mjs';
 
-const dryRun = process.argv.slice(2).includes('--dry-run');
+const args = process.argv.slice(2);
+const dryRun = args.includes('--dry-run');
+const pushAfterTag = args.includes('--push');
 const version = readVersionState().root;
 const tagName = `v${version}`;
 
@@ -35,13 +37,39 @@ if (localTagOutput === tagName) {
   process.exit(1);
 }
 
+const currentBranch = run('git', ['branch', '--show-current'], { capture: true });
+if (!currentBranch) {
+  console.error('Cannot determine current branch. Check out the release branch before tagging.');
+  process.exit(1);
+}
+
+const remoteName = 'origin';
+
 if (dryRun) {
   console.log(`[dry-run] Would create annotated tag ${tagName} at HEAD.`);
-  console.log(`[dry-run] Next push commands: git push origin master && git push origin ${tagName}`);
+  if (pushAfterTag) {
+    console.log(
+      `[dry-run] Would push ${currentBranch} and annotated tag ${tagName} with: git push ${remoteName} ${currentBranch} --follow-tags`
+    );
+  } else {
+    console.log(
+      `[dry-run] Next push commands: git push ${remoteName} ${currentBranch} && git push ${remoteName} ${tagName}`
+    );
+  }
   process.exit(0);
 }
 
 run('git', ['tag', '-a', tagName, '-m', tagName]);
 
 console.log(`Created tag ${tagName}.`);
-console.log(`Next push commands: git push origin master && git push origin ${tagName}`);
+
+if (pushAfterTag) {
+  run('git', ['push', remoteName, currentBranch, '--follow-tags']);
+  console.log(`Pushed ${currentBranch} and ${tagName} to ${remoteName}.`);
+  console.log('The release workflow should now trigger from the remote tag push.');
+} else {
+  console.log(
+    `Next push commands: git push ${remoteName} ${currentBranch} && git push ${remoteName} ${tagName}`
+  );
+  console.log('Use npm run release:publish to create and push the release tag in one step.');
+}
