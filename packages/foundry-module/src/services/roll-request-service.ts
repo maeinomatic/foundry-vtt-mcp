@@ -181,21 +181,25 @@ export class FoundryRollRequestService {
       const buttonId = typeof randomIdFn === 'function' ? randomIdFn() : crypto.randomUUID();
       const buttonLabel = this.buildRollButtonLabel(data.rollType, data.rollTarget, data.isPublic);
 
+      const targetLabel = `${playerInfo.targetName}${playerInfo.character ? ` (${playerInfo.character.name})` : ''}`;
       const rollButtonHtml = `
-        <div class="mcp-roll-request" style="margin: 12px 0; padding: 12px; border: 1px solid #ccc; border-radius: 8px; background: #f9f9f9;">
-          <p><strong>Roll Request:</strong> ${buttonLabel}</p>
-          <p><strong>Target:</strong> ${playerInfo.targetName} ${playerInfo.character ? `(${playerInfo.character.name})` : ''}</p>
-          ${data.flavor ? `<p><strong>Context:</strong> ${data.flavor}</p>` : ''}
-
-          <div style="text-align: center; margin-top: 8px;">
-            <button class="mcp-roll-button mcp-button-active"
+        <div class="chat-card mcp-roll-request">
+          <header class="card-header flexrow">
+            <h3>${buttonLabel}</h3>
+          </header>
+          <div class="card-content">
+            <p class="supplement"><strong>Target:</strong> ${targetLabel}</p>
+            ${data.flavor ? `<p class="supplement"><strong>Context:</strong> ${data.flavor}</p>` : ''}
+          </div>
+          <div class="card-buttons">
+            <button type="button" class="mcp-roll-button"
                     data-button-id="${buttonId}"
                     data-roll-formula="${rollFormula}"
                     data-roll-label="${buttonLabel}"
                     data-is-public="${data.isPublic}"
                     data-character-id="${playerInfo.character?.id ?? ''}"
                     data-target-user-id="${playerInfo.user?.id ?? ''}">
-              ðŸŽ² ${buttonLabel}
+              <span>Roll: ${buttonLabel}</span>
             </button>
           </div>
         </div>
@@ -277,17 +281,8 @@ export class FoundryRollRequestService {
 
       if (isPublicRoll) {
         if (canClickButton) {
-          button.css({
-            background: '#4CAF50',
-            cursor: 'pointer',
-            opacity: '1',
-          });
+          button.prop('disabled', false);
         } else {
-          button.css({
-            background: '#9E9E9E',
-            cursor: 'not-allowed',
-            opacity: '0.7',
-          });
           button.prop('disabled', true);
         }
       } else if (canClickButton) {
@@ -307,12 +302,12 @@ export class FoundryRollRequestService {
 
         button.prop('disabled', true);
         const originalText = button.text();
-        button.text('ðŸŽ² Rolling...');
+        button.text('Rolling...');
 
         const buttonIdRaw: unknown = button.data('button-id') as unknown;
         const buttonId = typeof buttonIdRaw === 'string' ? buttonIdRaw : null;
         if (buttonId && this.isRollButtonProcessing(buttonId)) {
-          button.text('ðŸŽ² Processing...');
+          button.text('Processing...');
           return;
         }
 
@@ -405,7 +400,7 @@ export class FoundryRollRequestService {
                 `[${this.context.moduleId}] Error details:`,
                 updateError instanceof Error ? updateError.stack : updateError
               );
-              button.prop('disabled', true).text('âœ“ Rolled');
+              button.prop('disabled', true).text('Done: Rolled');
             }
           } else {
             console.warn(
@@ -604,9 +599,13 @@ export class FoundryRollRequestService {
       };
 
       const rolledHtml = `
-        <div class="mcp-roll-request" style="margin: 10px 0; padding: 10px; border: 1px solid #ccc; border-radius: 5px; background: #f9f9f9;">
-          <p><strong>Roll Request:</strong> ${rollLabel}</p>
-          <p><strong>Status:</strong> âœ… <strong>Completed by ${rolledByName}</strong> at ${timestamp}</p>
+        <div class="chat-card mcp-roll-request">
+          <header class="card-header flexrow">
+            <h3>${rollLabel}</h3>
+          </header>
+          <div class="card-content">
+            <p class="supplement"><strong>Status:</strong> <strong>Completed by ${rolledByName}</strong> at ${timestamp}</p>
+          </div>
         </div>
       `;
 
