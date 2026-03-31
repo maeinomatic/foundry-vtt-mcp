@@ -6,6 +6,9 @@ name: Maeinomatic Build Complete Release
 permissions:
   contents: read
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
 on:
   push:
     tags:
@@ -337,12 +340,16 @@ jobs:
       - name: Build Mac PKG Installer
         run: |
           cd installer
-          node build-mac-pkg.js
+          VERSION="${{ steps.version.outputs.version }}"
+          VERSION_NO_V="${VERSION#v}"
+          VERSION="$VERSION_NO_V" node build-mac-pkg.js
 
       - name: Build Mac DMG Distribution
         run: |
           cd installer
-          node build-dmg.js
+          VERSION="${{ steps.version.outputs.version }}"
+          VERSION_NO_V="${VERSION#v}"
+          VERSION="$VERSION_NO_V" node build-dmg.js
 
       - name: Verify Mac DMG
         run: |
