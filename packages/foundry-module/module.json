@@ -2,7 +2,7 @@
   "id": "maeinomatic-foundry-mcp",
   "title": "Maeinomatic Foundry MCP Bridge",
   "description": "Connect Foundry VTT to AI models through MCP protocol. Enable AI-powered actor creation, intelligent compendium search, campaign analysis, and interactive dice roll coordination. Supports Claude, local LLMs, and future AI models with comprehensive GM-only security.",
-  "version": "0.6.9-beta.1",
+  "version": "0.6.8",
   "compatibility": {
     "minimum": "13",
     "verified": "13",
@@ -24,13 +24,8 @@
   "changelog": "https://github.com/maeinomatic/foundry-vtt-mcp/releases",
   "readme": "https://github.com/maeinomatic/foundry-vtt-mcp/blob/master/README.md",
   "license": "https://github.com/maeinomatic/foundry-vtt-mcp/blob/master/LICENSE",
-  "esmodules": [
-    "dist/main.js"
-  ],
-  "styles": [
-    "styles/module.css",
-    "styles/enhanced-creature-index.css"
-  ],
+  "esmodules": ["dist/main.js"],
+  "styles": ["styles/module.css", "styles/enhanced-creature-index.css"],
   "languages": [
     {
       "lang": "en",
@@ -46,17 +41,8 @@
   "library": false,
   "flags": {
     "hotReload": {
-      "extensions": [
-        "css",
-        "hbs",
-        "json"
-      ],
-      "paths": [
-        "scripts",
-        "styles",
-        "templates",
-        "lang"
-      ]
+      "extensions": ["css", "hbs", "json"],
+      "paths": ["scripts", "styles", "templates", "lang"]
     }
   }
 }

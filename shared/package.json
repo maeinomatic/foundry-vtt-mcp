@@ -1,6 +1,6 @@
 {
   "name": "@maeinomatic/foundry-mcp-shared",
-  "version": "0.6.9-beta.1",
+  "version": "0.6.8",
   "description": "Shared TypeScript types and constants for the independently maintained Foundry MCP integration",
   "type": "module",
   "main": "dist/index.js",
