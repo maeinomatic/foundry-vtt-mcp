@@ -43,6 +43,7 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: '24'
+          cache: npm
 
       - name: Check version consistency
         run: npm run version:check
@@ -258,6 +259,7 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: '24'
+          cache: npm
 
       - name: Check version consistency
         run: npm run version:check
@@ -337,12 +339,16 @@ jobs:
       - name: Build Mac PKG Installer
         run: |
           cd installer
-          node build-mac-pkg.js
+          VERSION="${{ steps.version.outputs.version }}"
+          VERSION_NO_V="${VERSION#v}"
+          VERSION="$VERSION_NO_V" node build-mac-pkg.js
 
       - name: Build Mac DMG Distribution
         run: |
           cd installer
-          node build-dmg.js
+          VERSION="${{ steps.version.outputs.version }}"
+          VERSION_NO_V="${VERSION#v}"
+          VERSION="$VERSION_NO_V" node build-dmg.js
 
       - name: Verify Mac DMG
         run: |
@@ -393,6 +399,7 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: '24'
+          cache: npm
 
       - name: Check version consistency
         run: npm run version:check
