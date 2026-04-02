@@ -6,9 +6,6 @@ name: Maeinomatic Build Complete Release
 permissions:
   contents: read
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
-
 on:
   push:
     tags:
@@ -46,6 +43,7 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: '24'
+          cache: npm
 
       - name: Check version consistency
         run: npm run version:check
@@ -261,6 +259,7 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: '24'
+          cache: npm
 
       - name: Check version consistency
         run: npm run version:check
@@ -400,6 +399,7 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: '24'
+          cache: npm
 
       - name: Check version consistency
         run: npm run version:check

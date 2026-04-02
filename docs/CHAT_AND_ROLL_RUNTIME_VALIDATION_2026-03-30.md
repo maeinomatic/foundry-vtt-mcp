@@ -3,7 +3,7 @@
 ## Context
 
 - Repository: `maeinomatic/foundry-vtt-mcp`
-- Branch: `master`
+- Branch: `master` at the time of runtime validation, before later branch isolation for release and styling follow-up work
 - Connected world: `Starting World Maeinomatic`
 - Foundry version: `13.351`
 - System: `dnd5e 5.2.5`
