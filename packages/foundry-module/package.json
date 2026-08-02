@@ -4,7 +4,7 @@
   "description": "Foundry VTT module for the independently maintained MCP bridge integration",
   "type": "module",
   "scripts": {
-    "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && tsc",
+    "build": "node -e \"const fs=require('node:fs'); fs.rmSync('dist', { recursive: true, force: true }); fs.rmSync('tsconfig.tsbuildinfo', { force: true })\" && tsc",
     "dev": "tsc --watch",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src --ext .ts",

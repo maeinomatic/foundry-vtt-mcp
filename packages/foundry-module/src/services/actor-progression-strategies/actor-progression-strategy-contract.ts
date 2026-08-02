@@ -24,6 +24,7 @@ export interface ActorProgressionItemLike {
   name?: string;
   type?: string;
   system?: unknown;
+  updateAdvancement?: (id: string, updates: Record<string, unknown>) => Promise<unknown>;
 }
 
 export interface ActorProgressionStrategy {

@@ -40,6 +40,7 @@ interface CompendiumDocumentLike {
 
 interface AdvancementDescriptor {
   index: number;
+  storageKey?: string;
   sourceItem: ActorProgressionItemLike;
   advancement: Record<string, unknown>;
   step: FoundryProgressionPreviewStep;
@@ -316,6 +317,12 @@ function isAdvancementCompletedForLevel(
     return Boolean(toStringValue(value.document) ?? toStringValue(value.uuid));
   }
 
+  if (lowerType.includes('abilityscore')) {
+    const assignments = asRecord(value.assignments);
+    const selectedFeat = asRecord(value.feat);
+    return Object.keys(assignments ?? {}).length > 0 || Object.keys(selectedFeat ?? {}).length > 0;
+  }
+
   return hasMeaningfulValue(value);
 }
 
@@ -456,6 +463,16 @@ function toNumericRecord(value: unknown): Record<string, number> | undefined {
     .filter((entry): entry is [string, number] => entry[1] !== undefined);
 
   return numericEntries.length > 0 ? Object.fromEntries(numericEntries) : undefined;
+}
+
+function toNonZeroNumericRecord(value: unknown): Record<string, number> | undefined {
+  const numericRecord = toNumericRecord(value);
+  if (!numericRecord) {
+    return undefined;
+  }
+
+  const nonZeroEntries = Object.entries(numericRecord).filter(([, entryValue]) => entryValue !== 0);
+  return nonZeroEntries.length > 0 ? Object.fromEntries(nonZeroEntries) : undefined;
 }
 
 function toStringArray(value: unknown): string[] | undefined {
@@ -731,7 +748,7 @@ async function getAsiChoiceDetails(
   const points = toNumber(configuration.points);
   const pointCap = toNumber(configuration.cap);
   const maxScore = toNumber(configuration.max);
-  const fixed = toNumericRecord(configuration.fixed);
+  const fixed = toNonZeroNumericRecord(configuration.fixed);
   const locked = toStringArray(configuration.locked);
 
   return {
@@ -911,8 +928,10 @@ async function buildAdvancementDescriptors(params: {
 
       const optional = isOptionalAdvancement(advancement);
       const choiceDetails = await getChoiceDetails(advancement, type);
+      const storageKey = getAdvancementStorageKey(sourceItem, index);
       descriptors.push({
         index,
+        ...(storageKey ? { storageKey } : {}),
         sourceItem,
         advancement,
         step: {
@@ -1046,11 +1065,95 @@ async function getStepOptions(params: {
 
 function getItemAdvancements(item: ActorProgressionItemLike): Record<string, unknown>[] {
   const system = asRecord(item.system);
-  return Array.isArray(system?.advancement)
-    ? system.advancement.filter((entry): entry is Record<string, unknown> =>
-        Boolean(entry && typeof entry === 'object')
-      )
-    : [];
+  const advancements = system?.advancement;
+  if (Array.isArray(advancements)) {
+    return advancements.filter((entry): entry is Record<string, unknown> =>
+      Boolean(entry && typeof entry === 'object')
+    );
+  }
+
+  const values =
+    advancements &&
+    typeof advancements === 'object' &&
+    typeof (advancements as { values?: unknown }).values === 'function'
+      ? (advancements as { values: () => Iterable<unknown> }).values()
+      : undefined;
+  if (values) {
+    return Array.from(values).filter((entry): entry is Record<string, unknown> =>
+      Boolean(entry && typeof entry === 'object')
+    );
+  }
+
+  return Object.values(asRecord(advancements) ?? {}).filter(
+    (entry): entry is Record<string, unknown> => Boolean(entry && typeof entry === 'object')
+  );
+}
+
+function getAdvancementStorageKey(
+  item: ActorProgressionItemLike,
+  index: number
+): string | undefined {
+  const system = asRecord(item.system);
+  if (Array.isArray(system?.advancement)) {
+    return undefined;
+  }
+
+  const advancement = getItemAdvancements(item)[index];
+  return toStringValue(advancement?._id) ?? toStringValue(advancement?.id);
+}
+
+async function updateSourceItemAdvancement(params: {
+  actor: ActorProgressionActorLike;
+  descriptor: AdvancementDescriptor;
+  advancements: Record<string, unknown>[];
+}): Promise<void> {
+  const { actor, descriptor, advancements } = params;
+  const sourceItemId = descriptor.sourceItem.id;
+
+  if (!sourceItemId) {
+    throw new Error(
+      `Advancement step "${descriptor.step.id}" is not attached to a stable owned item.`
+    );
+  }
+
+  if (descriptor.storageKey) {
+    const updatedAdvancement = advancements[descriptor.index];
+    if (!updatedAdvancement) {
+      throw new Error(`Advancement step "${descriptor.step.id}" could not be updated safely.`);
+    }
+
+    if (typeof descriptor.sourceItem.updateAdvancement === 'function') {
+      await descriptor.sourceItem.updateAdvancement(descriptor.storageKey, updatedAdvancement);
+      return;
+    }
+
+    if (typeof actor.updateEmbeddedDocuments !== 'function') {
+      throw new Error(
+        `Actor "${actor.name ?? actor.id ?? 'unknown'}" does not support updateEmbeddedDocuments().`
+      );
+    }
+
+    await actor.updateEmbeddedDocuments('Item', [
+      {
+        _id: sourceItemId,
+        [`system.advancement.${descriptor.storageKey}`]: updatedAdvancement,
+      },
+    ]);
+    return;
+  }
+
+  if (typeof actor.updateEmbeddedDocuments !== 'function') {
+    throw new Error(
+      `Actor "${actor.name ?? actor.id ?? 'unknown'}" does not support updateEmbeddedDocuments().`
+    );
+  }
+
+  await actor.updateEmbeddedDocuments('Item', [
+    {
+      _id: sourceItemId,
+      'system.advancement': advancements,
+    },
+  ]);
 }
 
 function getAdvancementLinkedItemIds(advancement: Record<string, unknown>): string[] {
@@ -1186,7 +1289,7 @@ function getAsiConfiguration(advancement: Record<string, unknown>): {
   locked: string[];
 } {
   const configuration = asRecord(advancement.configuration) ?? {};
-  const fixed = toNumericRecord(configuration.fixed) ?? {};
+  const fixed = toNonZeroNumericRecord(configuration.fixed) ?? {};
   const locked =
     toStringArray(configuration.locked)
       ?.map(entry => entry.toLowerCase())
@@ -1576,12 +1679,6 @@ async function applyAbilityScoreImprovementChoice(params: {
   const choice = request.choice;
   const sourceItemId = descriptor.sourceItem.id;
 
-  if (typeof actor.updateEmbeddedDocuments !== 'function') {
-    throw new Error(
-      `Actor "${actor.name ?? request.actorIdentifier}" does not support updateEmbeddedDocuments().`
-    );
-  }
-
   if (!sourceItemId) {
     throw new Error(
       `Advancement step "${descriptor.step.id}" is not attached to a stable owned item.`
@@ -1682,12 +1779,11 @@ async function applyAbilityScoreImprovementChoice(params: {
 
     await actor.update(actorUpdates);
     try {
-      await actor.updateEmbeddedDocuments('Item', [
-        {
-          _id: sourceItemId,
-          'system.advancement': classItemUpdates,
-        },
-      ]);
+      await updateSourceItemAdvancement({
+        actor,
+        descriptor,
+        advancements: classItemUpdates,
+      });
     } catch (error) {
       try {
         await actor.update(actorRollback);
@@ -1774,12 +1870,11 @@ async function applyAbilityScoreImprovementChoice(params: {
   const warnings: string[] = [];
 
   try {
-    await actor.updateEmbeddedDocuments('Item', [
-      {
-        _id: sourceItemId,
-        'system.advancement': classItemUpdates,
-      },
-    ]);
+    await updateSourceItemAdvancement({
+      actor,
+      descriptor,
+      advancements: classItemUpdates,
+    });
   } catch (error) {
     if (typeof actor.deleteEmbeddedDocuments === 'function') {
       try {
@@ -1833,12 +1928,6 @@ async function applySubclassChoice(params: {
     throw new Error(`Unsupported DnD5e subclass choice type: ${request.choice.type}`);
   }
 
-  if (typeof actor.updateEmbeddedDocuments !== 'function') {
-    throw new Error(
-      `Actor "${actor.name ?? request.actorIdentifier}" does not support updateEmbeddedDocuments().`
-    );
-  }
-
   if (!sourceItemId) {
     throw new Error(
       `Advancement step "${descriptor.step.id}" is not attached to a stable owned item.`
@@ -1859,12 +1948,11 @@ async function applySubclassChoice(params: {
   const warnings: string[] = [];
 
   try {
-    await actor.updateEmbeddedDocuments('Item', [
-      {
-        _id: sourceItemId,
-        'system.advancement': classItemUpdates,
-      },
-    ]);
+    await updateSourceItemAdvancement({
+      actor,
+      descriptor,
+      advancements: classItemUpdates,
+    });
   } catch (error) {
     await rollbackCreatedItems(
       actor,
@@ -1910,7 +1998,7 @@ async function applyHitPointsChoice(params: {
     throw new Error(`Unsupported DnD5e hit point choice type: ${request.choice.type}`);
   }
 
-  if (typeof actor.update !== 'function' || typeof actor.updateEmbeddedDocuments !== 'function') {
+  if (typeof actor.update !== 'function') {
     throw new Error(
       `Actor "${actor.name ?? request.actorIdentifier}" does not support the updates required for hit point advancement.`
     );
@@ -1951,12 +2039,11 @@ async function applyHitPointsChoice(params: {
 
   await actor.update(actorUpdates);
   try {
-    await actor.updateEmbeddedDocuments('Item', [
-      {
-        _id: sourceItemId,
-        'system.advancement': classItemUpdates,
-      },
-    ]);
+    await updateSourceItemAdvancement({
+      actor,
+      descriptor,
+      advancements: classItemUpdates,
+    });
   } catch (error) {
     try {
       await actor.update(actorRollback);
@@ -2006,12 +2093,6 @@ async function applyItemChoice(params: {
 
   if (request.choice.type !== 'item-choice') {
     throw new Error(`Unsupported DnD5e item-choice type: ${request.choice.type}`);
-  }
-
-  if (typeof actor.updateEmbeddedDocuments !== 'function') {
-    throw new Error(
-      `Actor "${actor.name ?? request.actorIdentifier}" does not support updateEmbeddedDocuments().`
-    );
   }
 
   if (!sourceItemId) {
@@ -2089,12 +2170,11 @@ async function applyItemChoice(params: {
   });
 
   try {
-    await actor.updateEmbeddedDocuments('Item', [
-      {
-        _id: sourceItemId,
-        'system.advancement': classItemUpdates,
-      },
-    ]);
+    await updateSourceItemAdvancement({
+      actor,
+      descriptor,
+      advancements: classItemUpdates,
+    });
   } catch (error) {
     await rollbackCreatedItems(
       actor,
@@ -2154,12 +2234,6 @@ async function applyItemGrantChoice(params: {
     throw new Error(`Unsupported DnD5e item-grant choice type: ${request.choice.type}`);
   }
 
-  if (typeof actor.updateEmbeddedDocuments !== 'function') {
-    throw new Error(
-      `Actor "${actor.name ?? request.actorIdentifier}" does not support updateEmbeddedDocuments().`
-    );
-  }
-
   if (!sourceItemId) {
     throw new Error(
       `Advancement step "${descriptor.step.id}" is not attached to a stable owned item.`
@@ -2185,12 +2259,11 @@ async function applyItemGrantChoice(params: {
   });
 
   try {
-    await actor.updateEmbeddedDocuments('Item', [
-      {
-        _id: sourceItemId,
-        'system.advancement': sourceItemUpdates,
-      },
-    ]);
+    await updateSourceItemAdvancement({
+      actor,
+      descriptor,
+      advancements: sourceItemUpdates,
+    });
   } catch (error) {
     await rollbackCreatedItems(
       actor,
@@ -2258,7 +2331,7 @@ async function applySizeChoice(params: {
   const { actor, classItem, descriptor, request } = params;
   const sourceItemId = descriptor.sourceItem.id;
 
-  if (typeof actor.update !== 'function' || typeof actor.updateEmbeddedDocuments !== 'function') {
+  if (typeof actor.update !== 'function') {
     throw new Error(
       `Actor "${actor.name ?? request.actorIdentifier}" does not support the updates required for size advancement.`
     );
@@ -2291,12 +2364,11 @@ async function applySizeChoice(params: {
 
   await actor.update(actorUpdates);
   try {
-    await actor.updateEmbeddedDocuments('Item', [
-      {
-        _id: sourceItemId,
-        'system.advancement': sourceItemUpdates,
-      },
-    ]);
+    await updateSourceItemAdvancement({
+      actor,
+      descriptor,
+      advancements: sourceItemUpdates,
+    });
   } catch (error) {
     try {
       await actor.update(actorRollback);
@@ -2376,12 +2448,6 @@ async function applyTraitChoice(params: {
   const { actor, classItem, descriptor, request } = params;
   const sourceItemId = descriptor.sourceItem.id;
 
-  if (typeof actor.updateEmbeddedDocuments !== 'function') {
-    throw new Error(
-      `Actor "${actor.name ?? request.actorIdentifier}" does not support updateEmbeddedDocuments().`
-    );
-  }
-
   if (!sourceItemId) {
     throw new Error(
       `Advancement step "${descriptor.step.id}" is not attached to a stable owned item.`
@@ -2395,12 +2461,11 @@ async function applyTraitChoice(params: {
     selected,
   });
 
-  await actor.updateEmbeddedDocuments('Item', [
-    {
-      _id: sourceItemId,
-      'system.advancement': sourceItemUpdates,
-    },
-  ]);
+  await updateSourceItemAdvancement({
+    actor,
+    descriptor,
+    advancements: sourceItemUpdates,
+  });
 
   return {
     success: true,
