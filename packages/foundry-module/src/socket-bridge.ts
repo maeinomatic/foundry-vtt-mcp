@@ -79,6 +79,15 @@ type FolderLike = {
 
 type QueryHandler = (payload: unknown) => unknown;
 
+function formatHostForUrl(host: string): string {
+  const normalizedHost = host.trim();
+  if (normalizedHost.startsWith('[') || !normalizedHost.includes(':')) {
+    return normalizedHost;
+  }
+
+  return `[${normalizedHost}]`;
+}
+
 /**
  * Browser-compatible socket bridge that supports both WebSocket and WebRTC
  */
@@ -312,7 +321,7 @@ export class SocketBridge {
 
     // WebSocket for HTTP localhost connections only
     const protocol = 'ws';
-    const host = this.config.serverHost;
+    const host = formatHostForUrl(this.config.serverHost);
     this.log(`Using WebSocket (${protocol}://${host}:${this.config.serverPort})`);
 
     const wsUrl = `${protocol}://${host}:${this.config.serverPort}${this.config.namespace}`;
