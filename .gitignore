@@ -74,6 +74,7 @@ installer/*.zip
 test-*.ps1
 
 # Local Configuration
+.github/instructions/local-foundry-runtime-testing.instructions.md
 config.local.json
 .claude/settings.local.json
 .claude/maeinomatic-foundry-mcp-server-*.zip
