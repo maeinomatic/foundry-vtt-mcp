@@ -1,12 +1,26 @@
 import { execSync } from 'node:child_process';
 
-const ALLOWED_NO_FIX_ADVISORIES = [
+const ALLOWED_PRODUCTION_AUDIT_EXCEPTIONS = [
   {
-    id: 'GHSA-2p57-rm9w-gvfp',
-    url: 'https://github.com/advisories/GHSA-2p57-rm9w-gvfp',
+    urls: new Set(['https://github.com/advisories/GHSA-2p57-rm9w-gvfp']),
     packages: new Set(['ip', 'werift', 'werift-ice']),
     reason:
-      'werift currently depends on ip/werift-ice and npm audit reports no fix is available upstream',
+      'The current werift release still depends on vulnerable werift-ice/ip. npm only proposes the incompatible werift 0.19.2 downgrade, so this remains blocked on an upstream forward fix.',
+    isAllowedFix: fixAvailable =>
+      isAdvisoryObject(fixAvailable) &&
+      fixAvailable.name === 'werift' &&
+      fixAvailable.version === '0.19.2' &&
+      fixAvailable.isSemVerMajor === true,
+  },
+  {
+    urls: new Set([
+      'https://github.com/advisories/GHSA-58qx-3vcg-4xpx',
+      'https://github.com/advisories/GHSA-96hv-2xvq-fx4p',
+    ]),
+    packages: new Set(['ws']),
+    reason:
+      'The current socket.io client dependency chain pins ws to ~8.17.1. npm audit reports a fix but cannot apply one without a compatible upstream engine.io-client release.',
+    isAllowedFix: fixAvailable => fixAvailable === true,
   },
 ];
 
@@ -15,8 +29,8 @@ function isAdvisoryObject(value) {
 }
 
 function isAllowedNoFixVulnerability(name, vulnerability) {
-  for (const allowed of ALLOWED_NO_FIX_ADVISORIES) {
-    if (!allowed.packages.has(name) || vulnerability.fixAvailable !== false) {
+  for (const allowed of ALLOWED_PRODUCTION_AUDIT_EXCEPTIONS) {
+    if (!allowed.packages.has(name) || !allowed.isAllowedFix(vulnerability.fixAvailable)) {
       continue;
     }
 
@@ -32,7 +46,7 @@ function isAllowedNoFixVulnerability(name, vulnerability) {
 
       const advisoryName = typeof entry.name === 'string' ? entry.name : '';
       const advisoryUrl = typeof entry.url === 'string' ? entry.url : '';
-      return allowed.packages.has(advisoryName) && advisoryUrl === allowed.url;
+      return allowed.packages.has(advisoryName) && allowed.urls.has(advisoryUrl);
     });
 
     if (allViaAllowed) {
