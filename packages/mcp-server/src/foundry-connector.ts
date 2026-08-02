@@ -53,6 +53,7 @@ function asMessage(value: unknown): FoundryBridgeMessage {
 export class FoundryConnector {
   private wss: WebSocketServer | null = null;
   private httpServer: ReturnType<typeof createServer> | null = null;
+  private httpServerV6: ReturnType<typeof createServer> | null = null;
   private webrtcSignalingServer: ReturnType<typeof createServer> | null = null; // Separate HTTP server for WebRTC signaling
   private logger: Logger;
   private config: Config['foundry'];
@@ -86,11 +87,15 @@ export class FoundryConnector {
       remoteMode: this.config.remoteMode || false,
     });
 
-    // Create HTTP server for WebSocket connections
-    this.httpServer = createServer((req, res) => {
-      res.writeHead(404);
-      res.end();
-    });
+    const createBridgeHttpServer = (): ReturnType<typeof createServer> =>
+      createServer((req, res) => {
+        res.writeHead(404);
+        res.end();
+      });
+
+    // Use separate listeners so remote Foundry clients can connect over either IPv4 or IPv6.
+    this.httpServer = createBridgeHttpServer();
+    this.httpServerV6 = createBridgeHttpServer();
 
     // Create SEPARATE HTTP server for WebRTC signaling (port 31416)
     const WEBRTC_PORT = 31416;
@@ -142,8 +147,7 @@ export class FoundryConnector {
     // Create WebSocket server in noServer mode to avoid request consumption
     this.wss = new WebSocketServer({ noServer: true });
 
-    // Manually handle upgrade for WebSocket connections
-    this.httpServer.on('upgrade', (req: IncomingMessage, socket: Duplex, head: Buffer) => {
+    const handleUpgrade = (req: IncomingMessage, socket: Duplex, head: Buffer): void => {
       const pathname = req.url ?? '/';
 
       // Only upgrade if path matches WebSocket namespace
@@ -154,7 +158,9 @@ export class FoundryConnector {
       } else {
         socket.destroy();
       }
-    });
+    };
+    this.httpServer.on('upgrade', handleUpgrade);
+    this.httpServerV6.on('upgrade', handleUpgrade);
 
     // Handle WebSocket connections (both signaling and direct WebSocket)
     this.wss.on('connection', ws => {
@@ -215,10 +221,16 @@ export class FoundryConnector {
       throw new Error('HTTP server not initialized');
     }
 
+    // Bind IPv4 explicitly: Windows can expose Node's unspecified default as IPv6-only,
+    // which prevents a browser connecting to localhost from reaching the bridge.
+    const listenHost = '0.0.0.0';
     await new Promise<void>((resolve, reject) => {
-      httpServer.listen(this.config.port, () => {
+      httpServer.listen(this.config.port, listenHost, () => {
         this.isStarted = true;
-        this.logger.info('Foundry connector listening', { port: this.config.port });
+        this.logger.info('Foundry connector listening', {
+          host: listenHost,
+          port: this.config.port,
+        });
         resolve();
       });
 
@@ -227,6 +239,27 @@ export class FoundryConnector {
         reject(error);
       });
     });
+
+    const httpServerV6 = this.httpServerV6;
+    if (!httpServerV6) {
+      return;
+    }
+
+    try {
+      await new Promise<void>((resolve, reject) => {
+        httpServerV6.listen({ port: this.config.port, host: '::', ipv6Only: true }, () => {
+          this.logger.info('Foundry connector listening', { host: '::', port: this.config.port });
+          resolve();
+        });
+        httpServerV6.on('error', reject);
+      });
+    } catch (error) {
+      // IPv4 remains usable on hosts without IPv6 support.
+      this.httpServerV6 = null;
+      this.logger.warn('Failed to start IPv6 Foundry connector listener', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   async stop(): Promise<void> {
@@ -261,6 +294,16 @@ export class FoundryConnector {
         });
       });
       this.httpServer = null;
+    }
+
+    if (this.httpServerV6) {
+      const serverToClose = this.httpServerV6;
+      await new Promise<void>(resolve => {
+        serverToClose.close(() => {
+          resolve();
+        });
+      });
+      this.httpServerV6 = null;
     }
 
     this.isStarted = false;
