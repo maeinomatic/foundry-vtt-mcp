@@ -412,10 +412,17 @@ export function validateDnD5eCharacterBuild(params: {
     const spellSystem = asRecord(spell.system);
     const preparation = asRecord(spellSystem?.preparation);
     const sourceClass =
-      toStringValue(spellSystem?.spellSource) ?? toStringValue(spellSystem?.sourceClass);
+      toStringValue(spellSystem?.sourceItem)?.replace(/^class:/, '') ??
+      toStringValue(spellSystem?.spellSource) ??
+      toStringValue(spellSystem?.sourceClass);
     const preparationMode =
+      toStringValue(spellSystem?.method) ??
       toStringValue(preparation?.mode) ??
-      (typeof preparation?.prepared === 'boolean' ? 'prepared' : 'unknown');
+      (typeof spellSystem?.prepared === 'boolean' ||
+      typeof spellSystem?.prepared === 'number' ||
+      typeof preparation?.prepared === 'boolean'
+        ? 'prepared'
+        : 'unknown');
 
     if (!sourceClass) {
       if (spellcastingClasses.length > 1 && preparationMode === 'prepared') {

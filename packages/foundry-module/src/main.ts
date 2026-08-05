@@ -761,48 +761,52 @@ Hooks.on('closeSettingsConfig', () => {
 // Global hook to handle MCP roll button rendering and state management
 // Using renderChatMessageHTML for Foundry v13 compatibility (renderChatMessage is deprecated)
 Hooks.on('renderChatMessageHTML', (message: unknown, html: HTMLElement) => {
-  try {
-    // Convert HTMLElement to jQuery for compatibility with existing handler code
-    const $html = $(html);
-    const typedMessage = message as ChatMessageLike;
+  // Foundry v14 performs additional chat-card processing after this hook, including applying
+  // hidden state to controls. Defer our visibility and click-handler setup until that completes.
+  setTimeout(() => {
+    try {
+      // Convert HTMLElement to jQuery for compatibility with existing handler code
+      const $html = $(html);
+      const typedMessage = message as ChatMessageLike;
 
-    // Check if this message has MCP roll button flags
-    const rollButtons = asRollButtonsMap(typedMessage.getFlag?.(MODULE_ID, 'rollButtons'));
+      // Check if this message has MCP roll button flags
+      const rollButtons = asRollButtonsMap(typedMessage.getFlag?.(MODULE_ID, 'rollButtons'));
 
-    if (Object.keys(rollButtons).length > 0) {
-      // Get the data access instance
-      const dataAccess = foundryMCPBridge.getDataAccess();
-      if (dataAccess) {
-        // Check if any buttons in this message are already rolled
-        for (const [_buttonId, buttonData] of Object.entries(rollButtons)) {
-          if (buttonData.rolled) {
-            break;
+      if (Object.keys(rollButtons).length > 0) {
+        // Get the data access instance
+        const dataAccess = foundryMCPBridge.getDataAccess();
+        if (dataAccess) {
+          // Check if any buttons in this message are already rolled
+          for (const [_buttonId, buttonData] of Object.entries(rollButtons)) {
+            if (buttonData.rolled) {
+              break;
+            }
+          }
+
+          // If message has rolled buttons, the content should already be updated
+          // Just attach any necessary handlers for active buttons
+          if ($html.find('.mcp-roll-button').length > 0) {
+            // Only attach handlers to active (non-rolled) buttons
+            dataAccess.attachRollButtonHandlers?.($html);
           }
         }
+      } else if ($html.find('.mcp-roll-button').length > 0) {
+        // Legacy message without flags - fall back to old behavior
 
-        // If message has rolled buttons, the content should already be updated
-        // Just attach any necessary handlers for active buttons
-        if ($html.find('.mcp-roll-button').length > 0) {
-          // Only attach handlers to active (non-rolled) buttons
+        const dataAccess = foundryMCPBridge.getDataAccess();
+        if (dataAccess) {
           dataAccess.attachRollButtonHandlers?.($html);
+
+          // Check for legacy roll states
+          setTimeout(() => {
+            dataAccess.ensureButtonStatesForMessage?.($html);
+          }, 100);
         }
       }
-    } else if ($html.find('.mcp-roll-button').length > 0) {
-      // Legacy message without flags - fall back to old behavior
-
-      const dataAccess = foundryMCPBridge.getDataAccess();
-      if (dataAccess) {
-        dataAccess.attachRollButtonHandlers?.($html);
-
-        // Check for legacy roll states
-        setTimeout(() => {
-          dataAccess.ensureButtonStatesForMessage?.($html);
-        }, 100);
-      }
+    } catch (error) {
+      debugGM('Error processing roll buttons in chat message', error);
     }
-  } catch (error) {
-    debugGM('Error processing roll buttons in chat message', error);
-  }
+  }, 0);
 });
 
 // Socket listener will be registered in the 'ready' hook when game.user is available

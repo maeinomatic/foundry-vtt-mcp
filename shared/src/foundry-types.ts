@@ -895,6 +895,7 @@ export interface FoundryRunDnD5eTransformActivityRequest {
   actorIdentifier: string;
   itemIdentifier: string;
   activityIdentifier?: string;
+  sourceActorUuid?: string;
   reason?: string;
 }
 

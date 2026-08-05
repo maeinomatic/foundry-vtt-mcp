@@ -14,6 +14,7 @@ interface TransformWorkflowActorLike {
   name?: string;
   type?: string;
   items?: unknown;
+  transformInto?: (...args: unknown[]) => unknown;
 }
 
 interface TransformWorkflowItemLike {
@@ -31,6 +32,7 @@ interface TransformWorkflowActivityLike {
   name?: string;
   type?: string;
   use?: (...args: unknown[]) => unknown;
+  settings?: unknown;
   item?: TransformWorkflowItemLike;
   parent?: TransformWorkflowItemLike;
 }
@@ -98,18 +100,21 @@ function getActorItems(actor: TransformWorkflowActorLike): TransformWorkflowItem
 
 function getItemActivities(item: TransformWorkflowItemLike): TransformWorkflowActivityLike[] {
   if (item.activities !== undefined) {
-    return normalizeCollection<TransformWorkflowActivityLike>(item.activities).filter(
+    const activities = normalizeCollection<TransformWorkflowActivityLike>(item.activities).filter(
       (activity): activity is TransformWorkflowActivityLike =>
         Boolean(activity && typeof activity === 'object')
     );
+    if (activities.length > 0) {
+      return activities;
+    }
   }
 
-  const activitiesRecord = asRecord(item.system?.activities);
-  if (!activitiesRecord) {
+  const systemActivities = item.system?.activities;
+  if (systemActivities === undefined) {
     return [];
   }
 
-  return Object.values(activitiesRecord).filter(
+  return normalizeCollection<TransformWorkflowActivityLike>(systemActivities).filter(
     (activity): activity is TransformWorkflowActivityLike =>
       Boolean(activity && typeof activity === 'object')
   );
@@ -139,21 +144,16 @@ function isTransformActivity(activity: TransformWorkflowActivityLike): boolean {
 }
 
 function getHooksApi(): HookApiLike | null {
-  const maybeHooks = (globalThis as { Hooks?: unknown }).Hooks;
-  const hooksRecord = asRecord(maybeHooks);
-  if (!hooksRecord) {
-    return null;
-  }
-
-  const on = hooksRecord.on;
-  const off = hooksRecord.off;
+  const hooks = (globalThis as { Hooks?: Partial<HookApiLike> }).Hooks;
+  const on = hooks?.on;
+  const off = hooks?.off;
   if (typeof on !== 'function' || typeof off !== 'function') {
     return null;
   }
 
   return {
-    on: on as HookApiLike['on'],
-    off: off as HookApiLike['off'],
+    on: on.bind(hooks),
+    off: off.bind(hooks),
   };
 }
 
@@ -367,7 +367,7 @@ export class FoundryDnD5eTransformActivityWorkflowService {
       return response;
     }
 
-    if (typeof selectedActivity.use !== 'function') {
+    if (typeof selectedActivity.use !== 'function' && !request.sourceActorUuid) {
       throw new Error(
         `Transform activity "${selectedActivity.name ?? selectedActivity.id ?? 'unknown'}" is not executable through the public DnD5e activity API.`
       );
@@ -428,10 +428,45 @@ export class FoundryDnD5eTransformActivityWorkflowService {
     }
 
     try {
-      const useResult = await Promise.resolve(
-        selectedActivity.use({}, dialogConfig, messageConfig)
-      );
-      captureTransformationResult(useResult, transformState);
+      if (request.sourceActorUuid) {
+        if (typeof actor.transformInto !== 'function') {
+          throw new Error(
+            `Actor "${actor.name ?? actor.id ?? 'unknown'}" does not expose DnD5e's transformInto API.`
+          );
+        }
+
+        const fromUuid = (globalThis as { fromUuid?: (uuid: string) => Promise<unknown> }).fromUuid;
+        if (typeof fromUuid !== 'function') {
+          throw new Error(
+            'Foundry UUID resolution API was unavailable for the selected transform source.'
+          );
+        }
+
+        const source = await fromUuid(request.sourceActorUuid);
+        const sourceSummary = summarizeActor(source);
+        if (!sourceSummary) {
+          throw new Error(`Transform source actor was not found: ${request.sourceActorUuid}`);
+        }
+
+        transformState.sourceActor = sourceSummary;
+        const transformResult = await Promise.resolve(
+          actor.transformInto(source, selectedActivity.settings, { renderSheet: false })
+        );
+        captureTransformationResult(transformResult, transformState);
+        warnings.push(
+          'Used DnD5e’s native Actor5e.transformInto API with the explicitly selected source actor; this bypasses the interactive activity-use dialog and its chat-card creation.'
+        );
+      } else {
+        if (typeof selectedActivity.use !== 'function') {
+          throw new Error(
+            `Transform activity "${selectedActivity.name ?? selectedActivity.id ?? 'unknown'}" is not executable through the public DnD5e activity API.`
+          );
+        }
+        const useResult = await Promise.resolve(
+          selectedActivity.use({}, dialogConfig, messageConfig)
+        );
+        captureTransformationResult(useResult, transformState);
+      }
     } catch (error) {
       this.context.auditLog(
         'runDnD5eTransformActivity',

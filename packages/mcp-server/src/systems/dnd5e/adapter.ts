@@ -1022,11 +1022,23 @@ export class DnD5eAdapter implements SystemAdapter {
       const spellSystem = asRecord(spell.system);
       const preparation = asRecord(spellSystem?.preparation);
       const sourceClass =
-        toStringValue(spellSystem?.spellSource) ?? toStringValue(spellSystem?.sourceClass);
-      const prepared = typeof preparation?.prepared === 'boolean' ? preparation.prepared : true;
+        toStringValue(spellSystem?.sourceItem)?.replace(/^class:/, '') ??
+        toStringValue(spellSystem?.spellSource) ??
+        toStringValue(spellSystem?.sourceClass);
+      const prepared =
+        typeof spellSystem?.prepared === 'boolean' || typeof spellSystem?.prepared === 'number'
+          ? Boolean(spellSystem.prepared)
+          : typeof preparation?.prepared === 'boolean'
+            ? preparation.prepared
+            : true;
       const preparationMode =
+        toStringValue(spellSystem?.method) ??
         toStringValue(preparation?.mode) ??
-        (typeof preparation?.prepared === 'boolean' ? 'prepared' : 'unknown');
+        (typeof spellSystem?.prepared === 'boolean' ||
+        typeof spellSystem?.prepared === 'number' ||
+        typeof preparation?.prepared === 'boolean'
+          ? 'prepared'
+          : 'unknown');
 
       preparationModeCounts[preparationMode] = (preparationModeCounts[preparationMode] ?? 0) + 1;
 

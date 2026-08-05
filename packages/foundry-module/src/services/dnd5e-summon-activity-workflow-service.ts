@@ -34,6 +34,8 @@ interface SummonWorkflowActivityLike {
   name?: string;
   type?: string;
   use?: (...args: unknown[]) => unknown;
+  placeSummons?: (...args: unknown[]) => unknown;
+  getUsageToken?: () => unknown;
   item?: SummonWorkflowItemLike;
   parent?: SummonWorkflowItemLike;
   profiles?: unknown;
@@ -42,6 +44,7 @@ interface SummonWorkflowActivityLike {
 
 interface SummonWorkflowProfileLike {
   id?: string;
+  _id?: string;
   name?: string;
   label?: string;
   uuid?: string;
@@ -57,6 +60,12 @@ interface SummonWorkflowProfileLike {
 interface SummonedTokenLike {
   id?: string;
   name?: string;
+}
+
+interface SummonPlacementLike {
+  x?: number;
+  y?: number;
+  hidden?: boolean;
 }
 
 interface HookApiLike {
@@ -124,18 +133,21 @@ function getActorItems(actor: SummonWorkflowActorLike): SummonWorkflowItemLike[]
 
 function getItemActivities(item: SummonWorkflowItemLike): SummonWorkflowActivityLike[] {
   if (item.activities !== undefined) {
-    return normalizeCollection<SummonWorkflowActivityLike>(item.activities).filter(
+    const activities = normalizeCollection<SummonWorkflowActivityLike>(item.activities).filter(
       (activity): activity is SummonWorkflowActivityLike =>
         Boolean(activity && typeof activity === 'object')
     );
+    if (activities.length > 0) {
+      return activities;
+    }
   }
 
-  const activitiesRecord = asRecord(item.system?.activities);
-  if (!activitiesRecord) {
+  const systemActivities = item.system?.activities;
+  if (systemActivities === undefined) {
     return [];
   }
 
-  return Object.values(activitiesRecord).filter(
+  return normalizeCollection<SummonWorkflowActivityLike>(systemActivities).filter(
     (activity): activity is SummonWorkflowActivityLike =>
       Boolean(activity && typeof activity === 'object')
   );
@@ -167,6 +179,56 @@ function getActivityItem(activity: SummonWorkflowActivityLike): SummonWorkflowIt
 
   const parentItem = activity.parent;
   return parentItem && typeof parentItem === 'object' ? parentItem : null;
+}
+
+function getProfileId(profile: SummonWorkflowProfileLike): string | undefined {
+  return toStringValue(profile.id) ?? toStringValue(profile._id);
+}
+
+function getPlacementCoordinates(value: unknown): FoundryTokenPlacementCoordinate | null {
+  const record = asRecord(value);
+  const x = toNumberValue(record?.x);
+  const y = toNumberValue(record?.y);
+  return x !== undefined && y !== undefined ? { x, y } : null;
+}
+
+function getGridSize(): number {
+  const canvasRecord = asRecord((globalThis as { canvas?: unknown }).canvas);
+  const gridRecord = asRecord(canvasRecord?.grid);
+  const size = toNumberValue(gridRecord?.size);
+  return size && size > 0 ? size : 100;
+}
+
+function getAutomaticPlacements(
+  activity: SummonWorkflowActivityLike,
+  profile: SummonWorkflowProfileLike,
+  request: FoundryRunDnD5eSummonActivityRequest
+): SummonPlacementLike[] {
+  const configuredCoordinates = request.coordinates ?? [];
+  const origin = getPlacementCoordinates(activity.getUsageToken?.()) ?? { x: 0, y: 0 };
+  const gridSize = getGridSize();
+  const count = Math.max(
+    1,
+    Math.trunc(toNumberValue(profile.count) ?? toNumberValue(profile.quantity) ?? 1)
+  );
+  const coordinates =
+    configuredCoordinates.length > 0
+      ? configuredCoordinates
+      : Array.from({ length: count }, (_, index) => ({
+          x: origin.x + gridSize * (index + 1),
+          y: origin.y,
+        }));
+
+  return Array.from({ length: count }, (_, index) => {
+    const coordinate = coordinates[index] ?? coordinates[coordinates.length - 1];
+    return {
+      x:
+        coordinate.x +
+        (index >= coordinates.length ? gridSize * (index - coordinates.length + 1) : 0),
+      y: coordinate.y,
+      hidden: request.hidden ?? false,
+    };
+  });
 }
 
 function isSummonActivity(activity: SummonWorkflowActivityLike): boolean {
@@ -219,21 +281,16 @@ function createPlacementConfiguration(data: {
 }
 
 function getHooksApi(): HookApiLike | null {
-  const maybeHooks = (globalThis as { Hooks?: unknown }).Hooks;
-  const hooksRecord = asRecord(maybeHooks);
-  if (!hooksRecord) {
-    return null;
-  }
-
-  const on = hooksRecord.on;
-  const off = hooksRecord.off;
+  const hooks = (globalThis as { Hooks?: Partial<HookApiLike> }).Hooks;
+  const on = hooks?.on;
+  const off = hooks?.off;
   if (typeof on !== 'function' || typeof off !== 'function') {
     return null;
   }
 
   return {
-    on: on as HookApiLike['on'],
-    off: off as HookApiLike['off'],
+    on: on.bind(hooks),
+    off: off.bind(hooks),
   };
 }
 
@@ -299,7 +356,7 @@ function summarizeActivity(
 function summarizeProfile(
   profile: SummonWorkflowProfileLike
 ): FoundryDnD5eSummonProfileSummary | null {
-  const id = toStringValue(profile.id);
+  const id = getProfileId(profile);
   const name = toStringValue(profile.name) ?? toStringValue(profile.label) ?? id;
   if (!id || !name) {
     return null;
@@ -429,7 +486,7 @@ export class FoundryDnD5eSummonActivityWorkflowService {
     const selectedProfile =
       request.profileId !== undefined
         ? (profiles.find(profile => {
-            const id = toStringValue(profile.id);
+            const id = getProfileId(profile);
             const name = toStringValue(profile.name ?? profile.label)?.toLowerCase();
             return (
               id === request.profileId ||
@@ -464,9 +521,9 @@ export class FoundryDnD5eSummonActivityWorkflowService {
       return response;
     }
 
-    if (typeof selectedActivity.use !== 'function') {
+    if (typeof selectedActivity.placeSummons !== 'function') {
       throw new Error(
-        `Summon activity "${selectedActivity.name ?? selectedActivity.id ?? 'unknown'}" is not executable through the public DnD5e activity API.`
+        `Summon activity "${selectedActivity.name ?? selectedActivity.id ?? 'unknown'}" is not executable through DnD5e's public summon placement API.`
       );
     }
 
@@ -477,28 +534,40 @@ export class FoundryDnD5eSummonActivityWorkflowService {
     });
 
     const usageConfig: UnknownRecord = {
-      ...placementConfiguration,
+      create: {
+        summons: true,
+      },
+      summons: {
+        ...placementConfiguration,
+      },
     };
 
     if (selectedProfile) {
-      usageConfig.profileId = selectedProfile.id;
-      usageConfig.profile = selectedProfile;
-      const summonConfig = asRecord(usageConfig.summon) ?? {};
-      summonConfig.profileId = selectedProfile.id;
-      summonConfig.profile = selectedProfile;
-      usageConfig.summon = summonConfig;
+      const summonsConfig = asRecord(usageConfig.summons) ?? {};
+      summonsConfig.profile = getProfileId(selectedProfile);
+      usageConfig.summons = summonsConfig;
     }
 
-    const dialogConfig: UnknownRecord = {
-      configure: false,
-    };
-    const messageConfig: UnknownRecord = {
-      create: true,
-    };
-
     const warnings: string[] = [];
+    warnings.push(
+      'Used DnD5e’s native summon placement API with deterministic MCP placement; this bypasses the interactive activity-use dialog and its chat-card creation.'
+    );
     let summonedTokens: SummonedTokenLike[] = [];
     let resolvedProfile: SummonWorkflowProfileLike | null = selectedProfile;
+    const placementActivity = selectedActivity as SummonWorkflowActivityLike & {
+      getPlacement?: (...args: unknown[]) => unknown;
+    };
+    const hadOwnGetPlacement = Object.hasOwn(placementActivity, 'getPlacement');
+    const originalGetPlacement = placementActivity.getPlacement;
+
+    if (!selectedProfile) {
+      throw new Error(
+        `Summon activity "${selectedActivity.name ?? selectedActivity.id ?? 'unknown'}" did not resolve a summon profile.`
+      );
+    }
+
+    placementActivity.getPlacement = (): Promise<SummonPlacementLike[]> =>
+      Promise.resolve(getAutomaticPlacements(selectedActivity, selectedProfile, request));
 
     const hooksApi = getHooksApi();
     const registeredHooks: Array<{ event: string; hookId: number | string }> = [];
@@ -556,13 +625,11 @@ export class FoundryDnD5eSummonActivityWorkflowService {
     }
 
     try {
-      const useResult = await Promise.resolve(
-        selectedActivity.use(usageConfig, dialogConfig, messageConfig)
+      const summonResult = await Promise.resolve(
+        selectedActivity.placeSummons(asRecord(usageConfig.summons) ?? {})
       );
       if (summonedTokens.length === 0) {
-        const resultRecord = asRecord(useResult);
-        const resultTokens = resultRecord?.tokens ?? resultRecord?.summonedTokens;
-        summonedTokens = normalizeCollection<SummonedTokenLike>(resultTokens).filter(
+        summonedTokens = normalizeCollection<SummonedTokenLike>(summonResult).filter(
           (token): token is SummonedTokenLike => Boolean(token && typeof token === 'object')
         );
       }
@@ -575,6 +642,11 @@ export class FoundryDnD5eSummonActivityWorkflowService {
       );
       throw error;
     } finally {
+      if (hadOwnGetPlacement && originalGetPlacement) {
+        placementActivity.getPlacement = originalGetPlacement;
+      } else {
+        delete placementActivity.getPlacement;
+      }
       if (hooksApi) {
         for (const { event, hookId } of registeredHooks) {
           hooksApi.off(event, hookId);
@@ -584,7 +656,7 @@ export class FoundryDnD5eSummonActivityWorkflowService {
 
     const selectedActivityId = toStringValue(selectedActivity.id);
     const selectedActivityName = toStringValue(selectedActivity.name);
-    const resolvedProfileId = toStringValue(resolvedProfile?.id);
+    const resolvedProfileId = resolvedProfile ? getProfileId(resolvedProfile) : undefined;
     const resolvedProfileName = toStringValue(resolvedProfile?.name ?? resolvedProfile?.label);
 
     const response: FoundryRunDnD5eSummonActivityResponse = {

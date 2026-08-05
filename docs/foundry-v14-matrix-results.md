@@ -1,21 +1,26 @@
 # Foundry v14 Matrix Results
 
-This document records the current v14-readiness evidence for the `feat/v14-hardening-wave` branch.
+This document records the current v14-readiness evidence for the active v14 validation branch.
+
+For the repeatable setup, public-MCP evidence rules, acceptance prompts, and cleanup checklist used for these runs, see [FOUNDRY_V14_E2E_VALIDATION.md](FOUNDRY_V14_E2E_VALIDATION.md).
 
 ## Execution Context
 
-Date: 2026-03-29
+Initial static audit: 2026-03-29
+
+Latest live validation: 2026-08-05
 
 Available in this workspace:
 
 - Source audit and code changes for v14-sensitive MCP paths
 - Monorepo regression commands (`typecheck`, `build`, MCP server tests, schema smoke)
 
-Not available in this workspace:
+Live validation environment:
 
-- Live Foundry v13 or v14 runtime
-- DnD5e, PF2e, or DSA5 worlds running against this branch
-- In-editor execution of GM/player visibility scenarios inside Foundry
+- Foundry VTT v14 Build 365 running on Node.js v25.6.0
+- `MCP Progression Test` world with DnD5e 5.3.3
+- Maeinomatic Foundry MCP Bridge 0.6.9 deployed locally with a temporary v14-only manifest compatibility override
+- Public MCP stdio wrapper connected through the WebSocket bridge
 
 ## Branch Validation
 
@@ -23,38 +28,39 @@ Not available in this workspace:
 | --------------------- | ------ | ------------------------------------------------------------------- |
 | TypeScript typecheck  | pass   | `npm run typecheck`                                                 |
 | Build                 | pass   | `npm run build`                                                     |
-| MCP server unit tests | pass   | `npm -w @maeinomatic/foundry-mcp-server test -- --run` (117 passed) |
+| MCP server unit tests | pass   | `npm -w @maeinomatic/foundry-mcp-server test -- --run` (122 passed) |
 | MCP schema smoke      | pass   | `npm run test:mcp:schema`                                           |
 
 ## DnD-Focused v14 Readiness Snapshot
 
-| Area                                | Status | Evidence                                                                                                | Linked Issue |
-| ----------------------------------- | ------ | ------------------------------------------------------------------------------------------------------- | ------------ |
-| DataModel operator audit            | pass   | Static audit completed; no active deprecated operator usage found in current packages tree              | #13          |
-| `parseHTML` null safety             | pass   | Static audit completed; no active `parseHTML` call sites remain in current packages tree                | #15          |
-| Token detection modes               | pass   | Static audit completed; current token tooling does not read or write `TokenDocument.detectionModes`     | #16          |
-| Chat visibility assumptions         | pass   | `request-player-rolls` hardened to use supported legacy roll modes and v14-aware `messageMode` fallback | #17          |
-| ActiveEffect transferral retirement | pass   | Static audit completed; token-condition flow creates and removes actor-owned effects directly           | #14          |
+| Area                                | Status | Evidence                                                                                                                                                                                                                                                                                                                  | Linked Issue |
+| ----------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------ |
+| DataModel operator audit            | pass   | Static audit completed; no active deprecated operator usage found in current packages tree                                                                                                                                                                                                                                | #13          |
+| `parseHTML` null safety             | pass   | Static audit completed; no active `parseHTML` call sites remain in current packages tree                                                                                                                                                                                                                                  | #15          |
+| Token detection modes               | pass   | Static audit completed; current token tooling does not read or write `TokenDocument.detectionModes`                                                                                                                                                                                                                       | #16          |
+| Chat visibility assumptions         | pass   | A connected non-GM test user observed public and explicitly recipient-targeted messages while a GM-only message was present but not visible. Public and private roll requests were delivered, rendered as enabled controls, clicked by the target user, and completed with public/private result visibility respectively. | #17          |
+| ActiveEffect transferral retirement | pass   | Live test: `toggle-token-condition` created one actor-owned `Poisoned` ActiveEffect, repeated explicit activation remained idempotent, and explicit deactivation removed it. The live test exposed duplicate creation before the idempotence fix, which is now covered by the same rerun.                                 | #14          |
 
 ## Runtime Matrix
 
-| Environment         | Status  | Notes                                                         | Blocking Issue |
-| ------------------- | ------- | ------------------------------------------------------------- | -------------- |
-| Foundry v13 + DnD5e | blocked | No live Foundry runtime/world available in this workspace     | #18            |
-| Foundry v14 + DnD5e | blocked | No live Foundry v14 runtime/world available in this workspace | #18            |
-| Foundry v13 + PF2e  | blocked | No live Foundry runtime/world available in this workspace     | #18            |
-| Foundry v14 + PF2e  | blocked | No live Foundry v14 runtime/world available in this workspace | #18            |
-| Foundry v13 + DSA5  | blocked | No live Foundry runtime/world available in this workspace     | #18            |
-| Foundry v14 + DSA5  | blocked | No live Foundry v14 runtime/world available in this workspace | #18            |
+| Environment         | Status  | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | Blocking Issue |
+| ------------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------- |
+| Foundry v13 + DnD5e | blocked | No live Foundry runtime/world available in this workspace                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | #18            |
+| Foundry v14 + DnD5e | partial | Foundry 14.365 + DnD5e 5.3.3: public MCP bridge, compendium reads, chat output, token move/update/read/delete/conditions, actor/item/world-item writes, journal CRUD, companion lifecycle, class-level progression, short rest, spell-slot workflows, and spellbook source/preparation workflows passed. A connected non-GM test user confirmed public/recipient chat visibility and GM-only exclusion, then clicked public/private roll controls; the public result had no whisper recipients while the private result was visible only to that player and the GM. Public MCP `preview-character-progression` also passed for the controlled actor and its actual owned class, returning the level 2-to-3 class-item update. Spellbook source-class writes use `system.sourceItem` when exposed by DnD5e 5.3; a public reassign call persisted `class:17EJNFV2n758zKJh`, and validation counted it against that class with no issues. Activity workflows now have public MCP evidence: `run-dnd5e-summon-activity` placed a Bat token (`tokensPlaced: 1`), and `run-dnd5e-transform-activity-workflow` completed non-interactively when `sourceActorUuid` was provided, using DnD5e's native `Actor5e.transformInto` path. | #18            |
+| Foundry v13 + PF2e  | blocked | No live Foundry runtime/world available in this workspace                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | #18            |
+| Foundry v14 + PF2e  | blocked | No live Foundry v14 runtime/world available in this workspace                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | #18            |
+| Foundry v13 + DSA5  | blocked | No live Foundry runtime/world available in this workspace                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | #18            |
+| Foundry v14 + DSA5  | blocked | No live Foundry v14 runtime/world available in this workspace                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | #18            |
 
 ## Blocking Defects And Gaps
 
-1. Runtime matrix execution is still blocked by environment availability, not by a branch-local regression.
-2. No Foundry-hosted GM/player visibility walkthrough was executable from this workspace, so chat/effect validation is currently code-audit-backed rather than world-test-backed.
-3. Module compatibility metadata must remain pinned to v13 until the runtime matrix rows above are exercised in live worlds.
+1. Generic Wild Shape/transform calls without an explicit source actor still require DnD5e's interactive chooser. The public MCP workaround now supports non-interactive transforms by requiring `sourceActorUuid` for these profiles.
+2. Map generation requires a local ComfyUI installation and remains untested in this run.
+3. PF2e and DSA5 require their own live v13/v14 worlds before cross-system support can be claimed.
+4. Module compatibility metadata must remain pinned to v13 until the runtime matrix rows above are exercised in live worlds.
 
 ## Next Required Runtime Checks
 
-1. Launch a Foundry v13 world with DnD5e and run the token/chat/effect checklist.
-2. Launch a Foundry v14 world with DnD5e and repeat the same checklist.
-3. Record pass/partial/blocked results per system in this file and in `docs/foundry-v14-compatibility-plan.md`.
+1. Add an explicit optional actor-selector UX contract for transform workflows that currently need `sourceActorUuid`, so clients can offer structured source choice without manual UUID lookup.
+2. Test map generation when ComfyUI is available.
+3. Launch v13/v14 PF2e and DSA5 worlds, then record equivalent workflow evidence.

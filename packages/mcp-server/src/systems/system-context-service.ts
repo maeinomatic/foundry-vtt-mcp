@@ -56,13 +56,20 @@ export class SystemContextService {
   async requireAdapter(
     capability: string
   ): Promise<{ adapter: SystemAdapter; system: GameSystem }> {
+    const { system, adapter } = await this.resolve();
+
+    if (system === 'other' && !this.foundryClient.isConnected()) {
+      throw new Error(
+        'Foundry VTT module not connected. Please ensure Foundry is running and the MCP Bridge module is enabled.'
+      );
+    }
+
     if (!this.systemRegistry) {
       throw new Error(
         `UNSUPPORTED_CAPABILITY: No system adapter registry is available for ${capability}.`
       );
     }
 
-    const { system, adapter } = await this.resolve();
     if (!adapter) {
       throw new Error(
         `UNSUPPORTED_CAPABILITY: No system adapter is available for ${capability} in this world.`
