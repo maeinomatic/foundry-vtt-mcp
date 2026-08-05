@@ -281,14 +281,14 @@ export class FoundryRollRequestService {
 
       if (isPublicRoll) {
         if (canClickButton) {
-          button.prop('disabled', false);
+          button.prop('disabled', false).prop('hidden', false).show();
         } else {
-          button.prop('disabled', true);
+          button.prop('disabled', true).prop('hidden', false).show();
         }
       } else if (canClickButton) {
-        button.show();
+        button.prop('hidden', false).show();
       } else {
-        button.hide();
+        button.prop('hidden', true).hide();
       }
     });
 

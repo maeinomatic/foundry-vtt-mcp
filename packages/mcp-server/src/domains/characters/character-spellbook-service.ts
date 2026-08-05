@@ -225,6 +225,7 @@ export class CharacterSpellbookService {
           ...(await this.applyDnD5eSpellbookSourceAssignments({
             actorIdentifier: parsed.actorIdentifier,
             assignments: explicitAssignments,
+            sourceItemSpellIds: this.getDnD5eSourceItemSpellIds(currentState.characterData),
             reason: workflowReason,
           }))
         );
@@ -242,6 +243,7 @@ export class CharacterSpellbookService {
             ...(await this.applyDnD5eSpellbookSourceAssignments({
               actorIdentifier: parsed.actorIdentifier,
               assignments: autoAssignments,
+              sourceItemSpellIds: this.getDnD5eSourceItemSpellIds(currentState.characterData),
               reason: workflowReason,
             }))
           );
@@ -568,6 +570,7 @@ export class CharacterSpellbookService {
   private async applyDnD5eSpellbookSourceAssignments(params: {
     actorIdentifier: string;
     assignments: SpellbookSourceClassWorkflowUpdate[];
+    sourceItemSpellIds: Set<string>;
     reason?: string;
   }): Promise<SpellbookSourceClassWorkflowUpdate[]> {
     if (params.assignments.length === 0) {
@@ -581,15 +584,38 @@ export class CharacterSpellbookService {
         updates: params.assignments.map(assignment => ({
           itemIdentifier: assignment.spellId,
           itemType: 'spell',
-          updates: {
-            'system.sourceClass': assignment.classId,
-          },
+          updates: this.getDnD5eSpellSourceUpdate(
+            params.sourceItemSpellIds.has(assignment.spellId),
+            assignment.classId
+          ),
         })),
         ...(params.reason !== undefined ? { reason: params.reason } : {}),
       } satisfies FoundryBatchUpdateActorEmbeddedItemsRequest
     );
 
     return params.assignments;
+  }
+
+  private getDnD5eSpellSourceUpdate(
+    usesSourceItem: boolean,
+    classId: string
+  ): Record<string, string> {
+    if (usesSourceItem) {
+      return { 'system.sourceItem': `class:${classId}` };
+    }
+
+    return { 'system.sourceClass': classId };
+  }
+
+  private getDnD5eSourceItemSpellIds(characterData: CharacterInfoLike): Set<string> {
+    return new Set(
+      characterData.items
+        .filter(item => {
+          const system = this.toRecord(item.system);
+          return item.type === 'spell' && system && Object.hasOwn(system, 'sourceItem');
+        })
+        .map(item => item.id)
+    );
   }
 
   private async applyDnD5eSpellbookPreparedUpdates(params: {

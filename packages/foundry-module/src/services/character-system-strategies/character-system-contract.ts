@@ -67,6 +67,9 @@ export interface ModuleDnD5eItemSystemData extends ModuleBaseItemSystemData {
   preparation?: { prepared?: boolean };
   activation?: { type?: string };
   sourceClass?: string;
+  sourceItem?: string;
+  prepared?: boolean | number;
+  method?: string;
   range?: { value?: string | number; units?: string; special?: string };
   target?: {
     type?: string;

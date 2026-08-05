@@ -1822,6 +1822,14 @@ describe('CharacterTools', () => {
                 },
               },
             },
+            {
+              id: 'spell-1',
+              name: 'Fireball',
+              type: 'spell',
+              system: {
+                sourceItem: 'class:class-cleric',
+              },
+            },
           ],
           effects: [],
         });
@@ -1830,10 +1838,10 @@ describe('CharacterTools', () => {
       if (method === 'maeinomatic-foundry-mcp.updateActorEmbeddedItem') {
         expect(data).toEqual({
           actorIdentifier: 'Laeral',
-          itemIdentifier: 'Fireball',
+          itemIdentifier: 'spell-1',
           itemType: 'spell',
           updates: {
-            'system.sourceClass': 'class-wizard',
+            'system.sourceItem': 'class:class-wizard',
           },
         });
         return Promise.resolve({
@@ -1844,9 +1852,9 @@ describe('CharacterTools', () => {
           itemName: 'Fireball',
           itemType: 'spell',
           appliedUpdates: {
-            'system.sourceClass': 'class-wizard',
+            'system.sourceItem': 'class:class-wizard',
           },
-          updatedFields: ['system.sourceClass'],
+          updatedFields: ['system.sourceItem'],
         });
       }
 
@@ -1874,7 +1882,7 @@ describe('CharacterTools', () => {
         id: 'class-wizard',
         name: 'Wizard',
       },
-      updatedFields: ['system.sourceClass'],
+      updatedFields: ['system.sourceItem'],
     });
   });
 
@@ -3535,6 +3543,39 @@ describe('CharacterTools', () => {
         },
       ],
     });
+  });
+
+  it('preserves system-resolution failures when previewing character progression', async () => {
+    const query = vi.fn().mockImplementation((method: string) => {
+      if (method === 'maeinomatic-foundry-mcp.getCharacterInfo') {
+        return Promise.resolve({
+          id: 'actor-3',
+          name: 'Laeral',
+          type: 'character',
+          system: {},
+          items: [],
+          effects: [],
+        });
+      }
+
+      if (method === 'maeinomatic-foundry-mcp.getWorldInfo') {
+        return Promise.reject(new Error('Foundry bridge is disconnected'));
+      }
+
+      return Promise.reject(new Error(`Unexpected query: ${method}`));
+    });
+
+    const tools = new CharacterTools({
+      foundryClient: { query, isConnected: () => false } as unknown as FoundryClient,
+      logger: createLoggerStub(),
+    });
+
+    await expect(
+      tools.handlePreviewCharacterProgression({
+        characterIdentifier: 'Laeral',
+        targetLevel: 2,
+      })
+    ).rejects.toThrow('Foundry VTT module not connected');
   });
 
   it('returns DnD5e advancement options for an ASI step', async () => {

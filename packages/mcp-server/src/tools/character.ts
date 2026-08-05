@@ -1125,6 +1125,11 @@ export class CharacterTools {
 
   private getDnD5eSpellSourceValue(item: CharacterItem): string | undefined {
     const system = this.toRecord(item.system);
+    const sourceItem = system?.sourceItem;
+    if (typeof sourceItem === 'string' && sourceItem.startsWith('class:')) {
+      return sourceItem.slice('class:'.length);
+    }
+
     const spellSource = system?.spellSource;
     if (typeof spellSource === 'string' && spellSource.trim().length > 0) {
       return spellSource;
@@ -1138,10 +1143,35 @@ export class CharacterTools {
     return undefined;
   }
 
+  private getDnD5eSpellSourceUpdate(spell: CharacterItem, classId: string): Record<string, string> {
+    const system = this.toRecord(spell.system);
+    if (system && Object.hasOwn(system, 'sourceItem')) {
+      return { 'system.sourceItem': `class:${classId}` };
+    }
+
+    return { 'system.sourceClass': classId };
+  }
+
   private getDnD5eSpellPreparedValue(item: CharacterItem): boolean {
     const system = this.toRecord(item.system);
+    if (typeof system?.prepared === 'boolean' || typeof system?.prepared === 'number') {
+      return Boolean(system.prepared);
+    }
+
     const preparation = this.toRecord(system?.preparation);
     return typeof preparation?.prepared === 'boolean' ? preparation.prepared : true;
+  }
+
+  private getDnD5eSpellPreparedUpdate(
+    spell: CharacterItem,
+    prepared: boolean
+  ): Record<string, boolean> {
+    const system = this.toRecord(spell.system);
+    if (system && Object.hasOwn(system, 'prepared')) {
+      return { 'system.prepared': prepared };
+    }
+
+    return { 'system.preparation.prepared': prepared };
   }
 
   private getDnD5eSpellcastingClassSummaries(
@@ -3163,6 +3193,11 @@ export class CharacterTools {
               description:
                 'Optional transform activity name or ID when the item exposes more than one transform activity.',
             },
+            sourceActorUuid: {
+              type: 'string',
+              description:
+                'UUID of the actor form to use. Required for non-interactive transforms such as Wild Shape that normally open DnD5e’s compendium browser.',
+            },
             reason: {
               type: 'string',
               description: 'Optional audit reason for the transform workflow.',
@@ -4573,14 +4608,13 @@ export class CharacterTools {
       }
     );
     const resolvedClass = this.resolveDnD5eSpellcastingClass(characterData, parsed.classIdentifier);
+    const spell = this.findDnD5eSpellItem(characterData, parsed.spellIdentifier);
 
     const request: FoundryUpdateActorEmbeddedItemRequest = {
       actorIdentifier: parsed.actorIdentifier,
-      itemIdentifier: parsed.spellIdentifier,
+      itemIdentifier: spell.id,
       itemType: 'spell',
-      updates: {
-        'system.sourceClass': resolvedClass.id,
-      },
+      updates: this.getDnD5eSpellSourceUpdate(spell, resolvedClass.id),
       ...(parsed.reason !== undefined ? { reason: parsed.reason } : {}),
     };
 
@@ -4722,9 +4756,7 @@ export class CharacterTools {
         return {
           itemIdentifier: spell.id,
           itemType: 'spell',
-          updates: {
-            'system.sourceClass': sourceClass.id,
-          },
+          updates: this.getDnD5eSpellSourceUpdate(spell, sourceClass.id),
         };
       }),
       ...(parsed.reason !== undefined ? { reason: parsed.reason } : {}),
@@ -4837,16 +4869,12 @@ export class CharacterTools {
         ? targetSpellScope.map(spell => ({
             itemIdentifier: spell.id,
             itemType: 'spell',
-            updates: {
-              'system.preparation.prepared': selectedSpellMap.has(spell.id),
-            },
+            updates: this.getDnD5eSpellPreparedUpdate(spell, selectedSpellMap.has(spell.id)),
           }))
         : Array.from(selectedSpellMap.values()).map(spell => ({
             itemIdentifier: spell.id,
             itemType: 'spell',
-            updates: {
-              'system.preparation.prepared': parsed.mode === 'prepare',
-            },
+            updates: this.getDnD5eSpellPreparedUpdate(spell, parsed.mode === 'prepare'),
           }));
 
     const batchRequest: FoundryBatchUpdateActorEmbeddedItemsRequest = {
@@ -4880,9 +4908,11 @@ export class CharacterTools {
         id: item.itemId,
         name: item.itemName,
         prepared:
-          item.appliedUpdates['system.preparation.prepared'] === true
+          (item.appliedUpdates['system.prepared'] ??
+            item.appliedUpdates['system.preparation.prepared']) === true
             ? true
-            : item.appliedUpdates['system.preparation.prepared'] === false
+            : (item.appliedUpdates['system.prepared'] ??
+                  item.appliedUpdates['system.preparation.prepared']) === false
               ? false
               : undefined,
       })),
@@ -5986,6 +6016,7 @@ export class CharacterTools {
       actorIdentifier: z.string().min(1, 'Actor identifier cannot be empty'),
       itemIdentifier: z.string().min(1, 'Item identifier cannot be empty'),
       activityIdentifier: z.string().min(1).optional(),
+      sourceActorUuid: z.string().min(1).optional(),
       reason: z.string().min(1).optional(),
     });
 
@@ -6011,6 +6042,9 @@ export class CharacterTools {
         itemIdentifier: parsed.itemIdentifier,
         ...(parsed.activityIdentifier !== undefined
           ? { activityIdentifier: parsed.activityIdentifier }
+          : {}),
+        ...(parsed.sourceActorUuid !== undefined
+          ? { sourceActorUuid: parsed.sourceActorUuid }
           : {}),
         ...(parsed.reason !== undefined ? { reason: parsed.reason } : {}),
       } satisfies FoundryRunDnD5eTransformActivityRequest
@@ -7115,16 +7149,8 @@ export class CharacterTools {
     characterData: CharacterInfoResponse,
     request: CharacterProgressionUpdateRequest
   ): Promise<PreparedCharacterProgressionUpdate> {
-    return this.withSystemAdapter<PreparedCharacterProgressionUpdate>(
-      'character progression update preparation',
-      (adapter: SystemAdapter): PreparedCharacterProgressionUpdate =>
-        adapter.prepareCharacterProgressionUpdate(characterData, request),
-      () => {
-        throw new Error(
-          'UNSUPPORTED_CAPABILITY: No system adapter is available for progression updates in this world.'
-        );
-      }
-    );
+    const { adapter } = await this.getRequiredSystemAdapter('progression updates');
+    return adapter.prepareCharacterProgressionUpdate(characterData, request);
   }
 
   private async applyProgressionUpdate(

@@ -130,7 +130,8 @@ export class Dnd5eCharacterSystemStrategy extends BaseCharacterSystemStrategy {
 
     for (const spell of spellItems) {
       const spellSystem = spell.system as ModuleDnD5eItemSystemData | undefined;
-      const sourceClass = spellSystem?.sourceClass ?? 'general';
+      const sourceClass =
+        spellSystem?.sourceItem?.replace(/^class:/, '') ?? spellSystem?.sourceClass ?? 'general';
 
       if (!spellsByClass[sourceClass]) {
         spellsByClass[sourceClass] = [];
@@ -142,7 +143,7 @@ export class Dnd5eCharacterSystemStrategy extends BaseCharacterSystemStrategy {
           id: spell.id,
           name: spell.name,
           level: spellSystem?.level ?? 0,
-          prepared: spellSystem?.preparation?.prepared ?? true,
+          prepared: Boolean(spellSystem?.prepared ?? spellSystem?.preparation?.prepared ?? true),
           traits: [],
           ...(spellSystem?.activation?.type ? { actionCost: spellSystem.activation.type } : {}),
           ...(targeting.range !== undefined ? { range: targeting.range } : {}),

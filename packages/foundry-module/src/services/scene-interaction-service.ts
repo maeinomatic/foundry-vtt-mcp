@@ -77,6 +77,7 @@ interface TokenLike extends SceneTokenTargetLike {
   elevation?: number;
   lockRotation?: boolean;
   actorLink?: boolean;
+  toObject?: () => Record<string, unknown>;
   update?: (data: Record<string, unknown>, options?: Record<string, unknown>) => Promise<unknown>;
   delete?: () => Promise<unknown>;
 }
@@ -215,6 +216,27 @@ function getActiveEffectArray(effectsSource: unknown): ActiveEffectLike[] {
     : [];
 }
 
+function isConditionEffect(
+  effect: ActiveEffectLike,
+  conditionId: string,
+  condition?: ConditionLike
+): boolean {
+  const conditionIds = [conditionId, condition?.id].filter(
+    (id): id is string => typeof id === 'string' && id.length > 0
+  );
+  if (conditionIds.some(id => effect.statuses?.has(id) ?? false)) {
+    return true;
+  }
+
+  const conditionNames = [conditionId, condition?.id, condition?.name, condition?.label]
+    .filter((name): name is string => typeof name === 'string' && name.length > 0)
+    .map(name => name.toLowerCase());
+
+  return [effect.name, effect.label].some(
+    name => typeof name === 'string' && conditionNames.includes(name.toLowerCase())
+  );
+}
+
 function isMutableTokenLike(token: unknown): token is TokenLike {
   return Boolean(
     token &&
@@ -235,6 +257,11 @@ function getMutableTokenById(
 
   const token = tokenCollection.get(tokenId);
   return isMutableTokenLike(token) ? token : null;
+}
+
+function getTokenElevation(token: TokenLike): number | undefined {
+  const sourceElevation = token.toObject?.().elevation;
+  return typeof sourceElevation === 'number' ? sourceElevation : token.elevation;
 }
 
 function getTargetingUser(): UserTargetingLike | null {
@@ -724,7 +751,7 @@ export class FoundrySceneInteractionService {
         alpha: token.alpha,
         hidden: token.hidden,
         disposition: token.disposition,
-        elevation: token.elevation,
+        elevation: getTokenElevation(token),
         lockRotation: token.lockRotation,
         img: token.texture?.src,
         actorId: token.actor?.id,
@@ -796,22 +823,21 @@ export class FoundrySceneInteractionService {
       }
 
       if (data.active) {
-        const effectData = buildConditionEffectData({
-          condition,
-          systemId: (game.system as { id?: string }).id ?? '',
-        });
-        await actor.createEmbeddedDocuments?.('ActiveEffect', [effectData]);
+        const alreadyActive = getActiveEffectArray(actor.effects).some(effect =>
+          isConditionEffect(effect, data.conditionId, condition)
+        );
+        if (!alreadyActive) {
+          const effectData = buildConditionEffectData({
+            condition,
+            systemId: (game.system as { id?: string }).id ?? '',
+          });
+          await actor.createEmbeddedDocuments?.('ActiveEffect', [effectData]);
+        }
       } else {
         const effects = getActiveEffectArray(actor.effects);
-        const effectsToRemove = effects.filter(effect => {
-          if (effect.statuses?.has(data.conditionId)) {
-            return true;
-          }
-          if (effect.name?.toLowerCase() === data.conditionId.toLowerCase()) {
-            return true;
-          }
-          return effect.label?.toLowerCase() === data.conditionId.toLowerCase();
-        });
+        const effectsToRemove = effects.filter(effect =>
+          isConditionEffect(effect, data.conditionId, condition)
+        );
 
         if (effectsToRemove.length > 0) {
           const ids = effectsToRemove

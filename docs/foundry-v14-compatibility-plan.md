@@ -15,7 +15,7 @@ Canonical source links and official syntax conventions are maintained in:
 
 1. Module compatibility is currently pinned to v13 in `packages/foundry-module/module.json`.
 2. Foundry v14 is now stable; the official API documentation reviewed on 2026-08-02 identifies the current documented target as v14.365 Stable.
-3. The most recent recorded live DnD5e validation in this repository used DnD5e 5.2.5. DnD5e 5.3.x subsequently changed `system.advancement` storage from an array to a keyed advancement collection, so the workflow layer must be revalidated against both the previous 5.2.5 baseline and the current 5.3.x shape.
+3. DnD5e 5.3.x changes advancement storage from an array to a keyed advancement collection and spell ownership from `system.sourceClass` to `system.sourceItem`. The current 5.3.3 runtime validation covers class-level progression and modern spell-source reads/writes; the 5.2.5 baseline still requires a separate live retest.
 4. There is no active v14 support commitment yet in this branch.
 
 ## Compatibility Policy
@@ -23,6 +23,10 @@ Canonical source links and official syntax conventions are maintained in:
 1. Keep v13 as the supported baseline until all v14 gates pass.
 2. Treat v14 as experimental during evaluation.
 3. Do not change `compatibility.maximum` to `14` until the final go/no-go checklist is complete.
+
+## Live v14 Evidence
+
+On 2026-08-03 and 2026-08-05, the local `MCP Progression Test` world ran Foundry VTT v14 Build 365 with DnD5e 5.3.3 and the public MCP stdio wrapper connected through the module WebSocket bridge. The condition, token mutation, actor/item write, journal, companion, progression, rest, spell-slot, spellbook, and DnD5e summon/transform workflows passed in controlled test data. The `toggle-token-condition` workflow created one actor-owned `Poisoned` ActiveEffect, repeated explicit activation did not create a duplicate after the idempotence fix, and explicit deactivation removed it. A public spell reassignment persisted DnD5e 5.3 `system.sourceItem` as `class:<ownedClassId>` and subsequent spellbook validation resolved the owned class with no issues. Summon activity execution now uses DnD5e's native placement API non-interactively, and transform activity execution can complete non-interactively when an explicit `sourceActorUuid` is provided. This is meaningful but incomplete v14 evidence; it does not satisfy the full go/no-go gate because map-generation, PF2e, DSA5, and v13 coverage remain absent.
 
 ## v14 Risk Areas to Audit
 
@@ -114,7 +118,7 @@ Run these checks in separate worlds and record results.
 
 Current published snapshot: `docs/foundry-v14-matrix-results.md`
 
-Current status: branch-level validation is complete. Live Foundry v13 Build 351 with DnD5e 5.2.5 has exercised the public MCP progression path; Foundry v14 and DnD5e 5.3.x runtime validation remain outstanding.
+Current status: branch-level validation is complete. Foundry v14.365 with DnD5e 5.3.3 has exercised controlled public MCP workflows; v13, PF2e, DSA5, player-dependent, and special-activity validation remain outstanding.
 
 1. Foundry v13 + DnD5e
 2. Foundry v13 + PF2e
